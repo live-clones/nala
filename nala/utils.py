@@ -64,11 +64,12 @@ if geteuid() == 0:
 	if debug:
 		file_handler = RotatingFileHandler(NALA_DEBUGLOG, maxBytes=1024*1024, backupCount=10)
 	else:
-		file_handler = RotatingFileHandler(NALA_LOGFILE, maxBytes=1024*1024, backupCount=10)
+		file_handler = RotatingFileHandler(
+		    NALA_LOGFILE, maxBytes=1024**2, backupCount=10)
 	file_handler.setFormatter(formatter)
 	logger.addHandler(file_handler)
 else:
-	file_handler = RotatingFileHandler(devnull, maxBytes=1024*1024, backupCount=10)
+	file_handler = RotatingFileHandler(devnull, maxBytes=1024**2, backupCount=10)
 
 syslog = syslogger.info
 esyslog = syslogger.error
@@ -95,9 +96,7 @@ def ask(question, default_no=False):
 		elif resp in ('n', 'N'):
 			return False
 		elif resp == '':
-			if default_no:
-				return False
-			return True
+			return not default_no
 		else:
 			print("Not a valid choice kiddo")
 

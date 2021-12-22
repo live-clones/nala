@@ -42,7 +42,7 @@ def net_select(host):
 	try:
 		# Regex to get the domain
 		dprint(host)
-		
+
 		regex = re.search('https?://([A-Za-z_0-9.-]+).*', host)
 		if regex:
 			domain = regex.group(1)
@@ -55,7 +55,7 @@ def net_select(host):
 			if len(res) == 1:
 				res == '00'+res
 			netselect_scored.append(f'{res} {host}')
-	except (socket.gaierror, OSError, ConnectionRefusedError) as e:
+	except (socket.gaierror, OSError) as e:
 		if verbose:
 			e = str(e)
 			regex = re.search('\[.*\]', e)
@@ -140,30 +140,29 @@ def detect_release():
 			policy = line.split(',')
 			dprint(f'Policy Split: {policy}')
 			for line in policy:
-				if line == 'o=Ubuntu':
-					distro = 'ubuntu'
-				elif line == 'l=Debian':
+				if line == 'l=Debian':
 					distro = 'debian'
+				elif line == 'o=Ubuntu':
+					distro = 'ubuntu'
 				for line in policy:
 					if line.startswith('n='):
 						release = line[2:]
 	if distro and release:
 		return distro, release
-	else:
-		err = style('Error:', **RED)
-		print(f'{err} Unable to detect release. Specify manually')
-		parser.parse_args(['fetch', '--help'])
-		exit(1)
+	err = style('Error:', **RED)
+	print(f'{err} Unable to detect release. Specify manually')
+	parser.parse_args(['fetch', '--help'])
+	exit(1)
 
 def fetch(	fetches: int, foss: bool = False,
 			debian=None, ubuntu=None, country=None,
 			assume_yes=False):
 	"""Fetches fast mirrors and write to nala-sources.list"""
-	if NALA_SOURCES.exists():
-		if not assume_yes:
-			if not ask(f'{NALA_SOURCES.name} already exists.\ncontinue and overwrite it'):
-				print('Abort')
-				exit()
+	if (NALA_SOURCES.exists() and not assume_yes and
+	    not ask(f'{NALA_SOURCES.name} already exists.\ncontinue and overwrite it')
+	    ):
+		print('Abort')
+		exit()
 
 	# Make sure there aren't any shenanigans
 	if fetches not in range(1,11):
@@ -179,18 +178,12 @@ def fetch(	fetches: int, foss: bool = False,
 	elif debian:
 		distro = 'debian'
 		release = debian
-	elif ubuntu:
+	else:
 		distro = 'ubuntu'
 		release = ubuntu
-	else:
-		print('Something went wrong...')
-		exit(1)
-
 	if distro == 'debian':
 		netselect = parse_debian(country)
-		component = 'main contrib non-free'
-		if foss:
-			component = 'main'
+		component = 'main' if foss else 'main contrib non-free'
 	else:
 		netselect = parse_ubuntu(country)
 		# It's ubuntu, you probably don't care about foss
@@ -202,7 +195,7 @@ def fetch(	fetches: int, foss: bool = False,
 	thread_handler = []
 	num = -1
 	for url in netselect:
-		num = num +1
+		num += 1
 		thread = threading.Thread(name='Net Select', target=net_select, args=[netselect[num]])
 		thread_handler.append(thread)
 		thread.start()
@@ -224,9 +217,9 @@ def fetch(	fetches: int, foss: bool = False,
 	num = 0
 	with open(NALA_SOURCES, 'w') as file:
 		print(f"{style('Writing:', **GREEN)} {NALA_SOURCES}\n")
-		print(f'# Sources file built for nala\n', file=file)
+		print('# Sources file built for nala\n', file=file)
 		for line in netselect_scored:
-			num = num + 1
+			num += 1
 			line = line[line.index('h'):]
 			print(f'deb {line} {release} {component}')
 			print(f'deb-src {line} {release} {component}\n')
