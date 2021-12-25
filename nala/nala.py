@@ -28,9 +28,7 @@ except OSError:
 
 w_width = columns
 
-if w_width > 86:
-	w_width = 86
-
+w_width = min(w_width, 86)
 wrapper = TextWrapper(w_width, subsequent_indent='   ' )
 
 try:
@@ -139,14 +137,14 @@ class nala:
 				elif pkg.is_upgradable:
 					pkg.mark_upgrade()
 					dprint(f"Marked upgrade: {pkg.name}")
-				elif not pkg.is_upgradable:
+				else:
 					print(f'Package {style(pkg.name, **GREEN)}',
 					'is already at the latest version',
 					style(pkg.installed.version, **BLUE))
 
 		if not_found:
 			pkg_error(not_found, 'not found', terminate=True)
-		
+
 		self.auto_remover()
 		self._get_changes()
 
@@ -168,16 +166,13 @@ class nala:
 				pkg = self.cache[pkg_name]
 				if not pkg.installed:
 					not_installed.append(pkg_name)
+				elif pkg.essential or pkg.installed.priority == 'required':
+					self.essential.append(pkg_name)
+				elif pkg.shortname in self.nala_depends:
+					self.nala.append(pkg_name)
 				else:
-					# do not allow the removal of essential or required packages
-					if pkg.essential or pkg.installed.priority == 'required':
-						self.essential.append(pkg_name)
-					# do not allow the removal of nala
-					elif pkg.shortname in self.nala_depends:
-						self.nala.append(pkg_name)
-					else:
-						pkg.mark_delete(purge=purge)
-						dprint(f"Marked delete: {pkg.name}")
+					pkg.mark_delete(purge=purge)
+					dprint(f"Marked delete: {pkg.name}")
 
 		if not_installed:
 			pkg_error(not_installed, 'not installed')
@@ -206,13 +201,11 @@ class nala:
 				print(f"Version: {pkg.candidate.version}")
 				print(f"Architecture: {arch}")
 
-				installed = 'no'
-				if pkg.is_installed:
-					installed = 'yes'
+				installed = 'yes' if pkg.is_installed else 'no'
 				print(f"Installed: {installed}")
 				print(f"Priority: {pkg.candidate.priority}")
 				if pkg.essential:
-					print(f"Essential: yes")
+					print('Essential: yes')
 				print(f"Section: {pkg.candidate.section}")
 				print(f"Source: {pkg.candidate.source_name}")
 				print(f"Origin: {pkg.candidate.origins[0].origin}")
@@ -224,10 +217,7 @@ class nala:
 				if pkg.candidate.provides:
 					provides = pkg.candidate.provides
 					provides.sort()
-					print(
-						'Provides:',
-						", ".join(name for name in provides)
-					)
+					print('Provides:', ", ".join(provides))
 
 				if pkg.candidate.dependencies:
 					print(style('Depends:', bold=True))
@@ -274,13 +264,13 @@ class nala:
 			trans = []
 			transaction = json.loads(transaction)
 			trans.append(transaction.get('ID'))
-			
+
 			command = transaction.get('Command')
 			if command[0] in ['update', 'upgrade']:
 				for package in transaction.get('Upgraded'):
 					command.append(package[0])
 
-			trans.append(' '.join(com for com in transaction.get('Command')))
+			trans.append(' '.join(transaction.get('Command')))
 			trans.append(transaction.get('Date'))
 			trans.append(transaction.get('Altered'))
 			names.append(trans)
@@ -331,7 +321,7 @@ class nala:
 		if not NALA_HISTORY.exists():
 			print("No history exists to clear..")
 			return
-		
+
 		if id == 'all':
 			NALA_HISTORY.unlink()
 			print("History has been cleared")
@@ -346,7 +336,7 @@ class nala:
 			for transaction in history:
 				transaction = json.loads(transaction)
 				if transaction.get('ID') != id:
-					sum = sum +1
+					sum += 1
 					transaction['ID'] = sum
 					history_edit.append(json.dumps(transaction))
 			# Write the new history file	
@@ -405,22 +395,16 @@ class nala:
 		purge = self.purge
 
 		for pkg in self.cache:
-			# We kind of have to do a lot of weird checks here.
-			# Sometimes it gives us packages that are not okay
-			if pkg.is_installed:
-				if pkg.is_auto_removable:
-					# We can't let autoremover take out essential or required packages
-					if pkg.essential or pkg.installed.priority == 'required':
-						self.essential.append(pkg.name)
-					else:
-						# We can't let nala be removed either
-						if pkg.shortname in self.nala_depends:
-							self.nala.append(pkg.name)
-						else:
-							pkg.mark_delete(purge=purge)
-							autoremove.append(
-								f"<Package: '{pkg.name}' Arch: '{pkg.installed.architecture}' Version: '{pkg.installed.version}'"
-								)
+			if pkg.is_installed and pkg.is_auto_removable:
+				if pkg.essential or pkg.installed.priority == 'required':
+					self.essential.append(pkg.name)
+				elif pkg.shortname in self.nala_depends:
+					self.nala.append(pkg.name)
+				else:
+					pkg.mark_delete(purge=purge)
+					autoremove.append(
+						f"<Package: '{pkg.name}' Arch: '{pkg.installed.architecture}' Version: '{pkg.installed.version}'"
+						)
 
 		if self.essential:
 			pkg_error(self.essential, 'cannot be removed', banter='auto_essential', terminate=True)
@@ -445,11 +429,10 @@ class nala:
 			exit(0)
 		if pkgs:
 			self.print_update_summary(pkgs)
-			if not self.assume_yes:
-				if not ask('Do you want to continue'):
-					print("Abort.")
-					return
-			
+			if not self.assume_yes and not ask('Do you want to continue'):
+				print("Abort.")
+				return
+
 			for pkg in pkgs:
 				if pkg.is_installed:
 					if pkg.essential and pkg.marked_delete:
@@ -458,7 +441,7 @@ class nala:
 						self.essential.append(pkg.name)
 					elif pkg.shortname in self.nala_depends and pkg.marked_delete:
 						self.nala.append(pkg.name)
-					
+
 			if self.essential:
 				pkg_error(self.essential, 'cannot be removed', banter='apt', terminate=True)
 
@@ -502,12 +485,11 @@ class nala:
 				apt_pkg.config.set('Dpkg::Options::', '--force-confask')
 
 			# Check to see if they might be at a console
-			if 'xterm' not in os.environ["TERM"]:
-				if not self.verbose or not self.raw_dpkg:
-					if ask(
-						"It seems you might be at a console. Scroll bars can get wonkey.\n"
-						"Would you like to disable them"):
-						self.verbose = True
+			if ('xterm' not in os.environ["TERM"]
+			    and (not self.verbose or not self.raw_dpkg) and ask(
+			        "It seems you might be at a console. Scroll bars can get wonkey.\n"
+			        "Would you like to disable them")):
+				self.verbose = True
 
 			# If self.raw_dpkg is enabled likely they want to see the update too.
 			if self.raw_dpkg:
@@ -575,19 +557,18 @@ class nala:
 						dprint(line)
 					else:
 						print(line)
-		# In normal mode we hide the downloads behind some fancy bars
 		else:
 			num = 0
 			total = len(pkgs)
-			
-			with tqdm(total=total,
-				colour='CYAN',
-				desc=style('Downloading Packages', **BLUE),
-				unit='pkg',
-				position=1,
-				bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{rate_fmt}{postfix}]',
 
-			) as progress:
+			with tqdm(total=total,
+						colour='CYAN',
+						desc=style('Downloading Packages', **BLUE),
+						unit='pkg',
+						position=1,
+						bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{rate_fmt}{postfix}]',
+
+					) as progress:
 				with tqdm(total=0, position=0, bar_format='{desc}') as pkg_log:
 					for line in iter(proc.stdout.readline, ''):
 						try:
@@ -596,11 +577,9 @@ class nala:
 							pass
 						pkg_log.set_description_str(f"{style('Current Package:', **GREEN)} {deb_name}")
 						if 'Download complete:' in line:
-							num = num + 1
+							num += 1
 							progress.update(1)
-						if num > total:
-							num = total	
-		
+						num = min(num, total)
 		proc.wait()
 		link_success = True
 		self.downloaded = True
@@ -631,16 +610,15 @@ class nala:
 		path = self.archive_dir / get_filename(candidate)
 		if not path.exists() or path.stat().st_size != candidate.size:
 			return False
-		if hash_check:
-			hash_type, hash_value = get_hash(pkg.candidate)
-			try:
-				return check_hash(path, hash_type, hash_value)
-			except IOError as e:
-				if e.errno != errno.ENOENT:
-					print("Failed to check hash", e)
-				return False
-		else:
+		if not hash_check:
 			return True
+		hash_type, hash_value = get_hash(pkg.candidate)
+		try:
+			return check_hash(path, hash_type, hash_value)
+		except IOError as e:
+			if e.errno != errno.ENOENT:
+				print("Failed to check hash", e)
+			return False
 
 	def print_update_summary(self, pkgs):
 
@@ -731,14 +709,14 @@ def pkg_error(pkg_list: list, msg: str, banter: str = None, terminate: bool=Fals
 		if banter == 'apt':
 			print(f"Maybe {style('apt', **RED)} will let you")
 
-		elif banter == 'self_preservation':
-			print(f"Why do you think I would destroy myself?")
-
 		elif banter == 'auto_essential':
 			print("Whatever you did tried to auto mark essential packages")
 
 		elif banter == 'auto_preservation':
 			print("Whatever you did would have resulted in my own removal!")
+
+		elif banter == 'self_preservation':
+			print('Why do you think I would destroy myself?')
 
 	if terminate:
 		exit(1)
@@ -797,10 +775,7 @@ def pprint_names(headers, names, title):
 		print('='*columns)
 		print(title)
 		print('='*columns, end='')
-		if 'Upgrad' in title:
-			justify = ['l', 'l', 'l', 'r']
-		else:
-			justify = ['l', 'l', 'r']
+		justify = ['l', 'l', 'l', 'r'] if 'Upgrad' in title else ['l', 'l', 'r']
 		print(columnar(names, headers, no_borders=True, justify=justify))
 
 def transaction_summary(names, width, header: str):
@@ -812,7 +787,7 @@ def transaction_summary(names, width, header: str):
 			)
 
 def unit_str(val, just = 7):
-	if val > 1000*1000:
+	if val > 1000**2:
 		return f"{val/1000/1000 :.1f}".rjust(just)+" MB"
 	elif val > 1000:
 		return f"{round(val/1000) :.0f}".rjust(just)+" kB"
@@ -831,7 +806,7 @@ def _write_history(pkgs):
 			delete_names.append(
 				[pkg.name, pkg.installed.version, pkg.candidate.size]
 			)
-			
+
 		elif pkg.marked_install:
 			install_names.append(
 				[pkg.name, pkg.candidate.version, pkg.candidate.size]
@@ -846,11 +821,7 @@ def _write_history(pkgs):
 	if NALA_HISTORY.exists():
 		history = NALA_HISTORY.read_text().splitlines()
 
-	if history:
-		ID = len(history) + 1
-	else:
-		ID = 1
-	
+	ID = len(history) + 1 if history else 1
 	altered = len(delete_names) + len(install_names) + len(upgrade_names)
 
 	transaction = {
@@ -890,11 +861,11 @@ def _write_log(pkgs):
 	iprint(f'Requested-By: {USER} ({UID})')
 
 	if delete_names:
-		iprint(f'Removed: {", ".join(item for item in delete_names)}')
+		iprint(f'Removed: {", ".join(delete_names)}')
 	if install_names:
-		iprint(f'Installed: {", ".join(item for item in install_names)}')
+		iprint(f'Installed: {", ".join(install_names)}')
 	if upgrade_names:
-		iprint(f'Upgraded: {", ".join(item for item in upgrade_names)}')
+		iprint(f'Upgraded: {", ".join(upgrade_names)}')
 
 	logger_newline()
 
@@ -902,8 +873,7 @@ def dep_format(package_dependecy):
 	"""Takes a dependency object like pkg.candidate.dependencies"""
 	for dep_list in package_dependecy:
 		dep_print = ''
-		num = 0
-		for dep in dep_list:
+		for num, dep in enumerate(dep_list):
 			open_paren = style('(', bold=True)
 			close_paren = style(')', bold=True)
 			name = style(dep.name, **GREEN)
@@ -912,15 +882,9 @@ def dep_format(package_dependecy):
 			pipe = style(' | ', bold=True)
 
 			final = name+' '+open_paren+relation+' '+version+close_paren
-			
+
 			if num == 0:
-				dep_print = '  '+name
-				if dep.relation:
-					dep_print = '  '+final
+				dep_print = '  '+final if dep.relation else '  '+name
 			else:
-				if dep.relation:
-					dep_print += pipe+final
-				else:
-					dep_print += pipe+name
-			num += 1
+				dep_print += pipe+final if dep.relation else pipe+name
 		print(dep_print)
