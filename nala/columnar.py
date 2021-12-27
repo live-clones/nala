@@ -115,7 +115,7 @@ class Columnar:
 
         table_width = sum(column_widths) + ((len(column_widths) + 1) * len(row_sep))
         out = io.StringIO()
-        write_header = True if not self.no_headers else False
+        write_header = not self.no_headers
         self.write_row_separators(out, column_widths)
         for lrow, color_row in zip(truncated_rows, self.color_grid):
             for row in lrow:
@@ -148,9 +148,8 @@ class Columnar:
                     (self.header_sep * (table_width - (len(self.column_sep * 2))))
                 )
                 write_header = False
-            else:
-                if not self.no_borders:
-                    self.write_row_separators(out, column_widths)
+            elif not self.no_borders:
+                self.write_row_separators(out, column_widths)
 
         return out.getvalue()
 
@@ -171,7 +170,7 @@ class Columnar:
         return out
 
     def colorize(self, text, code):
-        if code == None:
+        if code is None:
             return text
         return "".join([code, text, self.color_reset])
 
@@ -264,7 +263,7 @@ class Columnar:
         return out_text
 
     def strip_color(self, cell_text):
-        matches = [match for match in self.ansi_color_pattern.finditer(cell_text)]
+        matches = list(self.ansi_color_pattern.finditer(cell_text))
         color_codes = None
         clean_text = cell_text
         if matches:
@@ -281,7 +280,7 @@ class Columnar:
         distribute our 'diff' more equally among the widest columns.
         """
         subset = columns[:n]
-        width = sum([column["width"] for column in subset])
+        width = sum(column["width"] for column in subset)
         remainder = width - diff
         new_width = remainder // n
         for i in range(n):
@@ -293,7 +292,7 @@ class Columnar:
 
     def current_table_width(self, columns: List[dict]) -> int:
         return sum(
-            [len(self.column_sep) + column["width"] for column in columns]
+            len(self.column_sep) + column["width"] for column in columns
         ) + len(self.column_sep)
 
     def get_column_widths(self, logical_rows: List[LogicalRow]) -> List[int]:
@@ -347,9 +346,10 @@ class Columnar:
             max_natural = max(lengths)
             max_width = (
                 max_natural
-                if self.max_column_width == None
+                if self.max_column_width is None
                 else min(max_natural, self.max_column_width)
             )
+
             max_widths.append(max_width)
 
         columns = sorted(
@@ -361,9 +361,8 @@ class Columnar:
         for column in columns:
             if column["width"] < self.min_column_width:
                 column["width"] = self.min_column_width
-            if self.max_column_width:
-                if column["width"] > self.max_column_width:
-                    column["width"] = self.max_column_width
+            if self.max_column_width and column["width"] > self.max_column_width:
+                column["width"] = self.max_column_width
 
         if self.current_table_width(columns) <= self.terminal_width:
             return self.widths_sorted_by(columns, "column_no")
