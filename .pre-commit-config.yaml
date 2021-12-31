@@ -21,3 +21,8 @@ repos:
     hooks:
       - id: isort
         args: ["--py=auto", "-e", "-i=\t", "--ca", "--cs", "-n", "--tc", "--up", "-p=nala"]
+  - repo: https://github.com/asottile/pyupgrade
+    rev: v2.30.1
+    hooks:
+      - id: pyupgrade
+        args: ["--py36-plus"]
