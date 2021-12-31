@@ -16,3 +16,8 @@ repos:
     rev: v2.1.0
     hooks:
       - id: codespell
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.10.1
+    hooks:
+      - id: isort
+        args: ["--py=auto", "-e", "-i=\t", "--ca", "--cs", "-n", "--tc", "--up", "-p=nala"]
