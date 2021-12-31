@@ -9,4 +9,5 @@ repos:
       - id: mixed-line-ending
         args: ["--fix=lf"]
       - id: check-yaml
+      - id: check-ast
       - id: check-added-large-files
