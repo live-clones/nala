@@ -275,12 +275,9 @@ class nala:
 				print(f"Description: {pkg.candidate._translated_records.long_desc}")
 				print()
 			else:
-				print(
-					style('Error:', **RED),
-					style(pkg_name, **YELLOW),
-					'not found'
+				sys.exit(
+					f'{style('Error:', **RED)} {style(pkg_name, **YELLOW)} not found'
 				)
-				exit(1)
 
 	def history(self):
 		if not NALA_HISTORY.exists():
