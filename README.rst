@@ -1,8 +1,8 @@
-# nala
+# Nala
 ======
-a wrapper for the apt package manager.
+A wrapper for the apt package manager.
 
-# installation
+# Installation
 ==============
 
 Install the Volian Scar repo and then install Nala
@@ -21,7 +21,7 @@ If you want to add the source repo
 
 There isn't a documentation site setup at the moment, but our man page explains things well enough for now.
 
-# todo
+# Todo
 ======
 
 **Commands and Switches**
@@ -29,11 +29,11 @@ There isn't a documentation site setup at the moment, but our man page explains 
 - -f --fix-broken
 - --no-install-recommends
 - --install-suggests
-- nala download
+- Nala download
 - Probably many others to add as well
 
 **Internal**
 
-- implement optional bandwidth check on fetch
-- remove exceptions for just error messages
-- setup readthedocs pages
+- Implement optional bandwidth check on fetch
+- Remove exceptions for just error messages
+- Setup ReadTheDocs pages
