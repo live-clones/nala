@@ -36,7 +36,7 @@ import tty
 from pty import STDIN_FILENO, STDOUT_FILENO, fork
 from time import sleep
 from types import FrameType
-from typing import Callable, TextIO
+from typing import Callable, Match, TextIO
 
 import apt_pkg
 from apt.progress import base, text
@@ -67,6 +67,9 @@ CR = b'\r'
 LF = b'\n'
 
 TERM_MODE = termios.tcgetattr(STDIN_FILENO)
+
+VERSION_PATTERN = re.compile(r'\(.*?\)')
+PARENTHESIS_PATTERN = re.compile(r'[()]')
 
 spinner = Spinner('dots', text='Initializing', style="bold blue")
 scroll_list: list[Spinner | str] = []
@@ -412,31 +415,47 @@ def raw_init() -> None:
 	live.stop()
 	tty.setraw(STDIN_FILENO)
 
+def paren_color(match: Match[str]) -> str:
+	"""Color parenthesis"""
+	return color('(') if match.group(0) == '(' else color(')')
+
+def lines(line: str, zword: str, msg_color: str) -> str:
+	"""Color and space our line."""
+	space = ' '
+	if zword == 'Removing':
+		space *= 3
+	elif zword == 'Unpacking':
+		space *= 2
+	return line.replace(zword, color(f'{zword}:{space}', msg_color))
+
+def format_version(match: list[str], line: str) -> str:
+	"""Format version numbers."""
+	for ver in match:
+		version = ver[1:-1]
+		if version[0].isdigit():
+			new_ver = ver.replace(version, color(version, 'BLUE'))
+			new_ver = re.sub(PARENTHESIS_PATTERN, paren_color, new_ver)
+			line = line.replace(ver, new_ver)
+	return line
+
 def msg_formatter(line: str) -> str:
 	"""Format dpkg output."""
-	msg = ''
-	for word in line.split():
-		match = re.fullmatch(r'\(.*.\)', word)
-		if word == 'Removing':
-			msg += color('Removing:   ', 'RED')
-		elif word == 'Unpacking':
-			msg += color('Unpacking:  ', 'GREEN')
-		elif word == 'Setting':
-			msg += color('Setting ', 'GREEN')
-		elif word == 'up':
-			msg += color('up: ', 'GREEN')
-		elif word == 'Processing':
-			msg += color('Processing: ', 'GREEN')
-		elif word == '...':
-			continue
-		elif match:
-			word = re.sub('[()]', '', word)
-			paren = color('(')
-			paren2 = color(')')
-			msg += (' ') + paren+color(word, 'BLUE')+paren2
-		else:
-			msg += ' ' + word
-	return msg
+	if line.endswith('...'):
+		line = line.replace('...', '')
+
+	if line.startswith('Removing'):
+		line = lines(line, 'Removing', 'RED')
+	elif line.startswith('Unpacking'):
+		line = lines(line, 'Unpacking', 'GREEN')
+	elif line.startswith('Setting up'):
+		line = lines(line, 'Setting up', 'GREEN')
+	elif line.startswith('Processing'):
+		line = lines(line, 'Processing', 'GREEN')
+
+	match = re.findall(VERSION_PATTERN, line)
+	if match:
+		return format_version(match, line)
+	return line
 
 def scroll_bar(msg: str | None = None) -> None:
 	"""Print msg to our scroll bar live display."""
