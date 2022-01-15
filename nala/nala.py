@@ -45,7 +45,7 @@ from typing import NoReturn, Pattern
 import apt_pkg
 import requests  # type: ignore[import]
 from apt.cache import Cache, FetchFailedException, LockFailedException
-from apt.package import Dependency, Package, Version
+from apt.package import Package, Version
 
 from nala.constants import ARCHIVE_DIR, COLUMNS, ERROR_PREFIX, PARTIAL_DIR
 from nala.dpkg import InstallProgress, UpdateProgress
@@ -53,7 +53,9 @@ from nala.history import write_history
 from nala.logger import dprint, iprint, logger_newline
 from nala.options import arguments
 from nala.rich import Live, Table, pkg_download_progress
-from nala.utils import ask, color, print_packages, unit_str, verbose_print
+from nala.show import check_virtual, show_main
+from nala.utils import (ask, color, pkg_candidate,
+				pkg_installed, print_packages, unit_str, verbose_print)
 
 try:
 	USER: str = environ["SUDO_USER"]
@@ -181,60 +183,13 @@ class Nala:
 	def show(self, pkg_names: list[str]) -> None:
 		"""Show package information."""
 		dprint(f"Show pkg_names: {pkg_names}")
-		print()
-		for pkg_name in pkg_names:
+		for num, pkg_name in enumerate(pkg_names):
 			if pkg_name in self.cache:
-				pkg = self.cache[pkg_name]
-				candidate = pkg_candidate(pkg)
-				origin = candidate.origins[0]
-				arch = candidate.architecture
-				print(f"Package: {pkg.name}")
-				print(f"Version: {candidate.version}")
-				print(f"Architecture: {arch}")
-				installed = 'yes' if pkg.is_installed else 'no'
-				print(f"Installed: {installed}")
-				print(f"Priority: {candidate.priority}")
-				if pkg.essential:
-					print('Essential: yes')
-				print(f"Section: {candidate.section}")
-				print(f"Source: {candidate.source_name}")
-				print(f"Origin: {candidate.origins[0].origin}")
-				print(f"Maintainer: {candidate.record.get('Maintainer')}")
-				if candidate.record.get('Original-Maintainer'):
-					print(f"Original-Maintainer: {candidate.record.get('Original-Maintainer')}")
-				print(f"Bugs: {candidate.record.get('Bugs')}")
-				print(f"Installed-Size: {unit_str(candidate.installed_size, 1)}")
-				if candidate.provides:
-					provides = candidate.provides
-					provides.sort()
-					print('Provides:', ", ".join(provides))
-
-				if candidate.dependencies:
-					print(color('Depends:'))
-					dep_format(candidate.dependencies)
-
-				if candidate.recommends:
-					print(color('Recommends:'))
-					dep_format(candidate.recommends)
-
-				if candidate.suggests:
-					print(color('Suggests:'))
-					dep_format(candidate.suggests)
-
-				print(f"Homepage: {candidate.homepage}")
-				print(f"Download-Size: {unit_str(candidate.size, 1)}")
-
-				if origin.archive == 'now':
-					print('APT-Sources: /var/lib/dpkg/status')
-				else:
-					print(
-						f"APT-Sources: http://{origin.site}/{origin.origin.lower()}",
-						f"{origin.archive}/{origin.component} {arch} Packages"
-					)
-				if candidate._translated_records is not None:
-					print(f"Description: {candidate._translated_records.long_desc}")
-				print()
+				if num > 0:
+					print()
+				show_main(self.cache[pkg_name])
 			else:
+				check_virtual(pkg_name, self.cache)
 				sys.exit(f"{ERROR_PREFIX}{color(pkg_name, 'YELLOW')} not found")
 
 	def auto_remover(self) -> None:
@@ -253,25 +208,6 @@ class Nala:
 					)
 
 		dprint(f"Pkgs marked by autoremove: {autoremove}")
-
-	def check_essential(self, pkgs: list[Package]) -> None:
-		"""Check removal of essential packages."""
-		essential: list[str] = []
-		nala_check: bool = False
-		banter: str = 'apt'
-		for pkg in pkgs:
-			if pkg.is_installed:
-				# do not allow the removal of essential or required packages
-				if pkg_installed(pkg).priority == 'required' and pkg.marked_delete:
-					essential.append(pkg.name)
-				# do not allow the removal of nala
-				elif pkg.shortname in 'nala' and pkg.marked_delete:
-					nala_check = True
-					banter = 'auto_preservation'
-					essential.append('nala')
-
-		if essential or nala_check:
-			pkg_error(essential, 'cannot be removed', banter=banter, terminate=True)
 
 	def get_changes(self, upgrade: bool = False, remove: bool = False) -> None:
 		"""Get packages requiring changes and process them."""
@@ -293,7 +229,7 @@ class Nala:
 			print(color("Nothing for Nala to remove."))
 			sys.exit(0)
 		if pkgs:
-			self.check_essential(pkgs)
+			check_essential(pkgs)
 			delete_names, install_names, upgrade_names = sort_pkg_changes(pkgs)
 			self.print_update_summary(delete_names, install_names, upgrade_names)
 			if not arguments.assume_yes and not ask('Do you want to continue'):
@@ -401,6 +337,25 @@ class Nala:
 			print(f'Disk space required: {unit_str(self.cache.required_space)}')
 		if arguments.download_only:
 			print("Nala will only download the packages")
+
+def check_essential(pkgs: list[Package]) -> None:
+	"""Check removal of essential packages."""
+	essential: list[str] = []
+	nala_check: bool = False
+	banter: str = 'apt'
+	for pkg in pkgs:
+		if pkg.is_installed:
+			# do not allow the removal of essential or required packages
+			if pkg_installed(pkg).priority == 'required' and pkg.marked_delete:
+				essential.append(pkg.name)
+			# do not allow the removal of nala
+			elif pkg.shortname in 'nala' and pkg.marked_delete:
+				nala_check = True
+				banter = 'auto_preservation'
+				essential.append('nala')
+
+	if essential or nala_check:
+		pkg_error(essential, 'cannot be removed', banter=banter, terminate=True)
 
 def pkg_error(pkg_list: list[str], msg: str, banter: str = '', terminate: bool = False) -> None:
 	"""Print error for package in list.
@@ -574,36 +529,6 @@ def write_log(pkgs: list[Package]) -> None:
 		iprint(f'Upgraded: {", ".join(upgrade_names[0])}')
 
 	logger_newline()
-
-def dep_format(package_dependecy: list[Dependency]) -> None:
-	"""Format dependencies for show."""
-	for dep_list in package_dependecy:
-		dep_print = ''
-		for num, dep in enumerate(dep_list):
-			open_paren = color('(')
-			close_paren = color(')')
-			name = color(dep.name, 'GREEN')
-			relation = color(dep.relation)
-			version = color(dep.version, 'BLUE')
-			pipe = color(' | ')
-
-			final = name+' '+open_paren+relation+' '+version+close_paren
-
-			if num == 0:
-				dep_print = '  '+final if dep.relation else '  '+name
-			else:
-				dep_print += pipe+final if dep.relation else pipe+name
-		print(dep_print)
-
-def pkg_candidate(pkg: Package) -> Version:
-	"""Type enforce package candidate."""
-	assert pkg.candidate
-	return pkg.candidate
-
-def pkg_installed(pkg: Package) -> Version:
-	"""Type enforce package installed."""
-	assert pkg.installed
-	return pkg.installed
 
 def apt_error(apt_err: FetchFailedException | LockFailedException) -> NoReturn:
 	"""Take an error message from python-apt and formats it."""
