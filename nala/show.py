@@ -53,7 +53,7 @@ def show_main(pkg: Package) -> None:
 def check_virtual(pkg_name: str, cache: Cache) -> None:
 	"""Check if the package is virtual."""
 	virtual = [
-		color(pkg.name, 'GREEN') for pkg in cache
+		color(pkg.shortname, 'GREEN') for pkg in cache
 		if pkg_name in pkg.candidate.provides
 	]
 	if virtual:
@@ -116,7 +116,7 @@ def show_format(pkg: Package, candidate: Version) -> tuple[str, ...]:
 	original_maintainer, bugs, origin, installed_size = filter_empty(candidate)
 
 	return (
-		f"{color('Package:')} {color(pkg.name, 'GREEN')}",
+		f"{color('Package:')} {color(pkg.shortname, 'GREEN')}",
 		f"{color('Version:')} {color(candidate.version, 'BLUE')}",
 		f"{color('Architecture:')} {candidate.architecture}",
 		f"{color('Installed:')} {installed}",

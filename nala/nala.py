@@ -132,12 +132,12 @@ class Nala:
 				pkg = self.cache[pkg_name]
 				if not pkg.installed:
 					pkg.mark_install()
-					dprint(f"Marked Install: {pkg.name}")
+					dprint(f"Marked Install: {pkg.shortname}")
 				elif pkg.is_upgradable:
 					pkg.mark_upgrade()
-					dprint(f"Marked upgrade: {pkg.name}")
+					dprint(f"Marked upgrade: {pkg.shortname}")
 				else:
-					print(f"Package {color(pkg.name, 'GREEN')}",
+					print(f"Package {color(pkg.shortname, 'GREEN')}",
 					'is already at the latest version',
 					color(pkg.installed.version, 'BLUE'))
 
@@ -169,7 +169,7 @@ class Nala:
 				continue
 
 			pkg.mark_delete(purge=purge)
-			dprint(f"Marked delete: {pkg.name}")
+			dprint(f"Marked delete: {pkg.shortname}")
 
 		if not_installed:
 			pkg_error(not_installed, 'not installed')
@@ -201,7 +201,7 @@ class Nala:
 				pkg.mark_delete(purge=self.purge)
 				installed = pkg_installed(pkg)
 				autoremove.append(
-					f"<Package: '{pkg.name}' "
+					f"<Package: '{pkg.shortname}' "
 					f"Arch: '{installed.architecture}' "
 					f"Version: '{installed.version}'"
 					)
@@ -212,7 +212,7 @@ class Nala:
 		"""Get packages requiring changes and process them."""
 		def pkg_name(pkg: Package) -> str:
 			"""Sort by package name."""
-			return str(pkg.name)
+			return str(pkg.shortname)
 
 		pkgs = sorted(self.cache.get_changes(), key=pkg_name)
 		if not NALA_DIR.exists():
@@ -352,7 +352,7 @@ def check_essential(pkgs: list[Package]) -> None:
 		if pkg.is_installed:
 			# do not allow the removal of essential or required packages
 			if pkg_installed(pkg).priority == 'required' and pkg.marked_delete:
-				essential.append(pkg.name)
+				essential.append(pkg.shortname)
 			# do not allow the removal of nala
 			elif pkg.shortname in 'nala' and pkg.marked_delete:
 				nala_check = True
@@ -493,26 +493,26 @@ def sort_pkg_changes(pkgs: list[Package], log: bool = False
 		if pkg.marked_delete:
 			installed = pkg_installed(pkg)
 			if log:
-				delete_names.append([f"{pkg.name}:{installed.architecture} ({installed.version})"])
+				delete_names.append([f"{pkg.shortname}:{installed.architecture} ({installed.version})"])
 				continue
 			delete_names.append(
-				[pkg.name, installed.version, str(candidate.size)]
+				[pkg.shortname, installed.version, str(candidate.size)]
 			)
 
 		elif pkg.marked_install:
 			if log:
-				install_names.append([f"{pkg.name}:{candidate.architecture} ({candidate.version})"])
+				install_names.append([f"{pkg.shortname}:{candidate.architecture} ({candidate.version})"])
 				continue
 			install_names.append(
-				[pkg.name, candidate.version, str(candidate.size)]
+				[pkg.shortname, candidate.version, str(candidate.size)]
 			)
 
 		elif pkg.marked_upgrade:
 			installed = pkg_installed(pkg)
 			if log:
-				upgrade_names.append([f"{pkg.name}:{candidate.architecture} ({candidate.version})"])
+				upgrade_names.append([f"{pkg.shortname}:{candidate.architecture} ({candidate.version})"])
 			upgrade_names.append(
-				[pkg.name, installed.version, candidate.version, str(candidate.size)]
+				[pkg.shortname, installed.version, candidate.version, str(candidate.size)]
 			)
 	return delete_names, install_names, upgrade_names
 
