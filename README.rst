@@ -2,20 +2,21 @@
 ======
 Nala is a front-end for ``libapt-pkg``. Specifically we interface using the ``python-apt`` api.
 
-Especially for newer users it can be hard to understand what `apt` is trying to do when installing or upgrading.
+Especially for newer users it can be hard to understand what ``apt`` is trying to do when installing or upgrading.
 
 We aim to solve this by not showing some redundant messages, formatting the packages better, and using color to
-show specifically what will happen with a package during install, removal, or and upgrade.
+show specifically what will happen with a package during install, removal, or an upgrade.
 
 # Parallel Downloads
 ====================
 Outside of pretty formatting, the number 1 reason to use Nala over ``apt`` is parallel downloads.
 
 ``apt`` downloads 1 package at a time, where as we download multiple.
-By default we will use 2 threads per unique mirror in your ``sources.list`` file, up to a maximum of 16.
+By default we will download 2 packages per unique mirror in your ``sources.list`` file, up to a maximum of 16.
 Theoretically Nala can download 16x faster than ``apt``.
 We have the 2 thread per mirror limit to minimize how hard we are hitting mirrors.
 Additionally we alternate downloads between the available mirrors to improve download speeds even further.
+If a mirror fails for whatever reason, we just try the next until all defined mirrors are exhausted.
 
 # Fetch
 =======
@@ -68,19 +69,3 @@ The official repository is https://gitlab.com/volian/nala
 We ask that you please go here to report a bug or request a feature.
 
 The other repositories are official, but just mirrors of what is on GitLab.
-
-# Todo
-======
-
-**Commands and Switches**
-
-- -f --fix-broken
-- --no-install-recommends
-- --install-suggests
-- nala download
-- Probably many others to add as well
-
-**Internal**
-
-- implement optional bandwidth check on fetch
-- setup readthedocs pages
