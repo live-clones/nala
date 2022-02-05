@@ -7,6 +7,9 @@ Especially for newer users it can be hard to understand what ``apt`` is trying t
 We aim to solve this by not showing some redundant messages, formatting the packages better, and using color to
 show specifically what will happen with a package during install, removal, or an upgrade.
 
+.. image:: /imgs/nala-install-1.png
+.. image:: /imgs/nala-install-2.png
+
 # Parallel Downloads
 ====================
 Outside of pretty formatting, the number 1 reason to use Nala over ``apt`` is parallel downloads.
@@ -30,6 +33,8 @@ Nala then will choose the fastest 3 mirrors (configurable) and write them to a f
 
 `At the moment fetch will only work on Debian, Ubuntu and derivatives still tied to the main repos. Such as Pop!_OS`
 
+.. image:: /imgs/nala-fetch.png
+
 # History
 =========
 Our last big feature is the ``nala history`` command.
@@ -40,6 +45,9 @@ At any time you can call ``nala history`` to print a summary of every transactio
 You can then further manipulate this with commands such as ``nala history undo <ID>`` or ``nala history redo <ID>``.
 If there is something in the history file that you don't want you can use the ``nala history clear <ID>`` It will remove that entry.
 Alternatively for the ``clear`` command we accept ``all`` as an argument which will remove the entire history.
+
+.. image:: /imgs/nala-history-info.png
+.. image:: /imgs/nala-history-undo.png
 
 # Installation
 ==============
@@ -92,6 +100,12 @@ Or
 	sudo apt install -f
 
 There isn't a documentation site setup at the moment, but our man page explains things well enough for now.
+
+# Additional Images
+===================
+
+.. image:: /imgs/nala-update.png
+.. image:: /imgs/nala-show-apt.png
 
 # Bug Reports or Feature Requests
 =================================
