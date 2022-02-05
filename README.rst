@@ -44,7 +44,9 @@ Alternatively for the ``clear`` command we accept ``all`` as an argument which w
 # Installation
 ==============
 
-Install the Volian Scar repo and then install Nala
+**Volian Scar Repo**
+
+Install the Volian Scar repo and then install Nala.
 
 .. code-block:: console
 
@@ -52,11 +54,42 @@ Install the Volian Scar repo and then install Nala
 	wget -qO - https://deb.volian.org/volian/scar.key | sudo tee /etc/apt/trusted.gpg.d/volian-archive-scar-unstable.gpg > /dev/null
 	sudo apt update && sudo apt install nala
 
-If you want to add the source repo
+If you want to add the source repo.
 
 .. code-block:: console
 
 	echo "deb-src http://deb.volian.org/volian/ scar main" | sudo tee -a /etc/apt/sources.list.d/volian-archive-scar-unstable.list
+
+**Pacstall**
+
+Alternatively, we maintain a pacscript for ``Pacstall``.
+
+If you don't already, install `Pacstall <https://github.com/pacstall/pacstall>`_.
+
+Once that is complete all you have to do is run the following command.
+
+.. code-block:: console
+
+	pacstall -I nala-deb
+
+**Debian Package**
+
+You can also choose to download our ``.deb`` and install it locally through `apt` or `dpkg`.
+
+To download the package you can head over to our `Releases <https://gitlab.com/volian/nala/-/releases>`_ page.
+
+From there you can use one of the two commands below to install ``nala``.
+
+.. code-block:: console
+
+	sudo apt install /path/to/nala_version_arch.deb
+
+Or
+
+.. code-block:: console
+
+	sudo dpkg -i /path/to/nala_version_arch.deb
+	sudo apt install -f
 
 There isn't a documentation site setup at the moment, but our man page explains things well enough for now.
 
