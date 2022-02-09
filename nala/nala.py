@@ -164,9 +164,9 @@ class Nala:
 		if not NALA_DIR.exists():
 			NALA_DIR.mkdir()
 
-		check_work(pkgs, upgrade, remove)
+		check_work(pkgs, self.local_debs, upgrade, remove)
 
-		if pkgs:
+		if pkgs or self.local_debs:
 			check_essential(pkgs)
 			delete_names, install_names, upgrade_names, autoremove_names = self.sort_pkg_changes(pkgs)
 			if local_names:
@@ -320,7 +320,7 @@ def setup_cache(no_update: bool) -> Cache:
 			with DelayedKeyboardInterrupt():
 				with Live(auto_refresh=False) as live:
 					Cache().update(UpdateProgress(live))
-	except (LockFailedException, FetchFailedException) as err:
+	except (LockFailedException, FetchFailedException, apt_pkg.Error) as err:
 		apt_error(err)
 	except KeyboardInterrupt:
 		print('Exiting due to SIGINT')
@@ -348,7 +348,8 @@ def check_term_ask() -> None:
 		print("Abort.")
 		sys.exit(0)
 
-def check_work(pkgs: list[Package], upgrade: bool, remove: bool) -> None:
+def check_work(pkgs: list[Package], local_debs: list[DebPackage],
+	upgrade: bool, remove: bool) -> None:
 	"""Check if there is any work for nala to do.
 
 	Returns None if there is work, exit's successful if not.
@@ -356,7 +357,7 @@ def check_work(pkgs: list[Package], upgrade: bool, remove: bool) -> None:
 	if upgrade and not pkgs:
 		print(color("All packages are up to date."))
 		sys.exit(0)
-	elif not remove and not pkgs:
+	elif not remove and not pkgs and not local_debs:
 		print(color("Nothing for Nala to do."))
 		sys.exit(0)
 	elif remove and not pkgs:
@@ -524,21 +525,26 @@ def glob_filter(pkg_names: list[str], cache_keys: list[str]) -> list[str]:
 		sys.exit(1)
 	return new_packages
 
-def apt_error(apt_err: FetchFailedException | LockFailedException) -> NoReturn:
+def apt_error(apt_err: FetchFailedException | LockFailedException | apt_pkg.Error) -> NoReturn:
 	"""Take an error message from python-apt and formats it."""
 	msg = str(apt_err)
 	if not msg:
 		# Sometimes python apt gives us literally nothing to work with.
 		# Probably an issue with sources.list. Needs further testing.
 		sys.exit(
-			ERROR_PREFIX+f"python-apt gave us '{repr(apt_err)}'\n"
-			"This isn't a proper error as it's empty"
+			f"{ERROR_PREFIX}python-apt gave us '{repr(apt_err)}'\nThis isn't a proper error as it's empty"
 			)
-	if '.,' in msg:
+	if ',' in msg:
 		err_list = set(msg.split(','))
 		for err in err_list:
-			err = err.replace('E:', '')
-			print(ERROR_PREFIX+err.strip())
+			if 'E:' in err:
+				err = err.replace('E:', '')
+				print(ERROR_PREFIX+err.strip())
+				continue
+			if 'W:' in err:
+				err = err.replace('W:', '')
+				print(color('Warning: ', 'YELLOW')+err.strip())
+				continue
 		sys.exit(1)
 	print(ERROR_PREFIX+msg)
 	if not term.is_su():
