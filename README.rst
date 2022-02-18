@@ -15,7 +15,7 @@ show specifically what will happen with a package during install, removal, or an
 .. image:: /imgs/nala-install-1.png
 .. image:: /imgs/nala-install-2.png
 
-## Parallel Downloads
+# Parallel Downloads
 ====================
 Outside of pretty formatting, the number 1 reason to use Nala over ``apt`` is parallel downloads.
 
