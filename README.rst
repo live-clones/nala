@@ -1,8 +1,6 @@
-# Table of Contents
-1. [Nala](#nala)
-2. [Parallel Downloads](#parallel-downloads)
+[[_TOC_]]
 
-## Nala
+# Nala
 ======
 Nala is a front-end for ``libapt-pkg``. Specifically we interface using the ``python-apt`` api.
 
@@ -14,7 +12,7 @@ show specifically what will happen with a package during install, removal, or an
 .. image:: /imgs/nala-install-1.png
 .. image:: /imgs/nala-install-2.png
 
-### Parallel Downloads
+## Parallel Downloads
 ====================
 Outside of pretty formatting, the number 1 reason to use Nala over ``apt`` is parallel downloads.
 
