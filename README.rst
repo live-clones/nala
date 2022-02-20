@@ -61,6 +61,9 @@ Alternatively for the ``clear`` command we accept ``all`` as an argument which w
 
 Install the Volian Scar repo and then install Nala.
 
+.. note::
+   Currently only amd64 packages are supported
+
 .. code-block:: console
 
 	echo "deb [arch=amd64] http://deb.volian.org/volian/ scar main" | sudo tee /etc/apt/sources.list.d/volian-archive-scar-unstable.list
