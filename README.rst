@@ -1,5 +1,11 @@
 # Nala
 ======
+
+.. contents:: Table of Contents
+   :depth: 1
+   :local:
+   :backlinks: none
+
 Nala is a front-end for ``libapt-pkg``. Specifically we interface using the ``python-apt`` api.
 
 Especially for newer users it can be hard to understand what ``apt`` is trying to do when installing or upgrading.
