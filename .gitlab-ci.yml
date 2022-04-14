@@ -1,6 +1,5 @@
 stages:
   - static_tests
-  - dynamic_tests
 
 include:
   # Scanning dependencies with trivy
