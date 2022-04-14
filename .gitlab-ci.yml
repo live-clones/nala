@@ -1,0 +1,15 @@
+stages:
+  - static_tests
+  - dynamic_tests
+
+include:
+  # Scanning dependencies with trivy
+  - remote: 'https://api.r2devops.io/job/r/r2devops-bot/trivy_dependency/0.2.0.yml'
+  # Check source code with super_linter
+  - remote: 'https://api.r2devops.io/job/r/r2devops-bot/super_linter/0.2.1.yml'
+  # Check static vulnerabilities using sls_scan
+  - remote: 'https://api.r2devops.io/job/r/r2devops-bot/sls_scan/0.3.0.yml'
+
+# Allow sls_scan job to fails
+sls_scan:
+  allow_failure: true
