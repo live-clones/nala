@@ -122,11 +122,11 @@ msgstr "Зависимости:"
 
 #: nala/error.py:47
 msgid "Either:"
-msgstr ""
+msgstr "Или"
 
 #: nala/error.py:49 nala/show.py:138
 msgid "Breaks:"
-msgstr ""
+msgstr "Перерывы"
 
 #: nala/error.py:51 nala/show.py:136
 msgid "Conflicts:"
@@ -162,7 +162,7 @@ msgstr "{error} У вас есть сломанные пакеты"
 
 #: nala/error.py:500
 msgid "{package} has been unmarked."
-msgstr ""
+msgstr "{package} неотмеченный."
 
 #: nala/error.py:505
 msgid "Try {switch} if you're sure they can be installed."
@@ -179,11 +179,11 @@ msgstr ""
 #: nala/fetch.py:575
 msgid "{file} already exists.\n"
 "Continue and overwrite it?"
-msgstr ""
+msgstr "Продолжить и перезаписать?"
 
 #: nala/fetch.py:579 nala/fetch.py:586 nala/install.py:857
 msgid "Abort."
-msgstr ""
+msgstr "Прервать."
 
 #: nala/history.py:102
 msgid "{error} History file seems corrupt. You should try removing {file}"
@@ -191,7 +191,7 @@ msgstr ""
 
 #: nala/history.py:392
 msgid "History has been cleared"
-msgstr ""
+msgstr "История очистилась."
 
 #: nala/history.py:123
 msgid "{error} Transaction {num} doesn't exist."
@@ -203,11 +203,12 @@ msgstr ""
 
 #: nala/install.py:378
 msgid "{notice} A reboot is required."
-msgstr ""
+# literal:{notice} reboot required.
+msgstr "{notice} перезагрузка требуется."
 
 #: nala/install.py:379
 msgid "Finished Successfully"
-msgstr ""
+msgstr "Закончил Успешно."
 
 #: nala/install.py:658 nala/install.py:672
 msgid "Virtual Package"
@@ -215,7 +216,7 @@ msgstr ""
 
 #: nala/install.py:800
 msgid "Notices:"
-msgstr ""
+msgstr "Уведомления."
 
 #: nala/install.py:844
 msgid "{error} It can be dangerous to continue without a terminal. Use `--assume-yes`"
@@ -227,7 +228,8 @@ msgstr ""
 
 #: nala/install.py:856
 msgid "Do you want to continue?"
-msgstr ""
+# literal: Do you want to continue?
+msgstr "Вы хотите продолжить?"
 
 #: nala/cache.py:261 nala/install.py:869
 msgid "All packages are up to date."
@@ -235,11 +237,13 @@ msgstr ""
 
 #: nala/install.py:872
 msgid "Nothing for Nala to do."
-msgstr ""
+# literal: Nala did nothing.
+msgstr "Нала ничего не сделал."
 
 #: nala/install.py:875
 msgid "Nothing for Nala to remove."
-msgstr ""
+# literal: Nala does not delete anything
+msgstr "Нала ничего не удаляет."
 
 #: nala/error.py:285
 msgid "The following packages were kept back:"
@@ -259,19 +263,22 @@ msgstr ""
 
 #: nala/nala.py:485
 msgid "{error} {regex} not found."
-msgstr ""
+msgstr "{error} {regex} не найден."
 
 #: nala/history.py:378
 msgid "Nala needs root to undo history"
-msgstr ""
+# literal: Nala must be root to undo/dissolve/disincorporate the past/history
+msgstr "Нала должна быть корнем, чтобы распускать прошлое"
 
 #: nala/history.py:377
 msgid "Nala needs root to redo history"
-msgstr ""
+# literal: Nala must be root to repeat the past/history
+msgstr "Нала должна быть корнем, чтобы повторить прошлое"
 
 #: nala/history.py:375
 msgid "Nala needs root to clear history"
-msgstr ""
+# literal: Nala must be root to cleanse the past /history
+msgstr "Нала должна быть корнем, чтобы очищать прошлое"
 
 #: nala/nala.py:560
 msgid "Removing {cache}\n"
@@ -280,7 +287,8 @@ msgstr ""
 
 #: nala/nala.py:567
 msgid "Cache has been cleaned"
-msgstr ""
+# literal: cache is cleansed
+msgstr "Кэш был очищен"
 
 #: nala/nala.py:578
 msgid "I can't moo for I'm a cat"
@@ -296,11 +304,12 @@ msgstr ""
 
 #: nala/rich.py:200
 msgid "Time Remaining:"
-msgstr ""
+msgstr "Оставшееся Время:"
 
 #: nala/rich.py:211
 msgid "Running dpkg"
-msgstr ""
+# literal: dpkg is working
+msgstr "дпкг работающий"
 
 #: nala/rich.py:222
 msgid "Testing Mirrors"
@@ -319,7 +328,7 @@ msgstr ""
 
 #: nala/show.py:74
 msgid "Homepage:"
-msgstr ""
+msgstr "домашняя страница"
 
 #: nala/show.py:77
 msgid "Download-Size:"
