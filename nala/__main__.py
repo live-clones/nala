@@ -27,6 +27,7 @@ from __future__ import annotations
 import errno
 import sys
 
+import nala.bundle as _bundle  # pylint: disable=unused-import
 import nala.fetch as _fetch  # pylint: disable=unused-import
 import nala.nala as _nala  # pylint: disable=unused-import
 from nala import _

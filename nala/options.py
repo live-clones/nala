@@ -337,6 +337,8 @@ arguments = Arguments()
 nala = typer.Typer(add_completion=True, no_args_is_help=True)
 history_typer = typer.Typer(name="history")
 nala.add_typer(history_typer)
+# bundle_typer = typer.Typer(name="backup")
+# nala.add_typer(bundle_typer)
 
 
 def print_license(value: bool) -> None:

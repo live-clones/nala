@@ -35,6 +35,14 @@ import apt_pkg
 
 from nala import _, color
 
+
+def apt_path(key: str, file: bool = False) -> Path:
+	"""Return a Path object for the apt dir."""
+	if file:
+		return Path(apt_pkg.config.find_file(key))
+	return Path(apt_pkg.config.find_dir(key))
+
+
 # File Constants
 GPL3_LICENSE = Path("/usr/share/common-licenses/GPL-3")
 """/usr/share/common-licenses/GPL-3"""
@@ -54,6 +62,9 @@ NALA_TERM_LOG = Path("/var/log/nala/term.log")
 """/var/log/nala/term.log"""
 NALA_HISTORY = Path("/var/lib/nala/history.json")
 """/var/lib/nala/history.json"""
+# NALA_BUNDLE = Path("/var/lib/nala/bundle.json")
+NALA_BUNDLE = Path("./bundle.json.gz")
+"""/var/lib/nala/bundle.json"""
 PACSTALL_METADATA = Path("/var/log/pacstall/metadata")
 """/var/log/pacstall/metadata"""
 REBOOT_REQUIRED = Path("/var/run/reboot-required")
@@ -64,26 +75,41 @@ NEED_RESTART = Path("/var/run/needrestart")
 """/var/run/needrestart"""
 NALA_LOCK_FILE = Path("/var/lock/nala.lock")
 """/var/lock/nala.lock"""
+NALA_CONF = Path("/etc/nala/nala.conf")
+"""/etc/nala/nala.conf"""
 
 # Apt Directories
-ARCHIVE_DIR = Path(apt_pkg.config.find_dir("Dir::Cache::Archives"))
+ARCHIVE_DIR = apt_path("Dir::Cache::Archives")
 """/var/cache/apt/archives/"""
 PARTIAL_DIR = ARCHIVE_DIR / "partial"
 """/var/cache/apt/archives/partial"""
-LISTS_DIR = Path(apt_pkg.config.find_dir("Dir::State::Lists"))
+LISTS_DIR = apt_path("Dir::State::Lists")
 """/var/lib/apt/lists/"""
 LISTS_PARTIAL_DIR = LISTS_DIR / "partial"
 """/var/lib/apt/lists/partial"""
-PKGCACHE = Path(apt_pkg.config.find_dir("Dir::Cache::pkgcache"))
+PKGCACHE = apt_path("Dir::Cache::pkgcache")
 """/var/cache/apt/pkgcache.bin"""
-SRCPKGCACHE = Path(apt_pkg.config.find_dir("Dir::Cache::srcpkgcache"))
+SRCPKGCACHE = apt_path("Dir::Cache::srcpkgcache")
 """/var/cache/apt/srcpkgcache.bin"""
-SOURCELIST = Path(apt_pkg.config.find_file("Dir::Etc::sourcelist"))
+SOURCELIST = apt_path("Dir::Etc::sourcelist", file=True)
 """/etc/apt/sources.list"""
-SOURCEPARTS = Path(apt_pkg.config.find_dir("Dir::Etc::sourceparts"))
+SOURCEPARTS = apt_path("Dir::Etc::sourceparts")
 """/etc/apt/sources.list.d"""
-DPKG_STATE = Path(apt_pkg.config.find_dir("Dir::State::status"))
+DPKG_STATE = apt_path("Dir::State::status")
 """/var/lib/dpkg/status"""
+
+TRUSTED = apt_path("Dir::Etc::trusted", file=True)
+"""/etc/apt/trusted.gpg"""
+TRUSTEDPARTS = apt_path("Dir::Etc::trustedparts")
+"""/etc/apt/trusted.gpg.d/"""
+APT_CONF = apt_path("Dir::Etc::main", file=True)
+"""/etc/apt/apt.conf"""
+APT_CONF_PARTS = apt_path("Dir::Etc::parts")
+"""/etc/apt/apt.conf.d/"""
+PREFERENCES = apt_path("Dir::Etc::preferences", file=True)
+"""/etc/apt/preferences"""
+PREFERENCES_PARTS = apt_path("Dir::Etc::preferencesparts")
+"""/etc/apt/preferences.d/"""
 
 HANDLER = Union[Callable[[int, Optional[FrameType]], Any], int, Handlers, None]
 
