@@ -28,7 +28,7 @@ from __future__ import annotations
 import re
 import sys
 from subprocess import run
-from typing import Generator, Optional
+from typing import Generator, Optional, cast
 
 import apt_pkg
 import typer
@@ -575,6 +575,91 @@ def clean(
 	PKGCACHE.unlink(missing_ok=True)
 	SRCPKGCACHE.unlink(missing_ok=True)
 	print(_("Cache has been cleaned"))
+
+
+@nala.command(help=_("Show policy settings."))
+def policy(
+	pkg_names: Optional[list[str]] = typer.Argument(
+		None,
+		metavar="PKGS ...",
+		help=_("Package(s) to get policy for."),
+		autocompletion=package_completion,
+	),
+	debug: bool = DEBUG,
+	verbose: bool = VERBOSE,
+	man_help: bool = MAN_HELP,
+) -> None:
+	"""Print policy information."""
+	# cmd = ["apt-cache", "policy"]
+	# if pkg_names:
+	# 	cmd.extend(pkg_names)
+	# sys.exit(run(cmd).returncode)
+
+	cache = setup_cache()
+	if not pkg_names:
+		print("Package files:")
+		for file in cast(list[apt_pkg.PackageFile], cache._cache.file_list):
+			# If it doesn't have an arch it's either now or garbage.
+			now = file.archive == "now"
+
+			if not file.architecture and not now:
+				continue
+
+			index = cache._list.find_index(file)
+			get_priority = cache._depcache.policy.get_priority
+
+			policy = get_priority(file)
+			describe = (
+				"/var/lib/dpkg/status"
+				if now
+				else index.describe.rpartition(" ")[0]
+			)
+			release = (
+				f"     release a={file.archive}"
+				if now else
+				f"     release o={file.origin},a={file.archive},n={file.codename},"
+				f"l={file.label},c={file.label},b={file.architecture}"
+			)
+
+			print(f" {policy} {describe}")
+			print(release)
+			if not now:
+				print(f"     origin {file.site}")
+
+		print("Pinned packages:")
+		for pkg in cache:
+	#	for pkg in cache._cache.packages:
+			for ver in pkg._pkg.version_list:
+				pkg_priority = {
+					get_priority(file[0]) for file in ver.file_list
+				}
+				if (prio := get_priority(ver)) in pkg_priority:
+					continue
+				print("    ", pkg.name, ver.ver_str, "with priority", prio)
+	else:
+		for name in pkg_names:
+			if name not in cache:
+				continue
+			pkg = cache[name]
+
+			installed = pkg.installed
+			candidate = pkg.candidate
+
+			print(pkg.name)
+			print(f"  Installed: {installed.version if installed else '(none)'}")
+			print(f"  Candidate: {candidate.version if candidate else '(none)'}")
+			print("  Version table:")
+			for version in pkg.versions:
+				ver_str = " *** " if version == installed else "     "
+				ver_str += f" {version.version} {version.policy_priority}"
+				print(ver_str)
+				for pkg_file, _unused in version._cand.file_list:
+					index = cache._list.find_index(pkg_file)
+					print(
+						"        ",
+						cache._depcache.policy.get_priority(pkg_file),
+						index.describe.rpartition(" ")[0] if index else "/var/lib/dpkg/status"
+					)
 
 
 @nala.command(hidden=True, help=_("I beg, pls moo"))
