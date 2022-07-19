@@ -1,13 +1,17 @@
-Source: nala
+Source: nala-legacy
 Priority: optional
 Section: admin
 Maintainer: Volian Developers <volian-devel@volian.org>
 Uploaders: Blake Lee <blake@volian.org>
 Build-Depends:
   debhelper-compat (= 13),
-  dh-sequence-python3,
+  nuitka,
+  chrpath,
+  python3-typing-extensions,
+  python3-yaml,
   python3-all,
   pybuild-plugin-pyproject,
+  python3-charset-normalizer,
   python3-babel,
   python3-poetry,
   python3-apt,
@@ -26,14 +30,17 @@ Homepage: https://gitlab.com/volian/nala
 Vcs-Git: https://gitlab.com/volian/nala.git
 Vcs-Browser: https://gitlab.com/volian/nala
 
-Package: nala
-Architecture: all
+Package: nala-legacy
+Architecture: any
 Depends:
-  ${python3:Depends},
+  ${shlibs:Depends},
   ${misc:Depends},
   apt,
   python3-apt,
-Recommends: python3-socksio
+  libpython3.9,
+  sensible-utils,
+Replaces: nala
+Breaks: nala
 Description: Commandline frontend for the APT package manager
  Nala is a frontend for the APT package manager. It has a lot
  of the same functionality, but formats the output to be more
