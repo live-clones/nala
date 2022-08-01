@@ -1,4 +1,4 @@
-nala (0.11.0) unstable; urgency=medium
+nala-legacy (0.11.0) unstable; urgency=medium
 
   [ Changes ]
   * Lower `fetch` concurrent tests from 50 to 25 improving consistency
