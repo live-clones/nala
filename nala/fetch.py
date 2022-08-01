@@ -103,18 +103,19 @@ class MirrorTest:
 
 	async def run_test(self) -> None:
 		"""Test mirrors."""
-		with fetch_progress as self.progress:
-			self.task = self.progress.add_task("", total=len(self.netselect))
-			async with AsyncClient(
-				follow_redirects=True, limits=LIMITS, timeout=TIMEOUT
-			) as self.client:
-				loop = get_event_loop()
-				semp = Semaphore(25)
-				tasks = [
-					loop.create_task(self.net_select(mirror, semp))
-					for mirror in self.netselect
-				]
-				await gather(*tasks)
+		with contextlib.suppress(RuntimeError):
+			with fetch_progress as self.progress:
+				self.task = self.progress.add_task("", total=len(self.netselect))
+				async with AsyncClient(
+					follow_redirects=True, limits=LIMITS, timeout=TIMEOUT
+				) as self.client:
+					loop = get_event_loop()
+					semp = Semaphore(25)
+					tasks = [
+						loop.create_task(self.net_select(mirror, semp))
+						for mirror in self.netselect
+					]
+					await gather(*tasks)
 
 	async def net_select(self, mirror: str, semp: Semaphore) -> None:
 		"""Take a URL, ping the domain and score the latency."""
