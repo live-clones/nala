@@ -570,7 +570,7 @@ def parse_sources() -> list[str]:
 		sources.extend(
 			line
 			for line in file.read_text(encoding="utf-8", errors="replace").splitlines()
-			if not line.startswith("#") and line
+			if not line.lstrip().startswith("#") and line
 		)
 	return sources
 
