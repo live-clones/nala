@@ -220,7 +220,7 @@ class FetchLive:
 		"""Generate the mirror list for display."""
 		for line in netselect_scored:
 			url = line[line.index("h") :]
-			if any(url in mirror and release in mirror for mirror in sources):
+			if any(url.rstrip("/") in mirror and release in mirror for mirror in sources):
 				continue
 			self.mirror_list.append(line)
 			if len(self.mirror_list) == self.count:
@@ -652,7 +652,7 @@ def build_sources(  # pylint: disable=too-many-arguments
 		# This splits off the score '030 http://mirror.steadfast.net/debian/'
 		line = line[line.index("h") :]
 		# This protects us from writing mirrors that we already have in the sources
-		if any(line in mirror and release in mirror for mirror in sources):
+		if any(line.rstrip("/") in mirror and release in mirror for mirror in sources):
 			continue
 		source += f"deb {line} {release} {component}\n"
 		if check_sources:
