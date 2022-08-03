@@ -593,7 +593,6 @@ def parse_sources() -> list[str]:
 					"Enabled" in deb822.keys() and deb822["Enabled"].lower() in "no"
 				)
 			)
-	print(list(sources))
 	return sources
 
 
