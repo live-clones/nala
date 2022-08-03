@@ -37,6 +37,7 @@ from typing import Iterable, Optional, Union
 import typer
 from apt import Cache
 from apt_pkg import get_architectures
+from debian.deb822 import Deb822
 from httpx import (
 	AsyncClient,
 	ConnectError,
@@ -566,16 +567,33 @@ def parse_sources() -> list[str]:
 	"""Read sources files on disk."""
 	sources: list[str] = []
 	for file in [*SOURCEPARTS.iterdir(), SOURCELIST]:
-		if file.parent == SOURCEPARTS and file.suffix not in [".list", ".sources"]:
-			continue
 		if file == NALA_SOURCES or file.is_dir():
 			continue
-
-		sources.extend(
-			line
-			for line in file.read_text(encoding="utf-8", errors="replace").splitlines()
-			if not line.lstrip().startswith("#") and line
-		)
+		if file.suffix in ".list":
+			sources.extend(
+				line
+				for line in file.read_text(
+					encoding="utf-8", errors="replace"
+				).splitlines()
+				if not line.lstrip().startswith("#") and line
+			)
+		if file.suffix in ".sources":
+			sources.extend(
+				f"{deb} {uri} {suite}"
+				for deb822 in Deb822.iter_paragraphs(
+					file.read_text(encoding="utf-8", errors="replace")
+				)
+				for deb in deb822["Types"].split()
+				for uri in deb822["URIs"].split()
+				for suite in deb822["Suites"].split()
+				if all(
+					field in deb822.keys() for field in ["Types", "URIs", "Suites"]
+				)
+				and not (
+					"Enabled" in deb822.keys() and deb822["Enabled"].lower() in "no"
+				)
+			)
+	print(list(sources))
 	return sources
 
 
