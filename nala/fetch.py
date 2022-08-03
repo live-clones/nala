@@ -220,7 +220,9 @@ class FetchLive:
 		"""Generate the mirror list for display."""
 		for line in netselect_scored:
 			url = line[line.index("h") :]
-			if any(url.rstrip("/") in mirror and release in mirror for mirror in sources):
+			if any(
+				url.rstrip("/") in mirror and release in mirror for mirror in sources
+			):
 				continue
 			self.mirror_list.append(line)
 			if len(self.mirror_list) == self.count:
@@ -564,7 +566,7 @@ def parse_sources() -> list[str]:
 	"""Read sources files on disk."""
 	sources: list[str] = []
 	for file in [*SOURCEPARTS.iterdir(), SOURCELIST]:
-		if file.parent == SOURCEPARTS and file.suffix not in ['.list', '.sources']:
+		if file.parent == SOURCEPARTS and file.suffix not in [".list", ".sources"]:
 			continue
 		if file == NALA_SOURCES or file.is_dir():
 			continue
