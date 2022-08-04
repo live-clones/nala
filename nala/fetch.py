@@ -586,9 +586,7 @@ def parse_sources() -> list[str]:
 				for deb in deb822["Types"].split()
 				for uri in deb822["URIs"].split()
 				for suite in deb822["Suites"].split()
-				if all(
-					field in deb822.keys() for field in ["Types", "URIs", "Suites"]
-				)
+				if all(field in deb822.keys() for field in ["Types", "URIs", "Suites"])
 				and not (
 					"Enabled" in deb822.keys() and deb822["Enabled"].lower() in "no"
 				)
