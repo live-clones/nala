@@ -569,14 +569,8 @@ def parse_sources() -> list[str]:
 	for file in [*SOURCEPARTS.iterdir(), SOURCELIST]:
 		if file == NALA_SOURCES or file.is_dir():
 			continue
-		if file.suffix in ".list" or file == SOURCELIST:
-			sources.extend(
-				line
-				for line in file.read_text(
-					encoding="utf-8", errors="replace"
-				).splitlines()
-				if not line.lstrip().startswith("#") and line
-			)
+		if file.parent == SOURCEPARTS and file.suffix not in [".list", ".sources"]:
+			continue
 		if file.suffix in ".sources":
 			sources.extend(
 				f"{deb} {uri} {suite}"
@@ -590,6 +584,14 @@ def parse_sources() -> list[str]:
 				and not (
 					"Enabled" in deb822.keys() and deb822["Enabled"].lower() in "no"
 				)
+			)
+		else:
+			sources.extend(
+				line
+				for line in file.read_text(
+					encoding="utf-8", errors="replace"
+				).splitlines()
+				if not line.lstrip().startswith("#") and line
 			)
 	return sources
 
