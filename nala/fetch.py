@@ -577,7 +577,7 @@ def parse_sources() -> list[str]:
 				).splitlines()
 				if not line.lstrip().startswith("#") and line
 			)
-		if file.suffix in ".sources" and not file == SOURCELIST:
+		if file.suffix in ".sources":
 			sources.extend(
 				f"{deb} {uri} {suite}"
 				for deb822 in Deb822.iter_paragraphs(
