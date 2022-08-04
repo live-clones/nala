@@ -569,7 +569,7 @@ def parse_sources() -> list[str]:
 	for file in [*SOURCEPARTS.iterdir(), SOURCELIST]:
 		if file == NALA_SOURCES or file.is_dir():
 			continue
-		if file.suffix in ".list":
+		if file.suffix in ".list" or file == SOURCELIST:
 			sources.extend(
 				line
 				for line in file.read_text(
@@ -577,7 +577,7 @@ def parse_sources() -> list[str]:
 				).splitlines()
 				if not line.lstrip().startswith("#") and line
 			)
-		if file.suffix in ".sources":
+		if file.suffix in ".sources" and not file == SOURCELIST:
 			sources.extend(
 				f"{deb} {uri} {suite}"
 				for deb822 in Deb822.iter_paragraphs(
