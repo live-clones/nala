@@ -220,10 +220,8 @@ class FetchLive:
 	) -> None:
 		"""Generate the mirror list for display."""
 		for line in netselect_scored:
-			url = line[line.index("h") :]
-			if any(
-				url.rstrip("/") in mirror and release in mirror for mirror in sources
-			):
+			url = line[line.index(":") :].rstrip("/")
+			if any(url in mirror and release in mirror for mirror in sources):
 				continue
 			self.mirror_list.append(line)
 			if len(self.mirror_list) == self.count:
@@ -577,13 +575,12 @@ def parse_sources() -> list[str]:
 				for deb822 in Deb822.iter_paragraphs(
 					file.read_text(encoding="utf-8", errors="replace")
 				)
-				for deb in deb822["Types"].split()
-				for uri in deb822["URIs"].split()
-				for suite in deb822["Suites"].split()
-				if all(field in deb822.keys() for field in ["Types", "URIs", "Suites"])
-				and not (
-					"Enabled" in deb822.keys() and deb822["Enabled"].lower() in "no"
-				)
+				for deb in deb822.get("Types", "").split()
+				for uri in deb822.get("URIs", "").split()
+				for suite in deb822.get("Suites", "").split()
+				for enabled in [deb822.get("Enabled", "yes").lower()]
+				if enabled not in ["no", "false"]
+				and not all(digit in "0" for digit in enabled)
 			)
 		else:
 			sources.extend(
