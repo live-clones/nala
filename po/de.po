@@ -1,11 +1,17 @@
 msgid ""
 msgstr ""
-"MIME-Version: 1.0\n"
-"Content-Type: text/plain; charset=UTF-8\n"
-"Content-Transfer-Encoding: 8bit\n"
-"X-Generator: POEditor.com\n"
-"Project-Id-Version: Nala DE\n"
+"Project-Id-Version:  Nala\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2022-08-01 18:55-0400\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: de\n"
+"Language-Team: de <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1)\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.8.0\n"
 
 #: nala/history.py:84
 msgid "{error} '{command}' for operations other than install or remove are not currently supported"
@@ -235,7 +241,7 @@ msgstr "{error} Die Installation ist fehlgeschlagen."
 
 #: nala/error.py:135
 msgid "If you'd like to file a bug report please include '{debug_file}'"
-msgstr "Wenn Sie einen Fehler melden wollen, geben Sie bitte die Datei '{debug_file}' mit an."
+msgstr "Wenn Sie einen Fehler melden wollen, geben Sie bitte die Datei '{debug_file}' mit an"
 
 #: nala/error.py:156
 msgid "Are you root?"
@@ -579,7 +585,7 @@ msgstr "Fügen Sie die Quell-Repositorys für die Spiegel hinzu, falls vorhanden
 
 #: nala/fetch.py:769
 msgid "Add contrib and non-free repos."
-msgstr "Füge contrib und non-free Depots hinzu."
+msgstr "Füge contrib und non-free Repositories hinzu."
 
 #: nala/fetch.py:774
 msgid "Run fetch uninteractively. Will still prompt for overwrite."
@@ -1395,3 +1401,23 @@ msgstr "{notice} Es gibt {num} zusätzliche Einträge. Bitte verwenden Sie den S
 msgid "{error} {package} has no version to show"
 msgstr "{error} {package} hat keine Version zum Anzeigen"
 
+#~ msgid "{no_change} {info} [{size}B]"
+#~ msgstr "{no_change} {info} [{size}B]"
+
+#~ msgid "{fetched} {size}B in {elapsed} ({speed}B/s)"
+#~ msgstr "{fetched} {size}B in {elapsed} ({speed}B/s)"
+
+#~ msgid "{error} failed regex compilation '{error_msg} at position {position}"
+#~ msgstr "{error} fehlgeschlagene Regex-Kompilierung '{error_msg} an Position {position}"
+
+#~ msgid "{updated}   {info} [{size}B]"
+#~ msgstr "{updated}   {info} [{size}B]"
+
+#~ msgid "Fetching Ubuntu mirrors"
+#~ msgstr "Ubuntu-Spiegel abrufen"
+
+#~ msgid "Fetching Debian mirrors"
+#~ msgstr "Debian-Spiegel abrufen"
+
+#~ msgid "Omits contrib and non-free repos."
+#~ msgstr "Lässt Contrib- und Non-Free-Repos aus."
