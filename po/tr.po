@@ -203,7 +203,7 @@ msgstr "Nala sadece paketleri indirecek"
 
 #: nala/error.py:45 nala/show.py:112
 msgid "Depends:"
-msgstr "Bağımlılıkları"
+msgstr "Bağımlılıklar:"
 
 #: nala/error.py:47
 msgid "Either:"
@@ -211,11 +211,11 @@ msgstr "Diğeri:"
 
 #: nala/error.py:49 nala/show.py:138
 msgid "Breaks:"
-msgstr "Bozdukları"
+msgstr "Bozdukları:"
 
 #: nala/error.py:51 nala/show.py:136
 msgid "Conflicts:"
-msgstr "Çakışmalar"
+msgstr "Çakışmalar:"
 
 #: nala/error.py:53
 msgid "{package} is only referenced by name, no packages provides it"
