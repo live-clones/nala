@@ -1,4 +1,3 @@
-
 msgid ""
 msgstr ""
 "Project-Id-Version: nala 0.10.0\n"
@@ -184,7 +183,7 @@ msgstr "Özet"
 #. This ends up looking like [ "Configure 20 Packages" ]
 #: nala/summary.py:334
 msgid "Packages"
-msgstr "Paketler"
+msgstr "Paket"
 
 #: nala/summary.py:345
 msgid "Total download size"
@@ -196,7 +195,7 @@ msgstr "Boşalacak disk alanı"
 
 #: nala/summary.py:349
 msgid "Disk space required"
-msgstr "Gereken disk alanı"
+msgstr "Gerekecek disk alanı"
 
 #: nala/summary.py:353
 msgid "Nala will only download the packages"
@@ -879,11 +878,11 @@ msgstr " [Çalışıyor]"
 
 #: nala/dpkg.py:941
 msgid "Purging Packages"
-msgstr "Paketleri Temizleniyor"
+msgstr "Paketler Temizleniyor"
 
 #: nala/dpkg.py:943
 msgid "Removing Packages"
-msgstr "Paketleri Kaldırılıyor"
+msgstr "Paketler Kaldırılıyor"
 
 #: nala/dpkg.py:945
 msgid "Updating Packages"
@@ -891,7 +890,7 @@ msgstr "Paketler Güncelleniyor"
 
 #: nala/dpkg.py:947
 msgid "Installing Packages"
-msgstr "Paketleri Yükleniyor"
+msgstr "Paketler Yükleniyor"
 
 #: nala/dpkg.py:950
 msgid "History Undo"
@@ -903,7 +902,7 @@ msgstr "Geçmişi Yeniden Yap"
 
 #: nala/dpkg.py:957
 msgid "Fetching Missed Packages"
-msgstr "Cevapsız Paketler Alınıyor"
+msgstr "Eksik Paketler İndiriliyor"
 
 #: nala/dpkg.py:959
 msgid "Fixing Broken Packages"
@@ -1163,11 +1162,11 @@ msgstr "Paketleri otomatik kaldırmayı aç/kapat."
 
 #: nala/options.py:429
 msgid "Toggle installing recommended packages."
-msgstr "Önerilen paketleri kurmayı aç/kapat."
+msgstr "Tavsiye edilen paketleri kurmayı aç/kapat."
 
 #: nala/options.py:436
 msgid "Toggle installing suggested packages."
-msgstr "Tavsiye edilen paketleri kurmayı aç/kapat."
+msgstr "Önerilen paketleri kurmayı aç/kapat."
 
 #: nala/options.py:443
 msgid "Toggle updating the package list."
@@ -1333,7 +1332,7 @@ msgstr "Açıklama:"
 
 #: nala/show.py:95
 msgid "Provides:"
-msgstr "Şunları sağlar:"
+msgstr "Sağladıkları:"
 
 #: nala/show.py:101
 msgid "Enhances:"
@@ -1341,19 +1340,19 @@ msgstr "Geliştirmeler:"
 
 #: nala/show.py:109
 msgid "Pre-Depends:"
-msgstr "Önceden Bağımlı:"
+msgstr "Ön-Bağımlı:"
 
 #: nala/show.py:116
 msgid "Recommends:"
-msgstr "Önerilenler:"
+msgstr "Tavsiyeler:"
 
 #: nala/show.py:121
 msgid "Suggests:"
-msgstr "Tavsiyeler"
+msgstr "Öneriler:"
 
 #: nala/show.py:132
 msgid "Replaces:"
-msgstr "Değiştirir"
+msgstr "Değiştirir:"
 
 #: nala/show.py:144 nala/show.py:145
 msgid "yes"
@@ -1365,39 +1364,39 @@ msgstr "hayır"
 
 #: nala/show.py:149
 msgid "Package:"
-msgstr "Paket"
+msgstr "Paket:"
 
 #: nala/show.py:151
 msgid "Version:"
-msgstr "Sürüm"
+msgstr "Sürüm:"
 
 #: nala/show.py:154
 msgid "Architecture:"
-msgstr "Mimari"
+msgstr "Mimari:"
 
 #: nala/show.py:156
 msgid "Installed:"
-msgstr "Kurulu"
+msgstr "Kurulu:"
 
 #: nala/show.py:157
 msgid "Priority:"
-msgstr "Öncelik"
+msgstr "Öncelik:"
 
 #: nala/show.py:158
 msgid "Essential:"
-msgstr "Temel"
+msgstr "Temel:"
 
 #: nala/show.py:159
 msgid "Section:"
-msgstr "Bölüm"
+msgstr "Bölüm:"
 
 #: nala/show.py:160
 msgid "Source:"
-msgstr "Kaynak"
+msgstr "Kaynak:"
 
 #: nala/show.py:163
 msgid "Origin:"
-msgstr "Köken"
+msgstr "Köken:"
 
 #: nala/show.py:164
 msgid "Maintainer:"
@@ -1409,11 +1408,11 @@ msgstr "Esas-Bakıcı"
 
 #: nala/show.py:172
 msgid "Bugs:"
-msgstr "Hatalar"
+msgstr "Hatalar:"
 
 #: nala/show.py:175
 msgid "Installed-Size:"
-msgstr "Kurulu Boyutu"
+msgstr "Kurulu Boyut:"
 
 #: nala/show.py:269
 msgid "local install"
