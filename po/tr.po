@@ -184,7 +184,7 @@ msgstr "Özet"
 #. This ends up looking like [ "Configure 20 Packages" ]
 #: nala/summary.py:334
 msgid "Packages"
-msgstr "Paketler"
+msgstr "Paket"
 
 #: nala/summary.py:345
 msgid "Total download size"
@@ -196,7 +196,7 @@ msgstr "Boşalacak disk alanı"
 
 #: nala/summary.py:349
 msgid "Disk space required"
-msgstr "Gereken disk alanı"
+msgstr "Gerekecek disk alanı"
 
 #: nala/summary.py:353
 msgid "Nala will only download the packages"
@@ -879,11 +879,11 @@ msgstr " [Çalışıyor]"
 
 #: nala/dpkg.py:941
 msgid "Purging Packages"
-msgstr "Paketleri Temizleniyor"
+msgstr "Paketler Temizleniyor"
 
 #: nala/dpkg.py:943
 msgid "Removing Packages"
-msgstr "Paketleri Kaldırılıyor"
+msgstr "Paketler Kaldırılıyor"
 
 #: nala/dpkg.py:945
 msgid "Updating Packages"
@@ -891,7 +891,7 @@ msgstr "Paketler Güncelleniyor"
 
 #: nala/dpkg.py:947
 msgid "Installing Packages"
-msgstr "Paketleri Yükleniyor"
+msgstr "Paketler Yükleniyor"
 
 #: nala/dpkg.py:950
 msgid "History Undo"
@@ -903,7 +903,7 @@ msgstr "Geçmişi Yeniden Yap"
 
 #: nala/dpkg.py:957
 msgid "Fetching Missed Packages"
-msgstr "Cevapsız Paketler Alınıyor"
+msgstr "Eksik Paketler İndiriliyor"
 
 #: nala/dpkg.py:959
 msgid "Fixing Broken Packages"
@@ -1163,11 +1163,11 @@ msgstr "Paketleri otomatik kaldırmayı aç/kapat."
 
 #: nala/options.py:429
 msgid "Toggle installing recommended packages."
-msgstr "Önerilen paketleri kurmayı aç/kapat."
+msgstr "Tavsiye edilen paketleri kurmayı aç/kapat."
 
 #: nala/options.py:436
 msgid "Toggle installing suggested packages."
-msgstr "Tavsiye edilen paketleri kurmayı aç/kapat."
+msgstr "Önerilen paketleri kurmayı aç/kapat."
 
 #: nala/options.py:443
 msgid "Toggle updating the package list."
@@ -1345,11 +1345,11 @@ msgstr "Önceden Bağımlı:"
 
 #: nala/show.py:116
 msgid "Recommends:"
-msgstr "Önerilenler:"
+msgstr "Tavsiyeler:"
 
 #: nala/show.py:121
 msgid "Suggests:"
-msgstr "Tavsiyeler"
+msgstr "Öneriler"
 
 #: nala/show.py:132
 msgid "Replaces:"
