@@ -2,7 +2,7 @@ stages:
   - test
 variables:
   DEBIAN_FRONTEND: noninteractive
-  PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+  PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/root/.cargo/bin"
 
 test:
   stage: test
@@ -12,13 +12,12 @@ test:
     - apt-get update
     - apt-get install -y eatmydata
     - eatmydata apt install -y
-      git
+      build-essential
       curl
-      devscripts
-      apt-utils
-      python3-cachecontrol
-    - eatmydata mk-build-deps
-      --tool 'apt-get --yes'
-      --install debian/control
-    - poetry install
-    - poetry run pre-commit run --all-files
+      sudo
+      libapt-pkg-dev
+      codespell
+    - curl https://sh.rustup.rs -sSf | sh -- /dev/stdin -y
+    - cargo install just
+    - just setup-dev
+    - just check
