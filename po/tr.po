@@ -759,7 +759,7 @@ msgstr "{warning} apt_pkg'a geri dönüyor. Aşağıdaki indirmeler başarısız
 
 #: nala/rich.py:231
 msgid "Time Remaining:"
-msgstr "Kalan Zaman"
+msgstr "Kalan Zaman:"
 
 #: nala/rich.py:242
 msgid "Running dpkg"
@@ -775,15 +775,15 @@ msgstr "Güncellendi:"
 
 #: nala/dpkg.py:94
 msgid "Downloaded:"
-msgstr "İndirildi:"
+msgstr "İndirildi..:"
 
 #: nala/dpkg.py:95
 msgid "Ignored:"
-msgstr "Yoksayıldı:"
+msgstr "Yoksayıldı.:"
 
 #: nala/dpkg.py:96
 msgid "No Change:"
-msgstr "Değişmedi:"
+msgstr "Değişmedi..:"
 
 #. Spacing of following status messages
 #. is to allow the urls to be properly aligned
@@ -799,19 +799,19 @@ msgstr "{no_change} {info}"
 
 #: nala/dpkg.py:107
 msgid "{no_change} {info} [{size}]"
-msgstr "{no_change} {info} [{size}]"
+msgstr "{no_change}   {info} [{size}]"
 
 #: nala/dpkg.py:108
 msgid "{ignored}   {info}"
-msgstr "{ignored}   {info}"
+msgstr "{ignored}  {info}"
 
 #: nala/dpkg.py:109
 msgid "{updated}   {info}"
-msgstr "{updated}   {info}"
+msgstr "{updated} {info}"
 
 #: nala/dpkg.py:110
 msgid "{updated}   {info} [{size}]"
-msgstr "{updated}   {info} [{size}]"
+msgstr "{updated} {info} [{size}]"
 
 #: nala/dpkg.py:112
 msgid "Removing:"
@@ -819,15 +819,15 @@ msgstr "Kaldırılıyor:"
 
 #: nala/dpkg.py:113
 msgid "Unpacking:"
-msgstr "Açılıyor:"
+msgstr "Açılıyor....:"
 
 #: nala/dpkg.py:114
 msgid "Setting up:"
-msgstr "Ayarlanıyor:"
+msgstr "Ayarlanıyor.:"
 
 #: nala/dpkg.py:115
 msgid "Processing:"
-msgstr "İşleniyor:"
+msgstr "İşleniyor...:"
 
 #. Spacing of following status messages
 #. is to allow dpkg messages to be properly aligned
@@ -849,12 +849,12 @@ msgstr "{processing} {dpkg_msg}"
 
 #: nala/dpkg.py:130
 msgid "{unpacking}  {dpkg_msg}"
-msgstr "{unpacking}  {dpkg_msg}"
+msgstr "{unpacking} {dpkg_msg}"
 
 #. That's the end of alignment spacing
 #: nala/dpkg.py:132
 msgid "{removing}   {dpkg_msg}"
-msgstr "{removing}   {dpkg_msg}"
+msgstr "{removing} {dpkg_msg}"
 
 #. This translation is separate from the one below
 #. Because we do a check specifically on this string
