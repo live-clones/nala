@@ -323,7 +323,7 @@ msgstr "{error} Bazı paketler yüklenemedi."
 
 #: nala/error.py:548
 msgid "Installed packages that depend on {package}"
-msgstr "Kurulu paketler {package}'a bağlı"
+msgstr "Kurulu paketler {package} a bağlı"
 
 #: nala/error.py:561
 msgid "{package} is an Essential package!"
@@ -970,7 +970,7 @@ msgstr "Başarıyla Tamamlandı."
 
 #: nala/install.py:511
 msgid "{notice} The following will be installed to satisfy {package}:"
-msgstr "{notice} Aşağıdakiler {package}'ı karşılamak için yüklenecek:"
+msgstr "{notice} Aşağıdakiler {package} ı karşılamak için yüklenecek:"
 
 #: nala/install.py:554
 msgid ""
@@ -1282,7 +1282,7 @@ msgstr "{total} paket yükseltilebilir. Bunları görmek için '{command}' komut
 
 #: nala/cache.py:302
 msgid "{package} is a virtual package provided by:"
-msgstr "{package}, şunun tarafından sağlanan sanal bir pakettir:"
+msgstr "{package} şunun tarafından sağlanan sanal bir pakettir:"
 
 #: nala/cache.py:316
 msgid "You should select just one."
