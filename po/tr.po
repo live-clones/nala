@@ -108,7 +108,7 @@ msgstr "Temizleme seçeneği etkinken devam etmek istiyor musunuz?"
 #. ansible-core    2.12.4-1    1.2 MB
 #: nala/summary.py:40
 msgid "Package/Version/Size/Old Version/New Version/Either"
-msgstr "Paket/Sürüm/Boyut/Eski Sürüm/Yeni Sürüm/Diğer"
+msgstr "Paket/Sürüm/Boyut/Eski Sürüm/Yeni Sürüm/Herhangibiri"
 
 #. Verb Tenses are [ "Present/Present Participle/Past" ]
 #. This ends up looking like [ "Auto-Purge 20 Packages" ]
@@ -187,15 +187,15 @@ msgstr "Paket"
 
 #: nala/summary.py:345
 msgid "Total download size"
-msgstr "Toplam indirme boyutu"
+msgstr "Toplam indirme boyutu:"
 
 #: nala/summary.py:347
 msgid "Disk space to free"
-msgstr "Boşalacak disk alanı"
+msgstr "Boşalacak disk alanı.:"
 
 #: nala/summary.py:349
 msgid "Disk space required"
-msgstr "Gerekecek disk alanı"
+msgstr "Gerekecek disk alanı.:"
 
 #: nala/summary.py:353
 msgid "Nala will only download the packages"
@@ -207,7 +207,7 @@ msgstr "Bağımlılıklar:"
 
 #: nala/error.py:47
 msgid "Either:"
-msgstr "Diğeri:"
+msgstr "Herhangibiri:"
 
 #: nala/error.py:49 nala/show.py:138
 msgid "Breaks:"
@@ -267,7 +267,7 @@ msgstr "{error} {package} yükleme adayına sahip değil."
 
 #: nala/error.py:193 nala/show.py:333
 msgid "{error} {package} not found"
-msgstr "{error} {paket} bulunamadı"
+msgstr "{error} {package} bulunamadı"
 
 #: nala/error.py:227
 msgid ""
@@ -966,7 +966,7 @@ msgstr "{notice} Yeniden başlatma gerekli."
 
 #: nala/install.py:446
 msgid "Finished Successfully"
-msgstr "Başarıyla Tamamlandı"
+msgstr "Başarıyla Tamamlandı."
 
 #: nala/install.py:511
 msgid "{notice} The following will be installed to satisfy {package}:"
@@ -1293,7 +1293,7 @@ msgid ""
 "{notice} Selecting {provider}\n"
 "  Instead of virtual package {package}"
 msgstr ""
-"{notice} Sanal paket {paket} yerine\n"
+"{notice} Sanal paket {packages} yerine\n"
 "{provider} seçiliyor"
 
 #: nala/__main__.py:43
@@ -1404,7 +1404,7 @@ msgstr "Bakıcı:"
 
 #: nala/show.py:168
 msgid "Original-Maintainer:"
-msgstr "Esas-Bakıcı"
+msgstr "Esas-Bakıcı:"
 
 #: nala/show.py:172
 msgid "Bugs:"
