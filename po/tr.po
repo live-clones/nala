@@ -1293,7 +1293,7 @@ msgid ""
 "{notice} Selecting {provider}\n"
 "  Instead of virtual package {package}"
 msgstr ""
-"{notice} Sanal paket {packages} yerine\n"
+"{notice} Sanal paket {package} yerine\n"
 "{provider} seçiliyor"
 
 #: nala/__main__.py:43
