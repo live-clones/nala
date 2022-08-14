@@ -61,7 +61,7 @@ if TYPE_CHECKING:
 LOCK_FILE = None
 
 # NOTE: Answers for the Question prompt "[Y/n]"
-YES_NO = _("Y/y N/n").split()
+YES_NO = _("Y/y/yes N/n/no").split()
 YES = YES_NO[0].split("/")
 NO = YES_NO[1].split("/")
 
@@ -325,8 +325,8 @@ def ask(question: str, fetch: FetchLive | None = None) -> bool:
 		if arguments.assume_no:
 			return False
 	while True:
-		resp = input(f"{question} [{YES[0]}/{NO[1]}] ")
-		if resp in (YES[0], YES[1], ""):
+		resp = input(f"{question} [{YES[0]}/{NO[1]}] ").lower()
+		if resp in (YES[0], YES[1], YES[2], ""):
 			return True
 		if resp in NO:
 			return False
