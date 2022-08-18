@@ -565,7 +565,7 @@ def parse_sources() -> list[str]:
 	"""Read sources files on disk."""
 	sources: list[str] = []
 	for file in [*SOURCEPARTS.iterdir(), SOURCELIST]:
-		if file == NALA_SOURCES or file.is_dir():
+		if file == NALA_SOURCES or not file.is_file():
 			continue
 		if file.parent == SOURCEPARTS and file.suffix not in [".list", ".sources"]:
 			continue
