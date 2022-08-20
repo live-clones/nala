@@ -37,7 +37,6 @@ from typing import Iterable, Optional, Union
 import typer
 from apt import Cache
 from apt_pkg import get_architectures
-from debian.deb822 import Deb822
 from httpx import (
 	AsyncClient,
 	ConnectError,
@@ -64,6 +63,8 @@ from nala.options import ASSUME_YES, DEBUG, MAN_HELP, VERBOSE, arguments, nala
 from nala.rich import ELLIPSIS, Live, Panel, Table, fetch_progress
 from nala.utils import ask, dprint, eprint, sudo_check, term
 
+from debian.deb822 import Deb822  # isort:skip
+
 DEBIAN = "Debian"
 UBUNTU = "Ubuntu"
 DEVUAN = "Devaun"
@@ -74,6 +75,7 @@ UBUNTU_MIRROR = re.compile(r"<link>(.*)</link>")
 LIMITS = Limits(max_connections=50)
 TIMEOUT = Timeout(timeout=5.0, read=1.0, pool=20.0)
 ErrorTypes = Union[HTTPStatusError, HTTPError, SSLError, ReadTimeout, OSError]
+INVALID_FILENAME_CHARS = re.compile("[^a-zA-Z0-9_.-]", re.ASCII)
 
 FETCH_HELP = _(
 	"Nala will fetch mirrors with the lowest latency.\n\n"
@@ -565,7 +567,11 @@ def parse_sources() -> list[str]:
 	"""Read sources files on disk."""
 	sources: list[str] = []
 	for file in [*SOURCEPARTS.iterdir(), SOURCELIST]:
-		if file == NALA_SOURCES or not file.is_file():
+		if (
+			file == NALA_SOURCES
+			or not file.is_file()
+			or INVALID_FILENAME_CHARS.search(file.name)
+		):
 			continue
 		if file.parent == SOURCEPARTS and file.suffix not in [".list", ".sources"]:
 			continue
