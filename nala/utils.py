@@ -61,7 +61,7 @@ if TYPE_CHECKING:
 LOCK_FILE = None
 
 # NOTE: Answers for the Question prompt "[Y/n]"
-YES_NO = _("Y/y/yes N/n/no").split()
+YES_NO = _("Y/y N/n").split()
 YES = YES_NO[0].split("/")
 NO = YES_NO[1].split("/")
 
@@ -311,7 +311,7 @@ def command_help(wrong: str, correct: str, update: bool | None) -> None:
 			sys.exit(1)
 
 
-def ask(question: str, fetch: FetchLive | None = None) -> bool:
+def ask(question: str) -> bool:
 	"""Ask the user {question}.
 
 	resp = input(f'{question}? [Y/n]
@@ -324,15 +324,9 @@ def ask(question: str, fetch: FetchLive | None = None) -> bool:
 			return True
 		if arguments.assume_no:
 			return False
-	while True:
-		resp = input(f"{question} [{YES[0]}/{NO[1]}] ").lower()
-		if resp in (YES[0], YES[1], YES[2], ""):
-			return True
-		if resp in NO:
-			return False
-		if fetch:
-			fetch.errors += 1
-		print(_("Not a valid choice kiddo"))
+
+	resp = input(f"{question} [{YES[0]}/{NO[1]}] ").strip()
+	return len(resp) == 0 or resp[0] in (YES[0], YES[1], "Y", "y")
 
 
 def compile_regex(regex: str) -> Pattern[str]:
