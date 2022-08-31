@@ -25,8 +25,10 @@
 """Main module for Nala which facilitates apt."""
 from __future__ import annotations
 
+import os
 import re
 import sys
+from pathlib import Path
 from subprocess import run
 from typing import Generator, Optional, Pattern
 
@@ -35,6 +37,7 @@ import typer
 from apt.package import Package, Version
 
 from nala import _, color
+from nala.bootstrap import Bootstrap
 from nala.cache import Cache
 from nala.constants import (
 	ARCHIVE_DIR,
@@ -48,6 +51,7 @@ from nala.constants import (
 	PKGCACHE,
 	SRCPKGCACHE,
 )
+from nala.dpkg import DpkgLive, InstallProgress
 from nala.error import BrokenError, pkg_error
 from nala.history import get_history, get_list
 from nala.install import (
@@ -92,7 +96,7 @@ from nala.options import (
 	arguments,
 	nala,
 )
-from nala.rich import ELLIPSIS
+from nala.rich import ELLIPSIS, dpkg_progress
 from nala.search import iter_search, list_match, search_name
 from nala.show import additional_notice, pkg_not_found, show_main
 from nala.utils import (
@@ -614,3 +618,65 @@ def moo(
 	if update is not None:
 		what_did_you_expect = _("What did you expect no-update to do?")
 		print(f'{ELLIPSIS}"{what_did_you_expect}"{ELLIPSIS}')
+
+
+@nala.command("bootstrap", help=_("Bootstrap a Debian system"))
+# pylint: disable=unused-argument,too-many-arguments
+def run_bootstrap(
+	target: Path = typer.Argument(
+		...,
+		help=_("Target directory to be bootstrapped"),
+		file_okay=False,
+		dir_okay=True,
+		writable=True,
+	),
+	download: bool = typer.Option(True, hidden=True),
+	extract: bool = typer.Option(True, hidden=True),
+	install_nala: bool = typer.Option(False, help=_("Install Nala in the bootstrap")),
+	merge_usr: bool = typer.Option(
+		True, help=_("Symlink directories such as /bin => /usr/bin")
+	),
+	raw_dpkg: bool = RAW_DPKG,
+	debug: bool = DEBUG,
+	verbose: bool = VERBOSE,
+) -> None:
+	"""Bootstrap a Debian system."""
+	print(
+		_("Initializing Bootstrap on '{directory}'").format(directory=target.resolve())
+	)
+	bootstrap = Bootstrap(target)
+
+	if install_nala:
+		bootstrap.add_nala()
+
+	if download:
+		bootstrap.download()
+
+	if merge_usr:
+		bootstrap.merge_usr()
+
+	if extract:
+		bootstrap.extract_minimal()
+
+	os.environ["DEBIAN_FRONTEND"] = "noninteractive"
+	os.environ["DEBCONF_NONINTERACTIVE_SEEN"] = "true"
+
+	# Setup the core packages
+	with DpkgLive(install=True) as live:
+		with open(target / "bootstrap.log", "w", encoding="utf-8") as bootstrap_log:
+			task = dpkg_progress.add_task("", total=bootstrap.total_ops())
+			inst_progress = InstallProgress(bootstrap_log, bootstrap_log, live, task)
+
+			bootstrap.install_core(inst_progress)
+
+			bootstrap.install_and_configure(inst_progress)
+
+			# If we made it this far just set the total to 100%.
+			dpkg_progress.reset(task)
+			dpkg_progress.advance(task, advance=bootstrap.total_ops())
+			live.scroll_bar(rerender=True)
+
+	# Do post setup things like adding the sources.list and updating apt
+	bootstrap.post_setup(install_nala)
+
+	print(_("Bootstrapping is complete!"))

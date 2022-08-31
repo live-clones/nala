@@ -148,7 +148,12 @@ DownloadErrorTypes = Union[
 class PkgDownloader:  # pylint: disable=too-many-instance-attributes
 	"""Manage Package Downloads."""
 
-	def __init__(self, pkgs: list[Package]) -> None:
+	def __init__(
+		self,
+		pkgs: set[Package] | list[Package],
+		archive_dir: Path = ARCHIVE_DIR,
+		partial_dir: Path = PARTIAL_DIR,
+	) -> None:
 		"""Manage Package Downloads."""
 		dprint("Downloader Initializing")
 		self.total_pkgs: int = len(pkgs)
@@ -163,6 +168,8 @@ class PkgDownloader:  # pylint: disable=too-many-instance-attributes
 		self.current: Counter[str] = Counter()
 		self.fatal: bool = False
 		self.exit: int | bool = False
+		self.archive_dir = archive_dir
+		self.partial_dir = partial_dir
 
 		self.pkg_urls: dict[Version, list[str]] = {
 			pkg.candidate: self.filter_uris(pkg.candidate)
@@ -203,7 +210,7 @@ class PkgDownloader:  # pylint: disable=too-many-instance-attributes
 		self, client: AsyncClient, candidate: Version, url: str
 	) -> None:
 		"""Download and write package."""
-		dest = PARTIAL_DIR / get_pkg_name(candidate)
+		dest = self.partial_dir / get_pkg_name(candidate)
 		vprint(
 			STARTING_DOWNLOAD_STATUS.format(
 				starting_download=STARTING_DOWNLOAD,
@@ -270,8 +277,10 @@ class PkgDownloader:  # pylint: disable=too-many-instance-attributes
 				try:
 					await self._download(client, candidate, url)
 
-					await process_downloads(candidate)
-					check_pkg(ARCHIVE_DIR, candidate, is_download=True)
+					await process_downloads(
+						candidate, self.archive_dir, self.partial_dir
+					)
+					check_pkg(self.archive_dir, candidate, is_download=True)
 					vprint(
 						DOWNLOAD_COMPLETE_STATUS.format(
 							download_complete=DOWNLOAD_COMPLETE, url=url
@@ -547,11 +556,15 @@ def more_urls(urls: list[str], num: int, failed: list[str], candidate: Version) 
 		return ""
 
 
-async def process_downloads(candidate: Version) -> bool:
+async def process_downloads(
+	candidate: Version,
+	archive_dir: Path = ARCHIVE_DIR,
+	partial_dir: Path = PARTIAL_DIR,
+) -> bool:
 	"""Process the downloaded packages."""
 	filename = get_pkg_name(candidate)
-	destination = ARCHIVE_DIR / filename
-	source = PARTIAL_DIR / filename
+	destination = archive_dir / filename
+	source = partial_dir / filename
 	try:
 		dprint(f"Moving {source} -> {destination}")
 		source.rename(destination)

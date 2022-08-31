@@ -403,7 +403,7 @@ class InstallProgress(base.InstallProgress):
 		term_log: TextIO,
 		live: DpkgLive,
 		task: TaskID,
-		config_purge: tuple[str, ...],
+		config_purge: tuple[str, ...] | None = None,
 	) -> None:
 		"""Class for getting dpkg status and printing to terminal."""
 		dprint("Init InstallProgress")
@@ -946,6 +946,8 @@ class DpkgLive(Live):
 					msg += _("Purging Packages")
 				else:
 					msg += _("Removing Packages")
+			elif arguments.command == "bootstrap":
+				msg += _("Bootstrapping Packages")
 			elif arguments.command == "upgrade":
 				msg += _("Updating Packages")
 			elif arguments.command == "install":
