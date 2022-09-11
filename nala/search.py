@@ -55,9 +55,8 @@ def search_name(
 
 		# Must have found a match, Hurray!
 		if isinstance(version := get_version(pkg, inst_first=True), tuple):
-			yield from ((pkg, ver) for ver in version)
-			return
-		yield (pkg, version)
+			return pkg, version[0]
+		return pkg, version
 
 
 def iter_search(found: Iterable[tuple[Package, Version | tuple[Version, ...]]]) -> bool:
