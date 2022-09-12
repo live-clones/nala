@@ -24,7 +24,7 @@
 """Functions for the Nala Search command."""
 from __future__ import annotations
 
-from typing import Generator, Iterable, Pattern, cast
+from typing import Generator, Iterable, Pattern
 
 from apt.package import Package, Version
 
