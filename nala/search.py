@@ -58,6 +58,7 @@ def search_name(
 			yield from ((pkg, ver) for ver in version)
 			return
 		yield (pkg, version)
+		return
 
 
 def iter_search(found: Iterable[tuple[Package, Version | tuple[Version, ...]]]) -> bool:
