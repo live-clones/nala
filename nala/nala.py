@@ -476,7 +476,6 @@ def search(
 	)
 
 	arches = apt_pkg.get_architectures()
-
 	for pkg in cache:
 		if nala_installed and pkg.name not in user_installed:
 			continue
@@ -486,7 +485,11 @@ def search(
 			continue
 		if arguments.virtual and not cache.is_virtual_package(pkg.name):
 			continue
-		if arguments.all_arches or pkg.architecture() in arches:
+		if (
+			pkg.architecture() in arches[0]
+			or arguments.all_arches
+			and pkg.architecture() in arches
+		):
 			for item in search_name(pkg, pattern):
 				found.add(item)
 
