@@ -84,7 +84,7 @@ def print_search(pkg: Package, version: Version, pkg_list_check: list[Package]) 
 				set_search_installed(
 					set_search_origin(
 						f"{color(pkg.name, 'GREEN')} {color(version.version, 'BLUE')}",
-						cast(Version, get_version(pkg, cand_first=True)),
+						version,
 					),
 					pkg,
 					version,
