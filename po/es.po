@@ -1426,3 +1426,8 @@ msgstr "{notice} Hay {num} registros adicionales. Utilice la opción {switch} pa
 #: nala/show.py:327
 msgid "{error} {package} has no version to show"
 msgstr "{error} {package} no tiene versión para mostrar"
+
+#: nala/show.py 333
+msgid "{error} {package} not found"
+msgstr "{error} {package} no encontrado"
+
