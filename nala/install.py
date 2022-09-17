@@ -36,6 +36,7 @@ import apt_pkg
 from apt.cache import FetchFailedException, LockFailedException
 from apt.package import BaseDependency, Dependency, Package
 from apt_pkg import DepCache, Error as AptError, get_architectures
+from httpx import HTTPError
 
 from nala import _, color, color_version
 from nala.cache import Cache
@@ -51,7 +52,7 @@ from nala.constants import (
 	CurrentState,
 )
 from nala.debfile import NalaBaseDep, NalaDebPackage, NalaDep
-from nala.downloader import download
+from nala.downloader import Downloader, URLSet, download, download_pkgs, print_error
 from nala.dpkg import DpkgLive, InstallProgress, OpProgress, UpdateProgress, notice
 from nala.error import (
 	BrokenError,
@@ -63,7 +64,7 @@ from nala.error import (
 )
 from nala.history import write_history
 from nala.options import arguments
-from nala.rich import Text, dpkg_progress, from_ansi
+from nala.rich import ELLIPSIS, Text, dpkg_progress, from_ansi
 from nala.summary import print_update_summary
 from nala.utils import (
 	DelayedKeyboardInterrupt,
@@ -384,7 +385,6 @@ def get_changes(cache: Cache, nala_pkgs: PackageHandler, operation: str) -> None
 		check_essential(pkgs)
 		sort_pkg_changes(pkgs, nala_pkgs)
 		print_update_summary(nala_pkgs, cache)
-
 		check_term_ask()
 
 	# Enable verbose and raw_dpkg if we're piped.
@@ -395,8 +395,7 @@ def get_changes(cache: Cache, nala_pkgs: PackageHandler, operation: str) -> None
 	if arguments.raw_dpkg:
 		term.restore_locale()
 
-	download(pkgs)
-
+	download_pkgs(pkgs)
 	write_history(cache, nala_pkgs, operation)
 	start_dpkg(cache, nala_pkgs)
 
@@ -593,9 +592,29 @@ def split_local(
 ) -> list[str]:
 	"""Split pkg_names into either Local debs, regular install or they don't exist."""
 	not_exist: list[str] = []
+	download_debs = []
+	if urls := [name for name in pkg_names if name.startswith(("http://", "https://"))]:
+		print(f"Checking Urls{ELLIPSIS}")
+		for url in urls:
+			try:
+				vprint(f"Verifying {url}")
+				url_set = URLSet.from_str(url)
+			except HTTPError as error:
+				print_error(error)
+				sys.exit(1)
+
+			download_debs.append(url_set)
+			pkg_names.remove(url)
+			pkg_names.append(f"{url_set.path()}")
+
+	# .deb packages have to be downloaded before anything else in order to determine dependencies
+	if download_debs:
+		download(Downloader(download_debs))
+
 	for name in pkg_names[:]:
 		if ".deb" in name or "/" in name:
-			if not Path(name).exists():
+			path = Path(name)
+			if not path.exists():
 				not_exist.append(name)
 				pkg_names.remove(name)
 				continue
