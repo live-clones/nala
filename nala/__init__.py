@@ -40,6 +40,15 @@ TERMUX = False
 PY_PATH = f"{USR}/lib/python3/dist-packages"
 if PY_PATH not in sys.path:
 	sys.path.append(PY_PATH)
+
+if not TERMUX:
+	# Termux uses site-packages due to not needing root.
+	# Every where else we should not include site-packages.
+	# Users installing things with pip can and will break Nala.
+	for path in sys.path:
+		if "site-packages" in path and "virtualenvs" not in path:
+			sys.path.remove(path)
+
 import gettext
 
 import apt_pkg
@@ -72,11 +81,11 @@ def color(text: object, text_color: str = "") -> str:
 	"""Return bold text in the color of your choice."""
 	if not console.is_terminal or console.is_dumb_terminal:
 		return f"{text}"
-	if not text_color:
-		# Just return bolded text
-		return f"\x1b[1m{text}{COLOR_CODES['RESET']}"
-	# Return bolded choice of color
-	return f"\x1b[1;{COLOR_CODES[text_color]}m{text}{COLOR_CODES['RESET']}"
+	return (
+		f"\x1b[1;{COLOR_CODES[text_color]}m{text}{COLOR_CODES['RESET']}"
+		if text_color
+		else f"\x1b[1m{text}{COLOR_CODES['RESET']}"
+	)
 
 
 def color_version(version: str) -> str:

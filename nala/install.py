@@ -26,22 +26,21 @@
 """Functions for the Nala Install command."""
 from __future__ import annotations
 
-import contextlib
 import fnmatch
 import sys
 from pathlib import Path
 from shutil import which
-from typing import Iterable, Sequence, cast
+from typing import Iterable, List, Sequence, cast
 
 import apt_pkg
 from apt.cache import FetchFailedException, LockFailedException
 from apt.package import BaseDependency, Dependency, Package
 from apt_pkg import DepCache, Error as AptError, get_architectures
+from httpx import HTTPError
 
 from nala import _, color, color_version
 from nala.cache import Cache
 from nala.constants import (
-	ARCHIVE_DIR,
 	DPKG_LOG,
 	ERROR_PREFIX,
 	NALA_DIR,
@@ -53,7 +52,7 @@ from nala.constants import (
 	CurrentState,
 )
 from nala.debfile import NalaBaseDep, NalaDebPackage, NalaDep
-from nala.downloader import check_pkg, download
+from nala.downloader import Downloader, URLSet, download, download_pkgs, print_error
 from nala.dpkg import DpkgLive, InstallProgress, OpProgress, UpdateProgress, notice
 from nala.error import (
 	BrokenError,
@@ -65,7 +64,7 @@ from nala.error import (
 )
 from nala.history import write_history
 from nala.options import arguments
-from nala.rich import Text, dpkg_progress, from_ansi
+from nala.rich import ELLIPSIS, Text, dpkg_progress, from_ansi
 from nala.summary import print_update_summary
 from nala.utils import (
 	DelayedKeyboardInterrupt,
@@ -185,7 +184,7 @@ def get_dep_type(
 			return dpkg.installed.dependencies
 		if not installed and dpkg.candidate:
 			return dpkg.candidate.dependencies
-		return cast(list[Dependency], [])
+		return cast(List[Dependency], [])
 	return dpkg.dependencies
 
 
@@ -234,9 +233,7 @@ def hook_exists(key: str, pkg_names: set[str]) -> str:
 	"""Return True if the hook file exists on the system."""
 	if "*" in key and (globbed := fnmatch.filter(pkg_names, key)):
 		return globbed[0]
-	if key == "hook" or key in pkg_names:
-		return key
-	return ""
+	return key if key == "hook" or key in pkg_names else ""
 
 
 def parse_hook_args(
@@ -245,7 +242,7 @@ def parse_hook_args(
 	"""Parse the arguments for the advanced hook."""
 	invalid: list[str] = []
 	cmd = cast(str, hook.get("hook", "")).split()
-	if args := cast(list[str], hook.get("args", [])):
+	if args := cast(List[str], hook.get("args", [])):
 		arg_pkg = cache[pkg]
 		for arg in args:
 			# See if they are valid base package attributes
@@ -388,15 +385,7 @@ def get_changes(cache: Cache, nala_pkgs: PackageHandler, operation: str) -> None
 		check_essential(pkgs)
 		sort_pkg_changes(pkgs, nala_pkgs)
 		print_update_summary(nala_pkgs, cache)
-
 		check_term_ask()
-
-		pkgs = [
-			# Don't download packages that already exist
-			pkg
-			for pkg in pkgs
-			if not pkg.marked_delete and not check_pkg(ARCHIVE_DIR, pkg)
-		]
 
 	# Enable verbose and raw_dpkg if we're piped.
 	if not term.can_format():
@@ -406,8 +395,7 @@ def get_changes(cache: Cache, nala_pkgs: PackageHandler, operation: str) -> None
 	if arguments.raw_dpkg:
 		term.restore_locale()
 
-	download(pkgs)
-
+	download_pkgs(pkgs)
 	write_history(cache, nala_pkgs, operation)
 	start_dpkg(cache, nala_pkgs)
 
@@ -460,14 +448,11 @@ def install_local(nala_pkgs: PackageHandler, cache: Cache) -> None:
 			continue
 
 		if not check_local_version(pkg, nala_pkgs):
-			size = 0
-			with contextlib.suppress(KeyError):
-				size = int(pkg._sections["Installed-Size"])
 			nala_pkgs.install_pkgs.append(
 				NalaPackage(
 					pkg.pkgname,
 					pkg._sections["Version"],
-					size,
+					pkg.installed_size(),
 				)
 			)
 
@@ -537,7 +522,7 @@ def check_local_version(pkg: NalaDebPackage, nala_pkgs: PackageHandler) -> bool:
 				NalaPackage(
 					pkg.pkgname,
 					pkg._sections["Version"],
-					int(pkg._sections["Installed-Size"]),
+					pkg.installed_size(),
 					pkg_installed(cache_pkg).version,
 				)
 			)
@@ -568,7 +553,7 @@ def check_local_version(pkg: NalaDebPackage, nala_pkgs: PackageHandler) -> bool:
 				NalaPackage(
 					pkg.pkgname,
 					pkg._sections["Version"],
-					int(pkg._sections["Installed-Size"]),
+					pkg.installed_size(),
 					pkg_installed(cache_pkg).version,
 				)
 			)
@@ -579,7 +564,7 @@ def check_local_version(pkg: NalaDebPackage, nala_pkgs: PackageHandler) -> bool:
 				NalaPackage(
 					pkg.pkgname,
 					pkg._sections["Version"],
-					int(pkg._sections["Installed-Size"]),
+					pkg.installed_size(),
 					pkg_installed(cache_pkg).version,
 				)
 			)
@@ -607,9 +592,29 @@ def split_local(
 ) -> list[str]:
 	"""Split pkg_names into either Local debs, regular install or they don't exist."""
 	not_exist: list[str] = []
+	download_debs = []
+	if urls := [name for name in pkg_names if name.startswith(("http://", "https://"))]:
+		print(f"Checking Urls{ELLIPSIS}")
+		for url in urls:
+			try:
+				vprint(f"Verifying {url}")
+				url_set = URLSet.from_str(url)
+			except HTTPError as error:
+				print_error(error)
+				sys.exit(1)
+
+			download_debs.append(url_set)
+			pkg_names.remove(url)
+			pkg_names.append(f"{url_set.path()}")
+
+	# .deb packages have to be downloaded before anything else in order to determine dependencies
+	if download_debs:
+		download(Downloader(download_debs))
+
 	for name in pkg_names[:]:
 		if ".deb" in name or "/" in name:
-			if not Path(name).exists():
+			path = Path(name)
+			if not path.exists():
 				not_exist.append(name)
 				pkg_names.remove(name)
 				continue
@@ -688,7 +693,9 @@ def set_candidate_versions(
 				pkg_names.remove(name)
 				pkg_names.append(pkg_name)
 				found = True
-				continue
+				# Break because the same version could exist multiple times
+				# Example, nala is in both Sid and Volian repository
+				break
 
 		if found:
 			continue
@@ -880,6 +887,7 @@ def need_reboot() -> bool:
 					notice=NOTICE_PREFIX
 				)
 			)
+
 			for pkg in REBOOT_PKGS.read_text(encoding="utf-8").splitlines():
 				print(f"  {color(pkg, 'GREEN')}")
 			return False

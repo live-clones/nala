@@ -30,21 +30,23 @@ import asyncio
 import contextlib
 import hashlib
 import re
+import shutil
 import sys
 from asyncio import AbstractEventLoop, CancelledError, gather, run, sleep
 from collections import Counter
+from dataclasses import dataclass
 from errno import ENOENT
 from functools import partial
 from pathlib import Path
 from signal import Signals  # pylint: disable=no-name-in-module #Codacy
 from signal import SIGINT, SIGTERM
-from typing import Union, cast
+from typing import Generator, Iterable, List, Sequence, Union, cast
 
 from anyio import open_file
 from apt.package import Package, Version
 from apt_pkg import Configuration, config
 from httpx import (
-	URL,
+	URL as HttpxUrl,
 	AsyncClient,
 	ConnectError,
 	ConnectTimeout,
@@ -76,15 +78,7 @@ from nala.rich import (
 	from_ansi,
 	pkg_download_progress,
 )
-from nala.utils import (
-	dprint,
-	eprint,
-	get_pkg_name,
-	pkg_candidate,
-	term,
-	unit_str,
-	vprint,
-)
+from nala.utils import dprint, eprint, get_pkg_name, term, unit_str, vprint
 
 MIRROR_PATTERN = re.compile(r"mirror://(.*?/.*?)/")
 URL_PATTERN = re.compile(r"(https?://.*?/.*?)/")
@@ -145,153 +139,150 @@ DownloadErrorTypes = Union[
 ]
 
 
-class PkgDownloader:  # pylint: disable=too-many-instance-attributes
+@dataclass
+class URL:
+	"""Representation of a URL and File for download."""
+
+	uri: str
+	size: int
+	path: Path
+	hash_type: str = "sha256"
+	hash: str = ""
+	failed: bool = False
+	no_hash: bool = False
+
+	def filename(self) -> str:
+		"""Return the final portion of the filename."""
+		return self.path.name
+
+	def dprint(self, received: str) -> None:
+		"""Debug print the URL's hash status."""
+		dprint(
+			HASH_STATUS.format(
+				filepath=self.path,
+				hash_type=self.hash_type.upper(),
+				expected=self.hash or "Not Provided",
+				received=received,
+				result=received == self.hash,
+			)
+		)
+
+	@staticmethod
+	def from_version(version: Version) -> URL:
+		"""Return a URL from an Apt Version."""
+		return URL(
+			version.uri or "",
+			version.size,
+			# Have to run the filename through a path to get the last section
+			ARCHIVE_DIR / get_pkg_name(version),
+			*get_hash(version),
+		)
+
+
+@dataclass
+class URLSet(List[URL]):
+	"""Set of urls that are all expected to provide the same file."""
+
+	def size(self) -> int:
+		"""Return the 'on disk size' for the completed download."""
+		return self[0].size
+
+	def filename(self) -> str:
+		"""Return the final portion of the filename."""
+		return self[0].filename()
+
+	def path(self) -> Path:
+		"""Return the destinateion Path object."""
+		return self[0].path
+
+	def any_available(self) -> bool:
+		"""Return True if there are any urls that haven't failed."""
+		return any(not url.failed for url in self)
+
+	def next_available(self) -> URL | None:
+		"""Return URLs that haven't failed."""
+		return next((url for url in self if not url.failed), None)
+
+	@staticmethod
+	def from_version(version: Version) -> URLSet:
+		"""Return a URLSet from an Apt Version."""
+		url_set = URLSet()
+		for uri in version.uris:
+			url_set.append(
+				URL(
+					uri,
+					version.size,
+					ARCHIVE_DIR / get_pkg_name(version),
+					*get_hash(version),
+				)
+			)
+		return url_set
+
+	@staticmethod
+	def from_str(uri: str) -> URLSet:
+		"""Return a URLSet from str uri."""
+		url_set = URLSet()
+		hash_type = hashsum = ""
+		# This means a hash must have been specified
+		if len(split_url := uri.split(":")) > 2:
+			if len(split_url) != 4:
+				sys.exit(
+					_(
+						"{error} Improper Hash Syntax\n"
+						"  Try '{url}"
+						":sha256:510b0c4f8fc3e7bd7182b53c0b81c1a113bea9fd3c18219eac0e18e601dc8d17'"
+					).format(error=ERROR_PREFIX, url=f"{split_url[0]}:{split_url[1]}")
+				)
+			proto, url, hash_type, hashsum = split_url
+			# Rebuild the uri for downloading
+			uri = f"{proto}:{url}"
+
+		# We must get the response so we know what the filesize is.
+		response = get(uri, follow_redirects=True)
+		response.raise_for_status()
+		dprint(response.headers)
+		try:
+			size = int(response.headers["content-length"])
+		except KeyError:
+			sys.exit(
+				_(
+					"{error} No content length in response from {url}\n"
+					"  Ensure the URL points to a Debian Package"
+				).format(error=ERROR_PREFIX, url=uri)
+			)
+		path = ARCHIVE_DIR / Path(uri).name
+		if hash_type and hashsum:
+			url_set.append(URL(uri, size, path, hash_type, hashsum))
+		else:
+			url_set.append(URL(uri, size, path, no_hash=True))
+		return url_set
+
+
+class Downloader:  # pylint: disable=too-many-instance-attributes
 	"""Manage Package Downloads."""
 
-	def __init__(self, pkgs: list[Package]) -> None:
+	def __init__(self, pkgs: Sequence[URLSet]) -> None:
 		"""Manage Package Downloads."""
 		dprint("Downloader Initializing")
 		self.total_pkgs: int = len(pkgs)
 		self.total_data: int = 0
 		self.count: int = 0
 		self.live: Live
-		self.mirrors: dict[str, list[str]] = {}
 		self.last_completed: str = ""
-		self.untrusted: list[str] = []
-		self.proxy: dict[URL | str, URL | str | Proxy | None] = {}
+		self.proxy: dict[HttpxUrl | str, HttpxUrl | str | Proxy | None] = {}
 		self.failed: list[str] = []
 		self.current: Counter[str] = Counter()
 		self.fatal: bool = False
 		self.exit: int | bool = False
 
-		self.pkg_urls: dict[Version, list[str]] = {
-			pkg.candidate: self.filter_uris(pkg.candidate)
-			for pkg in pkgs
-			if pkg.candidate
-		}
-		self.task = pkg_download_progress.add_task(
-			"", total=sum(candidate.size for candidate in self.pkg_urls)
-		)
+		self.pkg_urls: Sequence[URLSet] = pkgs
 
-		if self.untrusted:
-			untrusted_error(self.untrusted)
+		self.task = pkg_download_progress.add_task(
+			"", total=sum(url.size() for url in pkgs)
+		)
 
 		self._set_proxy()
 		dprint("Initialization Complete")
-
-	async def start_download(self) -> bool:
-		"""Start async downloads."""
-		if not self.pkg_urls:
-			return True
-		with Live(get_renderable=self._gen_table, refresh_per_second=10) as self.live:
-			async with AsyncClient(
-				timeout=20, proxies=self.proxy, follow_redirects=True
-			) as client:
-				loop = asyncio.get_running_loop()
-				tasks = (
-					loop.create_task(self._init_download(client, candidate, urls))
-					for candidate, urls in self.pkg_urls.items()
-				)
-				# Setup handlers for Interrupts
-				for signal_enum in (SIGINT, SIGTERM):
-					exit_func = partial(self.interrupt, signal_enum, loop)
-					loop.add_signal_handler(signal_enum, exit_func)
-
-				return all(await gather(*tasks))
-
-	async def _download(
-		self, client: AsyncClient, candidate: Version, url: str
-	) -> None:
-		"""Download and write package."""
-		dest = PARTIAL_DIR / get_pkg_name(candidate)
-		vprint(
-			STARTING_DOWNLOAD_STATUS.format(
-				starting_download=STARTING_DOWNLOAD,
-				url=url,
-				size=unit_str(candidate.size).strip(),
-			)
-		)
-		second_attempt = False
-		while True:
-			total_data = 0
-			hash_type, expected = get_hash(candidate)
-			hash_fun = hashlib.new(hash_type)
-			try:
-				async with client.stream("GET", url) as response:
-					response.raise_for_status()
-					async with await open_file(dest, mode="wb") as file:
-						async for data in response.aiter_bytes():
-							if data:
-								await file.write(data)
-								hash_fun.update(data)
-								total_data += len(data)
-								await self._update_progress(len(data))
-			# Sometimes mirrors play a little dirty and close the connection
-			except RemoteProtocolError as error:
-				await self._update_progress(total_data, failed=True)
-				if second_attempt:
-					raise error from error
-				second_attempt = True
-				dprint(f"Mirror Failed: {url} {error}, will try again.")
-				continue
-
-			dprint(
-				HASH_STATUS.format(
-					filepath=dest,
-					hash_type=hash_type.upper(),
-					expected=expected,
-					received=(received := hash_fun.hexdigest()),
-					result=received == expected,
-				)
-			)
-			if expected != received:
-				dest.unlink()
-				self.fatal = True
-				await self._update_progress(total_data, failed=True)
-				raise FileDownloadError(
-					errno=FileDownloadError.ERRHASH,
-					filename=dest.name,
-					expected=f"{hash_type.upper()}: {expected}",
-					received=f"{hash_type.upper()}: {received}",
-				)
-			break
-
-	async def _init_download(
-		self,
-		client: AsyncClient,
-		candidate: Version,
-		urls: list[str],
-	) -> None:
-		"""Download pkgs."""
-		while urls:
-			for num, url in enumerate(urls):
-				if not (domain := await self._check_count(url)):
-					continue
-				try:
-					await self._download(client, candidate, url)
-
-					await process_downloads(candidate)
-					check_pkg(ARCHIVE_DIR, candidate, is_download=True)
-					vprint(
-						DOWNLOAD_COMPLETE_STATUS.format(
-							download_complete=DOWNLOAD_COMPLETE, url=url
-						)
-					)
-
-					self.count += 1
-					self.current[domain] -= 1
-					self.last_completed = Path(candidate.filename).name
-					self.live.update(self._gen_table())
-					break
-
-				except (HTTPError, OSError, FileDownloadError) as error:
-					urls.pop(num)
-					self.current[domain] -= 1
-					self.download_error(error, num, urls, candidate)
-					continue
-			else:
-				continue
-			break
 
 	def interrupt(self, signal_enum: Signals, loop: AbstractEventLoop) -> None:
 		"""Shutdown the loop."""
@@ -345,44 +336,14 @@ class PkgDownloader:  # pylint: disable=too-many-instance-attributes
 		if https_proxy := config.find("Acquire::https::Proxy"):
 			self.proxy["https://"] = https_proxy
 
-	def set_mirrors_txt(self, domain: str) -> None:
-		"""Check if user has mirrors:// and handle accordingly."""
-		if domain not in self.mirrors:
-			url = f"http://{domain}"
-			try:
-				self.mirrors[domain] = get(url, follow_redirects=True).text.splitlines()
-			except HTTPError:
-				sys.exit(
-					_("{error} unable to connect to {url}").format(
-						error=ERROR_PREFIX, url=url
-					)
-				)
-
-	def filter_uris(self, candidate: Version) -> list[str]:
-		"""Filter uris into usable urls."""
-		urls: list[str] = []
-		for uri in candidate.uris:
-			if not check_trusted(uri, candidate):
-				self.untrusted.append(color(candidate.package.name, "RED"))
-			# Regex to check if we're using mirror://
-			if regex := MIRROR_PATTERN.search(uri):
-				self.set_mirrors_txt(domain := regex.group(1))
-				urls.extend(
-					link + candidate.filename
-					for link in self.mirrors[domain]
-					if not link.startswith("#")
-				)
-				continue
-			urls.append(uri)
-		return urls
-
 	async def _check_count(self, url: str) -> str:
 		"""Check the url count and return if Nala should continue."""
 		domain = ""
 		if regex := URL_PATTERN.search(url):
 			domain = regex.group(1)
 			if self.current[domain] > 2:
-				await sleep(0.1)
+				# Idk, but it doesn't work without the sleep.
+				await sleep(0.01)
 				return ""
 			self.current[domain] += 1
 		return domain
@@ -421,24 +382,6 @@ class PkgDownloader:  # pylint: disable=too-many-instance-attributes
 			border_style="bold green",
 		)
 
-	def download_error(
-		self,
-		error: DownloadErrorTypes,
-		num: int,
-		urls: list[str],
-		candidate: Version,
-	) -> None:
-		"""Handle download errors."""
-		print_error(error)
-
-		if not (next_url := more_urls(urls, num, self.failed, candidate)):
-			# Status error are fatal as apt_pkg is likely to fail with these as well
-			if isinstance(error, HTTPStatusError):
-				self.fatal = True
-			return
-
-		vprint(_("Trying the next url: {url}").format(url=next_url))
-
 	async def _update_progress(self, len_data: int, failed: bool = False) -> None:
 		"""Update download progress."""
 		if failed:
@@ -448,6 +391,123 @@ class PkgDownloader:  # pylint: disable=too-many-instance-attributes
 		self.total_data += len_data
 		pkg_download_progress.advance(self.task, advance=len_data)
 		self.live.update(self._gen_table())
+
+	async def start_download(self) -> bool:
+		"""Start async downloads."""
+		if not self.pkg_urls:
+			return True
+		with Live(get_renderable=self._gen_table, refresh_per_second=10) as self.live:
+			async with AsyncClient(
+				timeout=20, proxies=self.proxy, follow_redirects=True
+			) as client:
+				loop = asyncio.get_running_loop()
+				tasks = (
+					loop.create_task(self._init_download(client, url))
+					for url in self.pkg_urls
+				)
+
+				# Setup handlers for Interrupts
+				for signal_enum in (SIGINT, SIGTERM):
+					exit_func = partial(self.interrupt, signal_enum, loop)
+					loop.add_signal_handler(signal_enum, exit_func)
+
+				return all(await gather(*tasks))
+
+	async def _init_download(self, client: AsyncClient, urls: URLSet) -> None:
+		"""Download pkgs."""
+		while url := urls.next_available():
+			for url in urls:
+				if not (domain := await self._check_count(url.uri)):
+					continue
+				try:
+					await self._download(client, url)
+
+					post_download_check(url)
+
+					# Download completed. Raise count, lower domain counter
+					self.count += 1
+					self.current[domain] -= 1
+					self.last_completed = url.filename()
+					self.live.update(self._gen_table())
+					return
+
+				except (HTTPError, OSError, FileDownloadError) as error:
+					url.failed = True
+					self.current[domain] -= 1
+					self.download_error(error, urls)
+					continue
+
+	async def _download(self, client: AsyncClient, url: URL) -> None:
+		"""Download and write package."""
+		vprint(
+			STARTING_DOWNLOAD_STATUS.format(
+				starting_download=STARTING_DOWNLOAD,
+				url=url.uri,
+				size=unit_str(url.size).strip(),
+			)
+		)
+
+		dest = PARTIAL_DIR / url.filename()
+		second_attempt = False
+		while True:
+			total_data = 0
+			hash_fun = hashlib.new(url.hash_type)
+			try:
+				async with client.stream("GET", url.uri) as response:
+					response.raise_for_status()
+					async with await open_file(dest, mode="wb") as file:
+						async for data in response.aiter_bytes():
+							if data:
+								await file.write(data)
+								hash_fun.update(data)
+								total_data += len(data)
+								await self._update_progress(len(data))
+
+			# Sometimes mirrors play a little dirty and close the connection
+			except RemoteProtocolError as error:
+				await self._update_progress(total_data, failed=True)
+				if second_attempt:
+					raise error from error
+				second_attempt = True
+				dprint(f"Mirror Failed: {url.uri} {error}, will try again.")
+				continue
+
+			url.dprint(received := hash_fun.hexdigest())
+			# URL is no hash when local debs are downloaded without
+			# Specifying a hash
+			if url.no_hash:
+				vprint(f"Skipping hashsum for {url.filename()} as one wasn't provided")
+				break
+
+			if url.hash != received:
+				dest.unlink()
+				self.fatal = True
+				await self._update_progress(total_data, failed=True)
+				raise FileDownloadError(
+					errno=FileDownloadError.ERRHASH,
+					filename=dest.name,
+					expected=f"{url.hash_type.upper()}: {url.hash}",
+					received=f"{url.hash_type.upper()}: {received}",
+				)
+			break
+
+	def download_error(self, error: DownloadErrorTypes, urls: URLSet) -> None:
+		"""Handle download errors."""
+		print_error(error)
+
+		if not (next_url := urls.next_available()):
+			eprint(
+				_("{error} No more mirrors available for {filename}").format(
+					error=ERROR_PREFIX, filename=color(urls.filename(), "YELLOW")
+				)
+			)
+			self.failed.append(urls.filename())
+			# Status error are fatal as apt_pkg is likely to fail with these as well
+			if isinstance(error, HTTPStatusError):
+				self.fatal = True
+			return
+
+		vprint(_("Trying the next url: {url}").format(url=next_url.uri))
 
 
 def untrusted_error(untrusted: list[str]) -> None:
@@ -532,29 +592,50 @@ def file_error(error: FileDownloadError) -> None:
 	eprint(REMOVING_FILE.format(notice=NOTICE_PREFIX, filename=filename))
 
 
-def more_urls(urls: list[str], num: int, failed: list[str], candidate: Version) -> str:
-	"""Check if there is another url to try. Return False if not."""
-	try:
-		return urls[num + 1]
-	except IndexError:
-		filename = Path(candidate.filename).name
-		eprint(
-			_("{error} No more mirrors available for {filename}").format(
-				error=ERROR_PREFIX, filename=color(filename, "YELLOW")
-			)
-		)
-		failed.append(filename)
-		return ""
+def check_trusted(uri: str, candidate: Version) -> bool:
+	"""Check if the candidate is trusted."""
+	dprint(f"Checking trust of {candidate.package.name} ({candidate.version})")
+	for (packagefile, _unused) in candidate._cand.file_list:
+		if packagefile.site in uri and packagefile.archive != "now":
+			indexfile = candidate.package._pcache._list.find_index(packagefile)
+			dprint(f"{uri} = {indexfile and indexfile.is_trusted}")
+			return bool(indexfile and indexfile.is_trusted)
+	return False
 
 
-async def process_downloads(candidate: Version) -> bool:
-	"""Process the downloaded packages."""
-	filename = get_pkg_name(candidate)
-	destination = ARCHIVE_DIR / filename
-	source = PARTIAL_DIR / filename
+def pre_download_check(url: URL) -> bool:
+	"""Check if file exists, is correct, and run check hash."""
+	dprint("Pre Download Package Check")
+
+	if not url.path.exists():
+		dprint(f"File Doesn't exist: {url.filename()}")
+		return False
+
+	if (size := url.path.stat().st_size) != url.size:
+		dprint(f"File {url.filename()} has an unexpected size {size} != {url.size}")
+		url.path.unlink()
+		return False
+
 	try:
-		dprint(f"Moving {source} -> {destination}")
-		source.rename(destination)
+		if not check_hash(url):
+			dprint(f"Hash Checking has failed. Removing: {url.filename()}")
+			url.path.unlink()
+			return False
+		dprint(f"Package doesn't require download: {url.filename()}")
+		return True
+	except OSError as err:
+		eprint(_("Failed to check hash"), err)
+		return False
+
+
+def post_download_check(url: URL) -> bool:
+	"""Check if file exists, is correct, and run check hash."""
+	dprint("Post Download Package Check")
+
+	source = PARTIAL_DIR / url.filename()
+	try:
+		dprint(f"Moving {source} -> {url.path}")
+		source.rename(url.path)
 	except OSError as error:
 		if error.errno != ENOENT:
 			eprint(
@@ -565,88 +646,44 @@ async def process_downloads(candidate: Version) -> bool:
 					file2=error.filename2,
 				)
 			)
-		return False
+
+	if not url.path.exists():
+		dprint(f"File Doesn't exist: {url.filename()}")
+		raise FileDownloadError(
+			errno=FileDownloadError.ENOENT,
+			filename=url.filename(),
+		)
+
+	if (size := url.path.stat().st_size) != url.size:
+		dprint(f"File {url.filename()} has an unexpected size {size} != {url.size}")
+		url.path.unlink()
+		raise FileDownloadError(
+			errno=FileDownloadError.ERRSIZE,
+			filename=url.filename(),
+			expected=f"{url.size}",
+			received=f"{size}",
+		)
+
+	vprint(
+		DOWNLOAD_COMPLETE_STATUS.format(
+			download_complete=DOWNLOAD_COMPLETE, url=url.uri
+		)
+	)
+
+	# Hash was checked while downloading. We can just call it good.
 	return True
 
 
-def check_trusted(uri: str, candidate: Version) -> bool:
-	"""Check if the candidate is trusted."""
-	for (packagefile, _unused) in candidate._cand.file_list:
-		if packagefile.site in uri and packagefile.archive != "now":
-			indexfile = candidate.package._pcache._list.find_index(packagefile)
-			return bool(indexfile and indexfile.is_trusted)
-	return False
-
-
-def check_pkg(
-	directory: Path, candidate: Package | Version, is_download: bool = False
-) -> bool:
-	"""Check if file exists, is correct, and run check hash."""
-	if is_download:
-		dprint("Post Download Package Check")
-	else:
-		dprint("Pre Download Package Check")
-	if isinstance(candidate, Package):
-		candidate = pkg_candidate(candidate)
-	path = directory / get_pkg_name(candidate)
-	if not path.exists():
-		dprint(f"File Doesn't exist: {path.name}")
-		if is_download:
-			raise FileDownloadError(
-				errno=FileDownloadError.ENOENT,
-				filename=path.name,
-			)
-		return False
-	if (size := path.stat().st_size) != candidate.size:
-		dprint(f"File {path.name} has an unexpected size {size} != {candidate.size}")
-		path.unlink()
-		if is_download:
-			raise FileDownloadError(
-				errno=FileDownloadError.ERRSIZE,
-				filename=path.name,
-				expected=f"{candidate.size}",
-				received=f"{size}",
-			)
-		return False
-
-	# If we're downloading we checked the hash on the fly.
-	# We can skip doing it again
-	if is_download:
-		return True
-
-	hash_type, expected = get_hash(candidate)
-	try:
-		if not check_hash(path, hash_type, expected):
-			dprint(f"Hash Checking has failed. Removing: {path.name}")
-			path.unlink()
-			return False
-		dprint(f"Package doesn't require download: {path.name}")
-		return True
-	except OSError as err:
-		eprint(_("Failed to check hash"), err)
-		return False
-
-
-def check_hash(path: Path, hash_type: str, expected: str) -> bool:
+def check_hash(url: URL) -> bool:
 	"""Check hash value."""
-	hash_fun = hashlib.new(hash_type)
-	with path.open("rb") as file:
-		while True:
-			data = file.read(4096)
-			if not data:
-				break
+	hash_fun = hashlib.new(url.hash_type)
+	with url.path.open("rb") as file:
+		while data := file.read(4096):
 			hash_fun.update(data)
+
 	received = hash_fun.hexdigest()
-	dprint(
-		HASH_STATUS.format(
-			filepath=path,
-			hash_type=hash_type.upper(),
-			expected=expected,
-			received=received,
-			result=received == expected,
-		)
-	)
-	return received == expected
+	url.dprint(received)
+	return received == url.hash
 
 
 def get_hash(version: Version) -> tuple[str, str]:
@@ -673,16 +710,129 @@ def get_hash(version: Version) -> tuple[str, str]:
 	sys.exit(_("There are no hashes available for this package."))
 
 
-def download(pkgs: list[Package]) -> None:
+def filter_local_repo(pkgs: Iterable[Package]) -> list[URLSet]:
+	"""Filter any local repository packages.
+
+	This will check if the packages are coming from a local repository.
+
+	If a package is from a local repo it will move it into the archive directory.
+
+	Lastly it will checksum all packages that exist on the system
+	and return a list of packages that need to be downloaded.
+	"""
+	file_uris: list[str] = []
+	untrusted: list[str] = []
+	for pkg in pkgs:
+		# At this point anything that makes it will have a candidate
+		if not pkg.candidate or pkg.marked_delete:
+			continue
+
+		# Check through the uris and see if there are any file paths
+		for uri in pkg.candidate.uris:
+			if not uri.startswith("file:"):
+				continue
+			# We must check trust at this point
+			if not check_trusted(uri, pkg.candidate):
+				untrusted.append(pkg.candidate.filename)
+			# All was well so append our uri and break for the next pkg
+			file_uris.append(uri)
+			break
+
+	# Exit with an error if there are unauthenticated packages
+	# This can proceed if overridden by configuration
+	if untrusted:
+		untrusted_error(untrusted)
+
+	# Copy the local repo debs into the archive directory
+	# This is a must so `apt` knows about it and we can check the hash
+	for file in file_uris:
+		dprint("Moving files from local repository")
+		src = Path(file.lstrip("file:"))
+		dest = ARCHIVE_DIR / src.name
+		# Make sure that the source exists and the destination does not
+		if src.is_file() and not dest.is_file():
+			# Move the file to the archive directory.
+			# We're allowed to do this silently because hashsum comes later
+			dprint(f"{src} => {shutil.copy2(src, dest)}")
+
+	# Return the list of packages that should be downloaded
+	return versions_to_urls(
+		pkg.candidate
+		for pkg in pkgs
+		# Don't download packages that already exist
+		if pkg.candidate
+		and not pkg.marked_delete
+		and not pre_download_check(URL.from_version(pkg.candidate))
+	)
+
+
+def versions_to_urls(versions: Iterable[Version]) -> list[URLSet]:
+	"""Convert Apt Versions into urls for the downloader."""
+	urls: list[URLSet] = []
+	untrusted: list[str] = []
+	mirrors: dict[str, list[str]] = {}
+	for version in versions:
+		url_set = URLSet()
+		for uri in filter_uris(version, mirrors, untrusted):
+			url_set.append(
+				URL(
+					uri,
+					version.size,
+					# Have to run the filename through a path to get the last section
+					ARCHIVE_DIR / get_pkg_name(version),
+					*get_hash(version),
+				)
+			)
+		urls.append(url_set)
+
+	if untrusted:
+		untrusted_error(untrusted)
+
+	return urls
+
+
+def filter_uris(
+	candidate: Version, mirrors: dict[str, list[str]], untrusted: list[str]
+) -> Generator[str, None, None]:
+	"""Filter uris into usable urls."""
+	for uri in candidate.uris:
+		# Sending a file path through the downloader will cause it to lock up
+		# These have already been handled before the downloader runs.
+		if uri.startswith("file:"):
+			continue
+		if not check_trusted(uri, candidate):
+			untrusted.append(color(candidate.package.name, "RED"))
+		# Regex to check if we're using mirror://
+		if regex := MIRROR_PATTERN.search(uri):
+			set_mirrors_txt(domain := regex.group(1), mirrors)
+			yield from (
+				link + candidate.filename
+				for link in mirrors[domain]
+				if not link.startswith("#")
+			)
+			continue
+		yield uri
+
+
+def set_mirrors_txt(domain: str, mirrors: dict[str, list[str]]) -> None:
+	"""Check if user has mirrors:// and handle accordingly."""
+	if domain not in mirrors:
+		url = f"http://{domain}"
+		try:
+			mirrors[domain] = get(url, follow_redirects=True).text.splitlines()
+		except HTTPError:
+			sys.exit(
+				_("{error} unable to connect to {url}").format(
+					error=ERROR_PREFIX, url=url
+				)
+			)
+
+
+def download(downloader: Downloader) -> None:
 	"""Run downloads and check for failures.
 
 	Does not return if in Download Only mode.
 	"""
-	downloader = PkgDownloader(
-		# Start the larger files first, as they take the longest
-		# Ignore mypy here because the pkgs definitely have a candidate if they made it here
-		sorted(pkgs, key=lambda pkg: pkg.candidate.size, reverse=True)  # type: ignore[union-attr]
-	)
 	try:
 		run(downloader.start_download())
 	except (CancelledError, RuntimeError) as error:
@@ -713,3 +863,26 @@ def download(pkgs: list[Package]) -> None:
 				"{warning} Falling back to apt_pkg. The following downloads failed:"
 			).format(warning=WARNING_PREFIX)
 		)
+
+
+def download_pkgs(pkgs: Iterable[Package]) -> None:
+	"""Download package from a list of pkgs."""
+	download(
+		Downloader(
+			# Start the larger files first, as they take the longest
+			sorted(
+				filter_local_repo(pkgs),
+				key=lambda url: url.size(),
+				reverse=True,
+			)
+		)
+	)
+
+
+def download_strings(urls: Iterable[str]) -> None:
+	"""Download packages from a list of urls.
+
+	This function assumes that each URL is its own package
+	and will create a URLSet for each str url in the iterable
+	"""
+	download(Downloader([URLSet.from_str(url) for url in urls]))

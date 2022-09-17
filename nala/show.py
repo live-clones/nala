@@ -27,7 +27,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 from random import shuffle
-from typing import cast
+from typing import List, cast
 
 from apt.package import BaseDependency, Dependency, Package, Version
 
@@ -194,9 +194,9 @@ def show_dep(dependency: list[Dependency] | list[str]) -> str:
 		dependency.sort()
 		if len(dependency) > 4:
 			return "\n  " + "\n  ".join(cast(list[str], dependency))
-		return ", ".join(cast(list[str], dependency))
+		return ", ".join(cast(List[str], dependency))
 
-	dependency = dedupe_deps(cast(list[Dependency], dependency))
+	dependency = dedupe_deps(cast(List[Dependency], dependency))
 	join_list = []
 	msg = ""
 	same_line = True
@@ -218,9 +218,7 @@ def show_dep(dependency: list[Dependency] | list[str]) -> str:
 			continue
 		msg += f"{dep_print}\n"
 
-	if same_line:
-		return ", ".join(join_list)
-	return msg.rstrip()
+	return ", ".join(join_list) if same_line else msg.rstrip()
 
 
 def format_dep(dep: BaseDependency | NalaBaseDep, iteration: int = 0) -> str:

@@ -76,6 +76,9 @@ class Terminal:
 
 	# Control Codes
 	CURSER_UP = b"\x1b[1A"
+	CURSER_DOWN = b"\x1b[1B"
+	CURSER_FORWARD = b"\x1b[1C"
+	CURSER_BACK = b"\x1b[1D"
 	CLEAR_LINE = b"\x1b[2k"
 	CLEAR = b"\x1b[2J"
 	CLEAR_FROM_CURRENT_TO_END = b"\x1b[K"
@@ -213,6 +216,7 @@ class PackageHandler:  # pylint: disable=too-many-instance-attributes
 	autoremoved: set[str] = field(default_factory=set)
 	user_explicit: list[Package] = field(default_factory=list)
 	local_debs: list[NalaDebPackage] = field(default_factory=list)
+	# Packages that can be auto removed, but won't
 	not_needed: list[NalaPackage] = field(default_factory=list)
 	delete_pkgs: list[NalaPackage] = field(default_factory=list)
 	install_pkgs: list[NalaPackage] = field(default_factory=list)
@@ -225,6 +229,7 @@ class PackageHandler:  # pylint: disable=too-many-instance-attributes
 	suggest_pkgs: list[NalaPackage | list[NalaPackage]] = field(default_factory=list)
 	configure_pkgs: list[NalaPackage] = field(default_factory=list)
 	downgrade_pkgs: list[NalaPackage] = field(default_factory=list)
+	held_pkgs: list[NalaPackage] = field(default_factory=list)
 
 	def no_summary(
 		self, pkg_set: list[NalaPackage] | list[NalaPackage | list[NalaPackage]]
@@ -501,7 +506,12 @@ def vprint(msg: object) -> None:
 
 
 def dprint(msg: object, from_verbose: bool = False) -> None:
-	"""Print message if debugging, write to log if root."""
+	"""Print message if debugging, write to log if root.
+
+	from_verbose as true will stop this from printing.
+
+	vprint sends it's messages here to be put in the log.
+	"""
 	if not arguments.debug:
 		return
 	if not from_verbose:

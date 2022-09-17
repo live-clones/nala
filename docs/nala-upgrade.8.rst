@@ -80,6 +80,18 @@ OPTIONS
 
 		Automatically select *no* for any prompts which may need your input.
 
+**--simple**, **--no-simple**
+
+	*--simple*
+
+		Show a more simple and condensed transaction summary.
+
+	*--no-simple*
+
+		Show the standard table transatction summary with more information.
+
+		This variant is the **default**
+
 **-o**, **--option**
 	Set options to pass through to **apt**, **nala**, or **dpkg**.
 
@@ -139,13 +151,26 @@ OPTIONS
 
 		Recommended packages will be installed.
 
-		This variant is the **default**
+		This variant is the **default** unless changed with the **apt** config.
 
 	*--no-install-recommends*
 
 		Recommended package will **NOT** be installed.
 
 		If this option is selected **nala** will display the recommended packages that will not be installed.
+
+**--install-suggests**, **--no-install-suggests**
+	*--install-suggests*
+
+		Suggested packages will be installed.
+
+		This variant is the **default**
+
+	*--no-install-suggests*
+
+		This variant is the **default** unless changed with the **apt** config.
+
+		If this option is selected **nala** will display the suggested packages that will not be installed.
 
 **--fix-broken**, **--no-fix-broken**
 	*--fix-broken*
