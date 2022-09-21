@@ -104,7 +104,7 @@ LAST_COMPLETED = color(_("Last Completed:"), "GREEN")
 LAST_COMPLETED_STATUS = _("{last_completed} {package}")
 
 
-REMOVING_FILE = _("{notice} Nala has removed {filename} but will try another mirror")
+REMOVING_FILE = _("{notice} Nala has removed {filename}")
 FAILED_MOVE = _(
 	"{error} Failed to move archive file, {str_err}: '{file1}' -> '{file2}'"
 )
@@ -496,18 +496,24 @@ class Downloader:  # pylint: disable=too-many-instance-attributes
 		print_error(error)
 
 		if not (next_url := urls.next_available()):
-			eprint(
-				_("{error} No more mirrors available for {filename}").format(
-					error=ERROR_PREFIX, filename=color(urls.filename(), "YELLOW")
+			# No need to say there are no mirrors available in the event there is only one.
+			if len(urls) > 1:
+				eprint(
+					_("{error} No more mirrors available for {filename}").format(
+						error=ERROR_PREFIX, filename=color(urls.filename(), "YELLOW")
+					)
 				)
-			)
 			self.failed.append(urls.filename())
 			# Status error are fatal as apt_pkg is likely to fail with these as well
 			if isinstance(error, HTTPStatusError):
 				self.fatal = True
 			return
 
-		vprint(_("Trying the next url: {url}").format(url=next_url.uri))
+		eprint(
+			_("{notice} Trying next url: {url}").format(
+				notice=NOTICE_PREFIX, url=next_url.uri
+			)
+		)
 
 
 def untrusted_error(untrusted: list[str]) -> None:
