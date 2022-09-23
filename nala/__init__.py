@@ -25,6 +25,7 @@
 from __future__ import annotations
 
 import sys
+sys.path.insert(0, "/usr/lib/python3/dist-packages")
 
 # Set Path as below for termux environment
 # ROOT = "@TERMUX_PREFIX@"
