@@ -1,18 +1,20 @@
 # Build update translations by Blake Lee authored <blake@volian.org>, 2022
 #
 # Please keep all names of Brazilian Portuguese volunteer translators.
-# Por favor, mantenha todos os nomes dos tradutores voluntários do idioma Português do Brasil.
+# Por favor, mantenha todos os nomes dos tradutores voluntários do idioma Português do Brasil. 
 #
-# Translators:
-# Tradutores:
+# Volunteer Translators:
+# Tradutores Voluntários:
+# Ciro Mota <contato.ciromota@outlook.com>, 2022.
+# David Brochero, 2022 
 # marcelo cripe <marcelocripe@gmail.com>, 2022
-#
+# 
 msgid ""
 msgstr ""
 "Project-Id-Version:  Nala\n"
 "Report-Msgid-Bugs-To: https://gitlab.com/volian/nala/-/issues\n"
 "POT-Creation-Date: 2022-08-01 18:55-0400\n"
-"PO-Revision-Date: 2022-08-24 14:49-0300\n"
+"PO-Revision-Date: 2022-11-16 17:49-0300\n"
 "Last-Translator: marcelo cripe <marcelocripe@gmail.com>, 2022\n"
 "Language: pt_BR\n"
 "Language-Team: pt_BR antiX Linux Community Contributions\n"
@@ -33,9 +35,9 @@ msgid ""
 "\n"
 "Running `nala history` with no subcommands prints an overview of all transactions."
 msgstr ""
-"Para exibir o histórico de operações.\n"
+"Exibir o histórico de operações.\n"
 "\n"
-"Execute o comando `nala history` sem os subcomandos para imprimir uma visão geral "
+"Executar o comando `nala history` sem os subcomandos para exibir uma visão geral "
 "de todas as operações disponíveis."
 
 #: nala/history.py:103
@@ -126,7 +128,7 @@ msgstr "Pacote/Versão/Tamanho/Versão Antiga/Versão Nova/Qualquer Um"
 #. This ends up looking like [ "Auto-Purge 20 Packages" ]
 #: nala/summary.py:45
 msgid "Auto-Purge/Auto-Purging/Auto-Purged"
-msgstr "Purgar Automaticamente/Purgando Automaticamente/Purgado Automaticamente"
+msgstr "Limpeza Automática/Limpando Automaticamente/Limpo Automaticamente"
 
 #. Verb Tenses are [ "Present/Present Participle/Past" ]
 #. This ends up looking like [ "Auto-Remove 20 Packages" ]
@@ -144,7 +146,7 @@ msgstr "Remover/Removendo/Removido"
 #. This ends up looking like [ "Purge 20 Packages" ]
 #: nala/summary.py:60
 msgid "Purge/Purging/Purged"
-msgstr "Purgar/Purgando/Purgado"
+msgstr "Limpar/Limpando/Limpo"
 
 #. Verb Tenses are [ "Present/Present Participle/Past" ]
 #. This ends up looking like [ "Install 20 Packages" ]
@@ -186,7 +188,7 @@ msgstr "Os Pacotes Sugeridos Não Serão Instalados"
 
 #: nala/summary.py:237
 msgid "Auto-Removable, Will Not Be Removed"
-msgstr "O Auto-Removível Não Será Removido"
+msgstr "O Autoremovível Não Será Removido"
 
 #: nala/summary.py:321
 msgid "Summary"
@@ -199,7 +201,7 @@ msgstr "Pacotes"
 
 #: nala/summary.py:345
 msgid "Total download size"
-msgstr "Tamanho total dos arquivos transferidos"
+msgstr "Tamanho total dos arquivos baixados ou transferidos"
 
 #: nala/summary.py:347
 msgid "Disk space to free"
@@ -211,7 +213,7 @@ msgstr "Espaço de disco necessário"
 
 #: nala/summary.py:353
 msgid "Nala will only download the packages"
-msgstr "O Nala irá realizar apenas a transferência dos pacotes"
+msgstr "O Nala irá realizar apenas o processo de baixar ou transferir os pacotes"
 
 #: nala/error.py:45 nala/show.py:112
 msgid "Depends:"
@@ -251,9 +253,8 @@ msgstr "Ocorreu o erro {error}, o python-apt retornou o erro {apt_err}. Este nã
 #: nala/error.py:118
 msgid "{notice} Some index files failed to download. They have been ignored, or old ones used instead."
 msgstr ""
-"Observe o aviso {notice} de que alguns arquivos de índice falharam no processo de "
-"transferência dos arquivos. Os arquivos foram ignorados ou os antigos foram utilizados "
-"em seu lugar."
+"Observe o aviso {notice} de que alguns arquivos de índice falharam quando os arquivos estavam sendo "
+"baixados ou transferidos. Os arquivos foram ignorados ou os antigos foram utilizados em seu lugar."
 
 #: nala/error.py:133
 msgid "{error} Installation has failed."
@@ -405,11 +406,11 @@ msgstr "Remover os pacotes."
 
 #: nala/nala.py:342
 msgid "Purge packages."
-msgstr "Purgar os pacotes."
+msgstr "Limpar os pacotes."
 
 #: nala/nala.py:349
 msgid "Package(s) to remove/purge"
-msgstr "Pacote(s) a ser(em) removido(s)/purgado(s)"
+msgstr "Pacote(s) a ser(em) removido(s)/limpo(s)"
 
 #: nala/nala.py:370
 msgid "Autoremove packages that are no longer needed."
@@ -417,7 +418,7 @@ msgstr "Remoção automática dos pacotes que não são mais necessários."
 
 #: nala/nala.py:371
 msgid "Autopurge packages that are no longer needed."
-msgstr "Purga automática dos pacotes que não são mais necessários."
+msgstr "Limpeza automática dos pacotes que não são mais necessários."
 
 #: nala/nala.py:391
 msgid "{error} {config} must be used with either {autoremove} or {autopurge}."
@@ -459,7 +460,7 @@ msgstr "Nenhum pacote foi encontrado para ser listado."
 
 #: nala/nala.py:566
 msgid "Clear out the local archive of downloaded package files."
-msgstr "Limpar o local onde os arquivos são transferidos ou baixados."
+msgstr "Limpar o local onde os arquivos são baixados ou transferidos."
 
 #: nala/nala.py:580
 msgid "Package lists have been cleaned"
@@ -529,7 +530,7 @@ msgstr "Estes espelhos estão bons?"
 
 #: nala/fetch.py:303
 msgid "Fetching {distro} mirrors"
-msgstr "A buscar os espelhos da distribuição {distro}"
+msgstr "Buscando os espelhos da distribuição {distro}"
 
 #: nala/fetch.py:351
 msgid "{error} Internal Error. Distro detection must be broken"
@@ -547,7 +548,7 @@ msgstr "Analisando a lista de espelhos"
 #: nala/fetch.py:599
 msgid "Score is how many milliseconds it takes to download the Release file"
 msgstr ""
-"A pontuação é de quantos milissegundos são necessários para transferir ou baixar o "
+"A pontuação é de quantos milissegundos são necessários para baixar ou transferir o "
 "arquivo Release"
 
 #: nala/fetch.py:610
@@ -602,7 +603,7 @@ msgstr "Os espelhos acima serão gravados ou escritos no arquivo {file}. Você q
 
 #: nala/fetch.py:745
 msgid "Fetch fast mirrors to speed up downloads."
-msgstr "Buscar os espelhos mais rápidos para acelerar as transferências."
+msgstr "Buscar os melhores espelhos para baixar ou transferir mais rápido."
 
 #: nala/fetch.py:750
 msgid "Choose the Debian release."
@@ -736,7 +737,7 @@ msgstr "Ocorreu o erro {error}, não foi possível conectar ao endereço {url}"
 
 #: nala/downloader.py:419
 msgid "Downloading"
-msgstr "Transferindo"
+msgstr "Baixando"
 
 #: nala/downloader.py:440
 msgid "Trying the next url: {url}"
@@ -813,7 +814,7 @@ msgstr "Atualizado(s):"
 
 #: nala/dpkg.py:94
 msgid "Downloaded:"
-msgstr "Transferido(s):"
+msgstr "Baixado(s):"
 
 #: nala/dpkg.py:95
 msgid "Ignored:"
@@ -912,11 +913,11 @@ msgstr "%c%s... Concluído"
 
 #: nala/dpkg.py:382
 msgid " [Working]"
-msgstr " [Working]"
+msgstr " [Trabalhando]"
 
 #: nala/dpkg.py:941
 msgid "Purging Packages"
-msgstr "Purgando os Pacotes"
+msgstr "Limpando os Pacotes"
 
 #: nala/dpkg.py:943
 msgid "Removing Packages"
@@ -1227,11 +1228,11 @@ msgstr "Alternar para a opção de atualização da lista dos pacotes."
 
 #: nala/options.py:451
 msgid "Purge any packages that would be removed."
-msgstr "Purgar todos os pacotes que seriam removidos."
+msgstr "Limpar quaisquer pacotes que seriam removidos."
 
 #: nala/options.py:457
 msgid "Purge packages not installed that have config files."
-msgstr "Purgar os pacotes não instalados que tenham arquivos de configurações."
+msgstr "Limpar os pacotes não instalados que tenham arquivos de configurações."
 
 #: nala/options.py:465
 msgid "Allow the removal of essential packages."
@@ -1375,7 +1376,7 @@ msgstr "Página inicial:"
 
 #: nala/show.py:77
 msgid "Download-Size:"
-msgstr "Tamanho do(s) arquivo(s) transferido(s):"
+msgstr "Tamanho do(s) arquivo(s) baixado(s) ou transferido(s):"
 
 #: nala/show.py:80
 msgid "APT-Sources:"
