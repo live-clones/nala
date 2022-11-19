@@ -1,14 +1,14 @@
 # Build update translations by Blake Lee authored <blake@volian.org>, 2022
 #
 # Please keep all names of Brazilian Portuguese volunteer translators.
-# Por favor, mantenha todos os nomes dos tradutores voluntários do idioma Português do Brasil. 
+# Por favor, mantenha todos os nomes dos tradutores voluntários do idioma Português do Brasil.
 #
 # Volunteer Translators:
 # Tradutores Voluntários:
 # Ciro Mota <contato.ciromota@outlook.com>, 2022.
-# David Brochero, 2022 
+# David Brochero, 2022
 # marcelo cripe <marcelocripe@gmail.com>, 2022
-# 
+#
 msgid ""
 msgstr ""
 "Project-Id-Version:  Nala\n"
