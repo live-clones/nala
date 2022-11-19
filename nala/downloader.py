@@ -140,12 +140,13 @@ DownloadErrorTypes = Union[
 
 
 @dataclass
-class URL:
+class URL:  # pylint: disable=too-many-instance-attributes
 	"""Representation of a URL and File for download."""
 
 	uri: str
 	size: int
 	path: Path
+	proto: str = ""
 	hash_type: str = "sha256"
 	hash: str = ""
 	failed: bool = False
@@ -179,7 +180,6 @@ class URL:
 		)
 
 
-@dataclass
 class URLSet(List[URL]):
 	"""Set of urls that are all expected to provide the same file."""
 
@@ -780,13 +780,15 @@ def versions_to_urls(versions: Iterable[Version]) -> list[URLSet]:
 	for version in versions:
 		url_set = URLSet()
 		for uri in filter_uris(version, mirrors, untrusted):
+			hash_type, hashsum = get_hash(version)
 			url_set.append(
 				URL(
 					uri,
 					version.size,
 					# Have to run the filename through a path to get the last section
 					ARCHIVE_DIR / get_pkg_name(version),
-					*get_hash(version),
+					hash_type=hash_type,
+					hash=hashsum,
 				)
 			)
 		urls.append(url_set)
