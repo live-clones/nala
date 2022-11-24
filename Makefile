@@ -81,12 +81,12 @@ uninstall:
 package-binary:
 	python -m pip install pyinstaller
 	python -m venv ./.venv
-	source ./.venv/Scripts/activate && \
+	source ./.venv/bin/activate && \
 	python -m pip install ./ && \
 	rm -rf ./build/ ./dist/ && \
 	pyinstaller --noconfirm \
     --nowindow --noupx \
-    --paths ./.venv/Lib/site-packages \
+    --paths ./.venv/lib/site-packages \
     ./nala/nala.py && \
 	(cd ./dist/ && (tar cv nala/* | xz -9 > ./nala.tar.xz ))
 
