@@ -77,3 +77,19 @@ uninstall:
 	sudo rm -f ${LIB_DIR}/apt_pkg.so
 	sudo rm -f ${LIB_DIR}/apt_inst.so
 	sudo python3.10 -m pip uninstall nala
+
+package-binary:
+	python -m pip install pyinstaller
+	python -m venv ./.venv
+	source ./.venv/Scripts/activate && \
+	python -m pip install ./ && \
+	rm -rf ./build/ ./dist/ && \
+	pyinstaller --noconfirm \
+    --nowindow --noupx \
+    --paths ./.venv/Lib/site-packages \
+    ./nala/nala.py && \
+	(cd ./dist/ && (tar cv nala/* | xz -9 > ./nala.tar.xz ))
+
+	# TODO add docs to the pyinstaller
+	# --add-data="README.rst:." \
+	# --add-data="docs:docs" \
