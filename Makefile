@@ -71,6 +71,7 @@ config:
 
 clean:
 	rm -f docs/nala*.8
+	rm -rf ./.venv
 
 uninstall:
 	sudo rm -f /usr/share/man/man8/nala*8.gz
@@ -78,18 +79,5 @@ uninstall:
 	sudo rm -f ${LIB_DIR}/apt_inst.so
 	sudo python3.10 -m pip uninstall nala
 
-package-binary:
-	python -m pip install pyinstaller
-	python -m venv ./.venv
-	source ./.venv/bin/activate && \
-	python -m pip install ./ && \
-	rm -rf ./build/ ./dist/ && \
-	pyinstaller --noconfirm \
-    --nowindow --noupx \
-    --paths ./.venv/lib/site-packages \
-    ./nala/nala.py && \
-	(cd ./dist/ && (tar cv nala/* | xz -9 > ./nala.tar.xz ))
-
-	# TODO add docs to the pyinstaller
-	# --add-data="README.rst:." \
-	# --add-data="docs:docs" \
+binary:
+	./nala-pyinstall.sh
