@@ -18,9 +18,27 @@ poetry install --no-dev
 rm -rf ./build/ ./dist/
 
 pyinstaller --noconfirm \
+--clean \
 --nowindow --noupx \
 --paths ./.venv/lib/site-packages \
+--exclude-module IPython \
+--exclude-module IPython.display \
+--exclude-module IPython.core \
+--exclude-module IPython.core.formatters \
+--exclude-module ipywidgets \
+--exclude-module java \
+--exclude-module java.lang \
+--exclude-module winreg \
+--exclude-module _winreg \
+--exclude-module _winapi \
+--exclude-module win32api \
+--exclude-module win32com \
+--exclude-module win32com.shell \
+--exclude-module msvcrt \
 ./nala/nala.py
+
+# Remove the excluded modules from the warnings list
+sed -i '/excluded module /d' ./build/nala/warn-nala.txt
 
 # Archive the build and deactivate the virtual env
 cd ./dist && tar cv ./nala/ | xz -9 > ./nala.tar.xz
