@@ -3,11 +3,13 @@
 # This is more simple as a shell script than directly
 # in the Makefile due to python venv. It needs to activate and deactivate
 
+# Install pyinstaller outside the workspace
+deactivate || echo "Already deactivated"
+sudo python3 -m pip install pyinstaller
+
 # Activate the virutal environment first
 python3 -m venv ./.venv
 . ./.venv/bin/activate
-
-python3 -m pip install pyinstaller
 
 # Install Nala and make sure directories are clean
 python3 -m pip install ./
