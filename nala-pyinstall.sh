@@ -3,7 +3,8 @@
 # This is more simple as a shell script than directly
 # in the Makefile due to python venv. It needs to activate and deactivate
 
-# Install pyinstaller outside the workspace
+# Install pyinstaller outside the workspace with sudo
+# This allows it to find system wide packages like apt_pkg
 deactivate || echo "Already deactivated"
 sudo python3 -m pip install pyinstaller
 
@@ -19,7 +20,7 @@ rm -rf ./build/ ./dist/
 
 pyinstaller --noconfirm \
 --clean \
---nowindow --noupx \
+--console --nowindowed --noupx \
 --paths ./.venv/lib/site-packages \
 --exclude-module IPython \
 --exclude-module IPython.display \
@@ -35,13 +36,14 @@ pyinstaller --noconfirm \
 --exclude-module win32com \
 --exclude-module win32com.shell \
 --exclude-module msvcrt \
-./nala/nala.py
+--name nala \
+./nala/__main__.py
 
 # Remove the excluded modules from the warnings list
 sed -i '/excluded module /d' ./build/nala/warn-nala.txt
 
 # Archive the build and deactivate the virtual env
-cd ./dist && tar cv ./nala/ | xz -9 > ./nala.tar.xz
+cd ./dist && tar cv nala/ | xz -9 > ./nala.tar.xz
 deactivate
 
 # TODO add docs to the pyinstaller
