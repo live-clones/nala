@@ -12,11 +12,12 @@ python3 -m pip install pyinstaller -U
 python3 -m venv ./.venv
 . ./.venv/bin/activate
 
-# Install Nala and make sure directories are clean
+# Install Nala dependencies
 python3 -m pip install ./
 poetry install --no-dev
 
-rm -rf ./build/ ./dist/
+# make sure directories are clean
+rm -rf ./build/ ./dist/ ./**/__pycache__/
 
 pyinstaller --noconfirm \
 --clean \
