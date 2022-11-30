@@ -11,6 +11,8 @@ python3 -m pip install pyinstaller
 
 # Install Nala and make sure directories are clean
 python3 -m pip install ./
+poetry install --no-dev
+
 rm -rf ./build/ ./dist/
 
 pyinstaller --noconfirm \
