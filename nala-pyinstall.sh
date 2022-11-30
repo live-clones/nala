@@ -24,6 +24,7 @@ pyinstaller --noconfirm \
 --console --nowindowed --noupx \
 --paths "./.venv/lib/site-packages" \
 --paths "/usr/lib/python3/dist-packages" \
+--paths "/lib/python3/dist-packages/" \
 --exclude-module IPython \
 --exclude-module IPython.display \
 --exclude-module IPython.core \
@@ -43,6 +44,9 @@ pyinstaller --noconfirm \
 
 # Remove the excluded modules from the warnings list
 sed -i '/excluded module /d' ./build/nala/warn-nala.txt
+
+# Smoke test
+./dist/nala/nala --help
 
 # Archive the build and deactivate the virtual env
 cd ./dist && tar cv nala/ | xz -9 > ./nala.tar.xz
