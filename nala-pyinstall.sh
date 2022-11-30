@@ -1,12 +1,12 @@
 #!/bin/sh
+set -e
 
 # This is more simple as a shell script than directly
 # in the Makefile due to python venv. It needs to activate and deactivate
 
-# Install pyinstaller outside the workspace with sudo
-# This allows it to find system wide packages like apt_pkg
+# Install pyinstaller outside the workspace
 deactivate || echo "Already deactivated"
-sudo python3 -m pip install pyinstaller
+python3 -m pip install pyinstaller -U
 
 # Activate the virutal environment first
 python3 -m venv ./.venv
@@ -21,7 +21,8 @@ rm -rf ./build/ ./dist/
 pyinstaller --noconfirm \
 --clean \
 --console --nowindowed --noupx \
---paths ./.venv/lib/site-packages \
+--paths "./.venv/lib/site-packages" \
+--paths "/usr/lib/python3/dist-packages" \
 --exclude-module IPython \
 --exclude-module IPython.display \
 --exclude-module IPython.core \
