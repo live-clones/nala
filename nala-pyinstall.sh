@@ -4,6 +4,9 @@ set -e
 # This is more simple as a shell script than directly
 # in the Makefile due to python venv. It needs to activate and deactivate
 
+# Required system dependencies
+sudo apt-get install devscripts apt-utils -y
+
 # Install pyinstaller outside the workspace
 deactivate || echo "Already deactivated"
 python3 -m pip install pyinstaller -U
@@ -14,7 +17,7 @@ python3 -m venv ./.venv
 
 # Install Nala dependencies
 python3 -m pip install ./
-poetry install --no-dev
+poetry install
 
 # make sure directories are clean
 rm -rf ./build/ ./dist/ ./**/__pycache__/
