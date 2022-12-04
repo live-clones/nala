@@ -41,25 +41,35 @@ args = map(lambda pth: f"--paths {pth}", paths)
 print(" ".join(args))
 ')
 
+# Get the excluded modules
+excludes=$(python3 -c '
+excludes = [
+    "IPython",
+    "IPython.display",
+    "IPython.core",
+    "IPython.core.formatters",
+    "ipywidgets",
+    "java",
+    "java.lang",
+    "winreg",
+    "_winreg",
+    "_winapi",
+    "win32api",
+    "win32com",
+    "win32com.shell",
+    "msvcrt",
+]
+
+args = map(lambda exclude: f"--exclude-module {exclude}", excludes)
+print(" ".join(args))
+')
+
 pyinstaller --noconfirm \
     --clean \
     --console --nowindowed --noupx \
     $venv_paths \
     $system_paths \
-    --exclude-module IPython \
-    --exclude-module IPython.display \
-    --exclude-module IPython.core \
-    --exclude-module IPython.core.formatters \
-    --exclude-module ipywidgets \
-    --exclude-module java \
-    --exclude-module java.lang \
-    --exclude-module winreg \
-    --exclude-module _winreg \
-    --exclude-module _winapi \
-    --exclude-module win32api \
-    --exclude-module win32com \
-    --exclude-module win32com.shell \
-    --exclude-module msvcrt \
+    $excludes \
     --name nala \
     ./nala/__main__.py
 
