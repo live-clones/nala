@@ -46,4 +46,4 @@ nala-cli.build/
 nala-cli.bin
 
 # Pyinstaller
-/nala.spec
+/nala-cli.spec

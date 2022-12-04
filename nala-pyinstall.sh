@@ -61,24 +61,30 @@ args = map(lambda exclude: f"--exclude-module {exclude}", excludes)
 print(" ".join(args))
 ')
 
+# The binary name
+# This name should be unique among the folder/file names due to the Linux requirement
+# For example, setting this to `nala` will result in errors due to the `nala`` folder name in the same directory
+binary_name="nala-cli"
+
 pyinstaller --noconfirm \
     --clean \
     --console --nowindowed --noupx \
     $venv_paths \
     $system_paths \
     $excludes \
-    --name nala \
-    ./nala/__main__.py
+    --collect-all nala \
+    --name $binary_name \
+    ./nala-cli.py
 
 # Remove the excluded modules from the warnings list
-sed -i '/excluded module /d' ./build/nala/warn-nala.txt
-
-# Smoke test
-./dist/nala/nala --help
+sed -i '/excluded module /d' ./build/$binary_name/warn-$binary_name.txt
 
 # Archive the build and deactivate the virtual env
-cd ./dist && tar cv nala/ | xz -9 >./nala.tar.xz
+cd ./dist && tar cv $binary_name/ | xz -9 >./nala.tar.xz && cd ../
 deactivate
+
+# Smoke test
+./dist/$binary_name/$binary_name --help
 
 # TODO add docs to the pyinstaller
 # --add-data="README.rst:." \
