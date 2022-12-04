@@ -79,12 +79,21 @@ pyinstaller --noconfirm \
 # Remove the excluded modules from the warnings list
 sed -i '/excluded module /d' ./build/$binary_name/warn-$binary_name.txt
 
+# Add nala binary
+mkdir ./dist/nala
+mv ./dist/$binary_name ./dist/nala/$binary_name
+echo '#!/bin/bash
+nala_dir=$(dirname $(realpath $0))
+$nala_dir/nala-cli/nala-cli
+' >>./dist/nala/nala
+chmod +x ./dist/nala/nala
+
 # Archive the build and deactivate the virtual env
-cd ./dist && tar cv $binary_name/ | xz -9 >./nala.tar.xz && cd ../
+cd ./dist && tar cv nala/ | xz -9 >./nala.tar.xz && cd ../
 deactivate
 
 # Smoke test
-./dist/$binary_name/$binary_name --help
+./dist/nala/nala --help
 
 # TODO add docs to the pyinstaller
 # --add-data="README.rst:." \
