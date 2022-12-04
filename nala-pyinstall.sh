@@ -84,7 +84,7 @@ mkdir ./dist/nala
 mv ./dist/$binary_name ./dist/nala/$binary_name
 echo '#!/bin/bash
 nala_dir=$(dirname $(realpath $0))
-$nala_dir/nala-cli/nala-cli
+$nala_dir/nala-cli/nala-cli $@
 ' >>./dist/nala/nala
 chmod +x ./dist/nala/nala
 
