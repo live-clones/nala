@@ -7,15 +7,12 @@ set -e
 # Required system dependencies
 sudo apt-get install devscripts apt-utils -y
 
-# Install pyinstaller outside the workspace
-deactivate || echo "Already deactivated"
-python3 -m pip install pyinstaller -U
-
 # Activate the virutal environment first
 python3 -m venv ./.venv
 . ./.venv/bin/activate
 
 # Install Nala dependencies
+python3 -m pip install pyinstaller
 python3 -m pip install ./
 poetry install
 
