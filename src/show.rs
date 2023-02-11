@@ -24,57 +24,67 @@ pub fn show(config: &Config) -> Result<()> {
 		None => bail!("At least one package name must be specified"),
 	};
 
+	// Extract this into a function. probably should go into util.rs
+	// Can use glob_pkgs as a template on however that takes iterators.
 	let mut virtual_filtered = vec![];
 	for pkg in packages {
-		// If the package doesn't have versions then it's virtual
-		if !pkg.has_versions() {
-			// If the package doesn't have provides it's purely virtual
-			// There is nothing that can satisfy it. Referenced only by name
-			// At time of commit `python3-libmapper` is purely virtual
-			if !pkg.has_provides() {
-				config.color.warn(&format!(
-					"{} has no providers and is purely virutal",
-					config.color.package(pkg.name())
-				));
-				continue;
-			}
+		// If the package has versions then it isn't virtual
+		// just push it and continue
+		if pkg.has_versions() {
+			virtual_filtered.push(pkg);
+			continue;
+		}
 
-			// Package is virtual so get its providers.
-			// HashSet for duplicated packages when there is more than one version
-			let providers: HashSet<String> = pkg
-				.provides()
-				.map(|p| p.package().fullname(false))
-				.collect();
+		// If the package doesn't have provides it's purely virtual
+		// There is nothing that can satisfy it. Referenced only by name
+		// At time of commit `python3-libmapper` is purely virtual
+		if !pkg.has_provides() {
+			config.color.warn(&format!(
+				"{} has no providers and is purely virutal",
+				config.color.package(pkg.name())
+			));
+			continue;
+		}
 
-			if providers.len() == 1 {
-				// Unwrap should be fine here, we know that there is 1 in the Vector.
-				let target_pkg = providers.into_iter().next().unwrap();
-				config.color.notice(&format!(
-					"Selecting {} instead of virtual package {}",
-					config.color.package(&target_pkg),
-					config.color.package(pkg.name())
-				));
-				// Unwrap should be fine here as we know the package name.
-				virtual_filtered.push(cache.get(&target_pkg).unwrap());
-				continue;
-			}
+		// Package is virtual so get its providers.
+		// HashSet for duplicated packages when there is more than one version
+		let providers: HashSet<Package> = pkg.provides().map(|p| p.package()).collect();
 
-			if providers.len() > 1 {
-				println!("{} is a virtual package provided by:", config.color.package(pkg.name()));
-				for name in &providers {
-					// Unwrap should be fine here as we know the package name.
-					let pkg = cache.get(name).unwrap();
-					// If the version doesn't have a candidate no sense in showing it
-					if let Some(cand) = pkg.candidate() {
-						println!(
-							"    {} {}",
-							config.color.package(&pkg.fullname(true)),
-							config.color.version(cand.version()),
-						)
-					}
+		// If there is only one provider just select that as the target
+		if providers.len() == 1 {
+			// Unwrap should be fine here, we know that there is 1 in the Vector.
+			let target = providers.into_iter().next().unwrap();
+			config.color.notice(&format!(
+				"Selecting {} instead of virtual package {}",
+				config.color.package(target.name()),
+				config.color.package(pkg.name())
+			));
+
+			// Unwrap should be fine here because we know the name.
+			// We have to grab the package from the cache again because
+			// Provider lifetimes are a bit goofy.
+			virtual_filtered.push(cache.get(&target.fullname(false)).unwrap());
+			continue;
+		}
+
+		// If there are multiple providers then we will error out
+		// and show the packages the user could select instead.
+		if providers.len() > 1 {
+			println!(
+				"{} is a virtual package provided by:",
+				config.color.package(pkg.name())
+			);
+			for target in &providers {
+				// If the version doesn't have a candidate no sense in showing it
+				if let Some(cand) = target.candidate() {
+					println!(
+						"    {} {}",
+						config.color.package(&target.fullname(true)),
+						config.color.version(cand.version()),
+					)
 				}
-				bail!("You should select just one.")
 			}
+			bail!("You should select just one.")
 		}
 	}
 

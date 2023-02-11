@@ -129,7 +129,7 @@ pub fn search(config: &Config) -> Result<()> {
 		matcher.regex_pkgs(cache.packages(&sort), config.get_bool("names", false));
 
 	// List the packages that were found
-	list_packages(packages, &config, &mut out)?;
+	list_packages(packages, config, &mut out)?;
 
 	// Alert the user of any patterns that were not found
 	for name in not_found {
@@ -213,7 +213,7 @@ fn list_packages(
 		}
 
 		// There are no versions so it must be a virtual package
-		list_virtual(out, &config, &pkg)?;
+		list_virtual(out, config, &pkg)?;
 	}
 
 	Ok(())
