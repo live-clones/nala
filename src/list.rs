@@ -113,7 +113,7 @@ pub fn glob_pkgs<'a, Container: IntoIterator<Item = Package<'a>>, T: AsRef<str>>
 }
 
 /// The search command
-pub fn search(config: &Config, color: &Color) -> Result<()> {
+pub fn search(config: &Config) -> Result<()> {
 	let mut out = std::io::stdout().lock();
 	let cache = new_cache!()?;
 
@@ -129,18 +129,18 @@ pub fn search(config: &Config, color: &Color) -> Result<()> {
 		matcher.regex_pkgs(cache.packages(&sort), config.get_bool("names", false));
 
 	// List the packages that were found
-	list_packages(packages, config, color, &mut out)?;
+	list_packages(packages, &config, &mut out)?;
 
 	// Alert the user of any patterns that were not found
 	for name in not_found {
-		color.warn(&format!("'{name}' was not found"));
+		config.color.warn(&format!("'{name}' was not found"));
 	}
 
 	Ok(())
 }
 
 /// The list command
-pub fn list(config: &Config, color: &Color) -> Result<()> {
+pub fn list(config: &Config) -> Result<()> {
 	let mut out = std::io::stdout().lock();
 	let cache = new_cache!()?;
 
@@ -162,11 +162,11 @@ pub fn list(config: &Config, color: &Color) -> Result<()> {
 	};
 
 	// List the packages that were found
-	list_packages(packages, config, color, &mut out)?;
+	list_packages(packages, config, &mut out)?;
 
 	// Alert the user of any patterns that were not found
 	for name in not_found {
-		color.warn(&format!("'{name}' was not found"));
+		config.color.warn(&format!("'{name}' was not found"));
 	}
 
 	Ok(())
@@ -178,7 +178,6 @@ pub fn list(config: &Config, color: &Color) -> Result<()> {
 fn list_packages(
 	packages: Vec<Package>,
 	config: &Config,
-	color: &Color,
 	out: &mut impl std::io::Write,
 ) -> Result<()> {
 	// If packages are empty then there is nothing to list.
@@ -190,8 +189,8 @@ fn list_packages(
 	for pkg in packages {
 		if config.get_bool("all-versions", false) && pkg.has_versions() {
 			for version in pkg.versions() {
-				write!(out, "{} ", color.package(&pkg.fullname(true)))?;
-				list_version(out, config, color, &pkg, &version)?;
+				write!(out, "{} ", config.color.package(&pkg.fullname(true)))?;
+				list_version(out, config, &pkg, &version)?;
 				list_description(out, config, &version)?;
 			}
 			// The new line is a little weird if we print descriptions
@@ -203,18 +202,18 @@ fn list_packages(
 		}
 
 		// Write the package name
-		write!(out, "{} ", color.package(&pkg.fullname(true)))?;
+		write!(out, "{} ", config.color.package(&pkg.fullname(true)))?;
 
 		// The first version in the list should be the latest
 		if let Some(version) = pkg.versions().next() {
 			// There is a version! Let's format it
-			list_version(out, config, color, &pkg, &version)?;
+			list_version(out, config, &pkg, &version)?;
 			list_description(out, config, &version)?;
 			continue;
 		}
 
 		// There are no versions so it must be a virtual package
-		list_virtual(out, color, &pkg)?;
+		list_virtual(out, &config, &pkg)?;
 	}
 
 	Ok(())
@@ -224,7 +223,6 @@ fn list_packages(
 fn list_version<'a>(
 	out: &mut impl std::io::Write,
 	config: &Config,
-	color: &Color,
 	pkg: &'a Package,
 	version: &Version<'a>,
 ) -> std::io::Result<()> {
@@ -236,7 +234,7 @@ fn list_version<'a>(
 		version.version()
 	);
 
-	write!(out, "{}", color.version(version.version()))?;
+	write!(out, "{}", config.color.version(version.version()))?;
 
 	if let Some(pkg_file) = version.package_files().next() {
 		dprint!(config, "Package file found, building origin");
@@ -264,7 +262,7 @@ fn list_version<'a>(
 			return writeln!(
 				out,
 				" [Installed, Upgradable to: {}]",
-				color.version(candidate.version()),
+				config.color.version(candidate.version()),
 			);
 		}
 		// Version isn't installed, see if it's the candidate
@@ -272,7 +270,7 @@ fn list_version<'a>(
 			return writeln!(
 				out,
 				" [Upgradable from: {}]",
-				color.version(installed.version()),
+				config.color.version(installed.version()),
 			);
 		}
 	}
@@ -331,13 +329,13 @@ fn list_description(
 }
 
 /// List a virtual package
-fn list_virtual(out: &mut impl std::io::Write, color: &Color, pkg: &Package) -> Result<()> {
+fn list_virtual(out: &mut impl std::io::Write, config: &Config, pkg: &Package) -> Result<()> {
 	write!(
 		out,
 		"{}{}{} ",
-		color.bold("("),
-		color.yellow("Virtual Package"),
-		color.bold(")")
+		config.color.bold("("),
+		config.color.yellow("Virtual Package"),
+		config.color.bold(")")
 	)?;
 
 	// If the virtual package provides anything we can show it
@@ -349,7 +347,7 @@ fn list_virtual(out: &mut impl std::io::Write, color: &Color, pkg: &Package) -> 
 		writeln!(
 			out,
 			"\n  {} {}",
-			color.bold("Provided By:"),
+			config.color.bold("Provided By:"),
 			&names.join(", "),
 		)?;
 	} else {
@@ -386,12 +384,12 @@ mod test {
 	fn virtual_list() {
 		let mut out = Vec::new();
 		let cache = new_cache!().unwrap();
-		let color = Color::default();
+		let config = Config::default();
 
 		// Package selection is based on current Debian Sid
 		// These tests may not be consistent across distributions
 		let pkg = cache.get("matemenu").unwrap();
-		list_virtual(&mut out, &color, &pkg).unwrap();
+		list_virtual(&mut out, &config, &pkg).unwrap();
 		// Just a print so the output looks better in the tests
 		println!("\n");
 
@@ -416,12 +414,12 @@ mod test {
 		let pkg = cache.get("systemd-sysusers").unwrap();
 
 		// Do the same thing again but with a virtual package that provides
-		list_virtual(&mut out, &color, &pkg).unwrap();
+		list_virtual(&mut out, &config, &pkg).unwrap();
 
 		// Set up what the correct output should be
 		let mut string = virt.clone();
 		string += "  ";
-		string += &color.bold("Provided By:");
+		string += &config.color.bold("Provided By:");
 		string += " systemd-standalone-sysusers, systemd, opensysusers\n";
 
 		// Convert the vector of bytes to a string
@@ -483,13 +481,12 @@ mod test {
 	fn version() {
 		let mut out = Vec::new();
 		let cache = new_cache!().unwrap();
-		let color = Color::default();
 		let config = Config::default();
 
 		let pkg = cache.get("dpkg").unwrap();
 		let cand = pkg.candidate().unwrap();
 
-		list_version(&mut out, &config, &color, &pkg, &cand).unwrap();
+		list_version(&mut out, &config, &pkg, &cand).unwrap();
 
 		// Convert the vector of bytes to a string
 		let output = std::str::from_utf8(&out).unwrap();
