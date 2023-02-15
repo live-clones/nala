@@ -1,116 +1,13 @@
 use std::collections::HashSet;
 
 use anyhow::{bail, Result};
-use globset::GlobBuilder;
-use regex::{Regex, RegexBuilder};
 use rust_apt::cache::PackageSort;
 use rust_apt::new_cache;
 use rust_apt::package::{Package, Version};
 
-use crate::colors::Color;
 use crate::config::Config;
 use crate::dprint;
-
-struct Matcher {
-	regexs: Vec<Regex>,
-}
-
-impl Matcher {
-	/// Simple wrapper to easy create regex only
-	pub fn new_regex(regexs: Vec<Regex>) -> Matcher { Matcher { regexs } }
-
-	/// Turn an iterator of strings into regex patterns.
-	pub fn from_regexs<T: AsRef<str>>(strings: &[T]) -> Result<Matcher> {
-		let mut regex = Vec::new();
-		for string in strings {
-			regex.push(
-				RegexBuilder::new(string.as_ref())
-					.case_insensitive(true)
-					.build()?,
-			);
-		}
-		Ok(Matcher::new_regex(regex))
-	}
-
-	/// Matches only package names.
-	/// Return found Packages, and not found regex &str.
-	///
-	/// names_only = true will match only against pkg names.
-	pub fn regex_pkgs<'a, Container: IntoIterator<Item = Package<'a>>>(
-		&self,
-		packages: Container,
-		names_only: bool,
-	) -> (Vec<Package<'a>>, HashSet<String>) {
-		let mut found_pkgs = Vec::new();
-		let mut not_found =
-			HashSet::from_iter(self.regexs.iter().map(|regex| regex.as_str().to_string()));
-
-		'outer: for pkg in packages {
-			// Check for pkg name matches first.
-			for regex in &self.regexs {
-				if regex.is_match(pkg.name()) {
-					found_pkgs.push(pkg);
-					not_found.remove(regex.as_str());
-					// Continue with packages as we don't want to hit versions if we can help it.
-					continue 'outer;
-				}
-			}
-
-			// If we only want names we can skip the descriptions
-			if names_only {
-				continue;
-			}
-
-			// Search all versions for a matching description
-			for ver in pkg.versions().collect::<Vec<Version>>() {
-				if let Some(desc) = ver.description() {
-					for regex in &self.regexs {
-						if regex.is_match(&desc) {
-							found_pkgs.push(pkg);
-							not_found.remove(regex.as_str());
-							continue 'outer;
-						}
-					}
-				}
-			}
-		}
-		(found_pkgs, not_found)
-	}
-}
-
-pub fn glob_pkgs<'a, Container: IntoIterator<Item = Package<'a>>, T: AsRef<str>>(
-	glob_strings: &[T],
-	packages: Container,
-) -> Result<(Vec<Package<'a>>, HashSet<String>)> {
-	let mut found_pkgs = Vec::new();
-
-	// Build the glob patterns from the strings provided
-	let mut globs = vec![];
-	for string in glob_strings {
-		globs.push(
-			GlobBuilder::new(string.as_ref())
-				.case_insensitive(true)
-				.build()?
-				.compile_matcher(),
-		)
-	}
-
-	let mut not_found = HashSet::from_iter(globs.iter().map(|glob| glob.glob().to_string()));
-
-	for pkg in packages {
-		// Check for pkg name matches first.
-		for glob in &globs {
-			if glob.is_match(pkg.name()) {
-				found_pkgs.push(pkg);
-				// Globble Globble Globble this gives us a &str lol
-				not_found.remove(glob.glob().glob());
-				// We have already moved the package so we need to just continue
-				break;
-			}
-		}
-	}
-	Ok((found_pkgs, not_found))
-}
+use crate::util::{glob_pkgs, Matcher};
 
 /// The search command
 pub fn search(config: &Config) -> Result<()> {

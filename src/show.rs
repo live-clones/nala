@@ -1,20 +1,34 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::fmt::format;
+use std::fs;
+use std::hash::Hash;
+use std::ops::Index;
+use std::path::PathBuf;
 
 use anyhow::{bail, Result};
-use rust_apt::cache::{Cache, PackageSort};
+use regex::{Regex, RegexBuilder};
+use rust_apt::cache::PackageSort;
 use rust_apt::new_cache;
-use rust_apt::package::{Package, Provider, Version};
+use rust_apt::package::DepType;
+use rust_apt::records::RecordField;
+use rust_apt::util::{unit_str, NumSys};
 
-use crate::colors::Color;
 use crate::config::Config;
-use crate::dprint;
-use crate::list::glob_pkgs;
+use crate::util::{glob_pkgs, virtual_filter};
+
+pub fn build_regex(pattern: &str) -> Result<Regex> {
+	Ok(RegexBuilder::new(pattern).case_insensitive(true).build()?)
+}
 
 /// The show command
 pub fn show(config: &Config) -> Result<()> {
 	// let mut out = std::io::stdout().lock();
 	let cache = new_cache!()?;
+
+	// Regex for formating the Apt sources from URI.
+	let url_regex = build_regex("(https?://.*?/.*?/)")?;
+	// Regex for finding Pacstall remote repo
+	let pacstall_regex = build_regex(r#"_remoterepo="(.*?)""#)?;
 
 	// Filter the packages by names if they were provided
 	let sort = PackageSort::default().include_virtual();
@@ -24,111 +38,231 @@ pub fn show(config: &Config) -> Result<()> {
 		None => bail!("At least one package name must be specified"),
 	};
 
-	// Extract this into a function. probably should go into util.rs
-	// Can use glob_pkgs as a template on however that takes iterators.
-	let mut virtual_filtered = vec![];
-	for pkg in packages {
-		// If the package has versions then it isn't virtual
-		// just push it and continue
-		if pkg.has_versions() {
-			virtual_filtered.push(pkg);
-			continue;
-		}
+	// Filter virtual packages into their real package.
+	for pkg in virtual_filter(packages, &cache, config)? {
+		// Because of the virtual filter, no virtual packages should make it here.
+		let ver = pkg.versions().next().unwrap();
+		// Temp change to installed for Pacstall testing.
+		// let ver = pkg.versions().last().unwrap();
 
-		// If the package doesn't have provides it's purely virtual
-		// There is nothing that can satisfy it. Referenced only by name
-		// At time of commit `python3-libmapper` is purely virtual
-		if !pkg.has_provides() {
-			config.color.warn(&format!(
-				"{} has no providers and is purely virutal",
-				config.color.package(pkg.name())
-			));
-			continue;
-		}
 
-		// Package is virtual so get its providers.
-		// HashSet for duplicated packages when there is more than one version
-		let providers: HashSet<Package> = pkg.provides().map(|p| p.package()).collect();
+		// let mut show_map = HashMap::new();
+		// let mut show_map: HashMap<&str, String> = HashMap::from([
+		// 	("Package", pkg.fullname(true)),
+		// 	("Version", config.color.blue(ver.version())),
+		// 	("Architecture", pkg.arch().to_string()),
+		// 	("Installed", pkg.installed().is_some().to_string()),
+		// 	("Priority", priority.to_string()),
+		// 	("Essential", pkg.is_essential().to_string()),
+		// 	("Section", "contrib/oldlibs".to_string()),
+		// 	("Source", ver.source_name().to_string()),
+		// 	(
+		// 		"Origin",
+		// 		ver.package_files()
+		// 			.next()
+		// 			.unwrap()
+		// 			.origin()
+		// 			.unwrap()
+		// 			.to_string(),
+		// 	),
+		// ("Maintainer",),
+		// ("Installed-Size",),
+		// Maybe need to format the Provides the same as depends?
+		// ("Provides",),
+		// Need to figure out how I'm going to format the depends.
+		// ("Depends",),
+		// ("Homepage",),
+		// ("Download-Size",),
+		// ("APT-Sources",),
+		// ("Description",),
+		// ]);
 
-		// If there is only one provider just select that as the target
-		if providers.len() == 1 {
-			// Unwrap should be fine here, we know that there is 1 in the Vector.
-			let target = providers.into_iter().next().unwrap();
-			config.color.notice(&format!(
-				"Selecting {} instead of virtual package {}",
-				config.color.package(target.name()),
-				config.color.package(pkg.name())
-			));
-
-			// Unwrap should be fine here because we know the name.
-			// We have to grab the package from the cache again because
-			// Provider lifetimes are a bit goofy.
-			virtual_filtered.push(cache.get(&target.fullname(false)).unwrap());
-			continue;
-		}
-
-		// If there are multiple providers then we will error out
-		// and show the packages the user could select instead.
-		if providers.len() > 1 {
-			println!(
-				"{} is a virtual package provided by:",
-				config.color.package(pkg.name())
-			);
-			for target in &providers {
-				// If the version doesn't have a candidate no sense in showing it
-				if let Some(cand) = target.candidate() {
-					println!(
-						"    {} {}",
-						config.color.package(&target.fullname(true)),
-						config.color.version(cand.version()),
-					)
-				}
-			}
-			bail!("You should select just one.")
-		}
-	}
-
-	return Ok(());
-	for pkg in packages {
-		// Temp for development lol
-		// if pkg.name() != "steam" { continue; }
-
+		// for (header, value) in show_map {
+		// 	println!("{} {value}", config.color.bold(header))
+		// }
 		println!(
 			"{} {}",
 			config.color.bold("Package:"),
-			config.color.package(pkg.name()),
+			config.color.package(&pkg.fullname(true))
 		);
-		// This package is completely virtual. Exists only in reference
-		println!("{} {}", config.color.bold("Virtual:"), !pkg.has_versions());
+
+		println!(
+			"{} {}",
+			config.color.bold("Version:"),
+			config.color.blue(ver.version())
+		);
+
+		println!("{} {}", config.color.bold("Architecture:"), pkg.arch());
+
+		println!(
+			"{} {}",
+			config.color.bold("Installed:"),
+			if ver.is_installed() { "Yes" } else { "No" }
+		);
+
+		println!(
+			"{} {}",
+			config.color.bold("Priority:"),
+			ver.priority_str().unwrap_or("Unknown")
+		);
+
+		println!(
+			"{} {}",
+			config.color.bold("Essential:"),
+			if pkg.is_essential() { "Yes" } else { "No" }
+		);
+
+		println!(
+			"{} {}",
+			config.color.bold("Section:"),
+			ver.section().unwrap_or("Unknown")
+		);
+
+		println!("{} {}", config.color.bold("Source:"), ver.source_name());
+
+		if let Some(record) = ver.get_record(RecordField::Maintainer) {
+			println!("{} {}", config.color.bold("Maintainer:"), record);
+		}
+
+		if let Some(record) = ver.get_record(RecordField::OriginalMaintainer) {
+			println!("{} {}", config.color.bold("Original-Maintainer:"), record);
+		}
+
+		println!(
+			"{} {}",
+			config.color.bold("Installed-Size:"),
+			unit_str(ver.installed_size(), NumSys::Binary)
+		);
+
+		// Package File Section
+		if let Some(pkg_file) = ver.package_files().next() {
+			println!(
+				"{} {}",
+				config.color.bold("Origin:"),
+				pkg_file.origin().unwrap_or("Unknown")
+			);
+		}
 
 		// If there are provides then show them!
-		if pkg.has_provides() {
-			println!(
-				"{}",
-				config
-					.color
-					.bold("Packages that provide this virtual package:")
-			);
+		let providers: Vec<String> = ver
+			.provides()
+			.map(|p| config.color.package(p.name()).to_string())
+			.collect();
 
-			// put the package names in a HashSet so there aren't duplicates
-			// this happens if there are multiple versions of the same package
-			let providers: HashSet<String> = pkg
-				.provides()
-				.map(|p| p.package().fullname(false))
-				.collect();
+		if !providers.is_empty() {
+			println!("{} {}", config.color.bold("Provides:"), providers.join(" "));
+		}
 
-			for pkg_name in providers {
-				// Print the package name that is provided
-				println!("    {}", config.color.package(&pkg_name));
+		// Add Depends here, Not sure how I wanna do the dang thing.
+		// Second line comment so I extra don't forget.
+		// Will probably still forget.
+
+		if let Some(record) = ver.get_record(RecordField::Homepage) {
+			println!("{} {}", config.color.bold("Homepage:"), record);
+		}
+
+		println!(
+			"{} {}",
+			config.color.bold("Download-Size:"),
+			unit_str(ver.size(), NumSys::Binary)
+		);
+
+		// Formating APT-Source. This is probably going to need extraction.
+		// We too will be adding support for Pacstall packages as python Nala has
+		if let Some(pkg_file) = ver.package_files().next() {
+			let mut source = String::new();
+			let mut pac_repo = String::new();
+			if let Ok(archive) = pkg_file.archive() {
+				if archive == "now" {
+					// Check if this could potentially be a Pacstall Package.
+					let postfixes = ["", "-deb", "-git", "-bin", "-app"];
+					for postfix in postfixes {
+						if let Ok(metadata) = fs::read_to_string(format!(
+							"/var/log/pacstall/metadata/{}{}",
+							pkg.name(),
+							postfix
+						)) {
+							if let Some(repo) = pacstall_regex.captures(&metadata) {
+								pac_repo += repo.get(1).unwrap().as_str()
+							} else {
+								pac_repo += "https://github.com/pacstall/pacstall-programs"
+							}
+						}
+					}
+
+					if pac_repo.is_empty() {
+						source += "local install"
+					} else {
+						source += &config.color.blue(&pac_repo)
+					}
+				} else {
+					let uri = ver.uris().next().unwrap();
+					source += url_regex.find(&uri).unwrap().as_str();
+					source += &format!(
+						" {}/{} {} Packages",
+						pkg_file.codename().unwrap(),
+						pkg_file.component().unwrap(),
+						pkg_file.arch().unwrap()
+					);
+				}
+				println!("{} {source}", config.color.bold("APT-Sources:"));
 			}
 		}
 
-		println!("Id: {}", pkg.id());
-		println!("Architecture: {}", pkg.arch());
-		for version in pkg.versions() {
-			println!("Architecture: {}", version.arch());
-			println!("Version: {}", version.version());
+		if let Some(depends) = ver.get_depends(&DepType::Depends) {
+			let mut depends_string = String::new();
+
+			if depends.len() > 4 {
+				depends_string += "\n    "
+			}
+
+			for dep in depends {
+				let mut dep_string = String::new();
+				// Or Deps need to be formatted slightly different.
+				if dep.is_or() {
+					continue;
+				}
+
+				let base_dep = dep.first();
+
+				let open_paren = config.color.bold("(");
+				let close_paren = config.color.bold(")");
+				//let name = config.color.package(&base_dep.name());
+
+				dep_string += " ";
+				if let Some(comp) = base_dep.comp() {
+					dep_string += &format!(
+						// libgnutls30 (>= 3.7.5)
+						"{} {open_paren}{comp} {}{close_paren}",
+						config.color.package(&base_dep.name()),
+						// There's a compare operator in the dependency.
+						// Dang better have a version smh my head.
+						config.color.blue(base_dep.version().unwrap())
+					);
+
+					if depends.len() > 4 {
+						dep_string += "\n    "
+					}
+
+				} else {
+					dep_string += &config.color.package(&base_dep.name());
+					if depends.len() > 4 {
+						dep_string += "\n    "
+					}
+				}
+				depends_string += &dep_string;
+			}
+			println!(
+				"{} {depends_string}",
+				config.color.bold("Depends:"),
+			);
 		}
+
+		println!(
+			"{} {}",
+			config.color.bold("Description:"),
+			ver.description().unwrap_or_else(|| "Unknown".to_string())
+		);
 
 		println!("\n");
 	}

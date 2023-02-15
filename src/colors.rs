@@ -259,9 +259,9 @@ impl Color {
 		self.color(self.color_map.get("bright_yellow").unwrap(), string)
 	}
 
-	// pub fn blue<'a>(&self, string: &'a str) -> Cow<'a, str> {
-	// 	self.color(self.color_map.get("bright_blue").unwrap(), string)
-	// }
+	pub fn blue<'a>(&self, string: &'a str) -> Cow<'a, str> {
+		self.color(self.color_map.get("bright_blue").unwrap(), string)
+	}
 
 	/// Styles the text in bold only
 	pub fn bold<'a>(&self, string: &'a str) -> Cow<'a, str> { self.style(Style::Bold, string) }
