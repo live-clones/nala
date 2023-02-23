@@ -415,7 +415,7 @@ msgstr "依赖："
 
 #: nala/error.py:47
 msgid "Either:"
-msgstr "任何："
+msgstr "任一："
 
 #: nala/error.py:49 nala/show.py:138
 msgid "Breaks:"
@@ -547,7 +547,7 @@ msgstr "{notice} 以上信息可能会有所帮助"
 #. ansible-core    2.12.4-1    1.2 MB
 #: nala/summary.py:40
 msgid "Package/Version/Size/Old Version/New Version/Either"
-msgstr "软件包/版本/大小/旧版本/新版本/任何"
+msgstr "软件包/版本/大小/旧版本/新版本/任一"
 
 #. Verb Tenses are [ "Present/Present Participle/Past" ]
 #. This ends up looking like [ "Auto-Purge 20 Packages" ]
