@@ -9,7 +9,7 @@ use anyhow::{bail, Result};
 use regex::{Regex, RegexBuilder};
 use rust_apt::cache::PackageSort;
 use rust_apt::new_cache;
-use rust_apt::package::DepType;
+use rust_apt::package::{DepType, Dependency};
 use rust_apt::records::RecordField;
 use rust_apt::util::{unit_str, NumSys};
 
@@ -18,6 +18,48 @@ use crate::util::{glob_pkgs, virtual_filter};
 
 pub fn build_regex(pattern: &str) -> Result<Regex> {
 	Ok(RegexBuilder::new(pattern).case_insensitive(true).build()?)
+}
+
+pub fn show_dependency(config: &Config, depends: &Vec<Dependency>, red: bool) -> String {
+	let mut depends_string = String::new();
+
+	if depends.len() > 4 {
+		depends_string += "\n    "
+	}
+
+	for dep in depends {
+		let mut dep_string = String::new();
+		// Or Deps need to be formatted slightly different.
+		if dep.is_or() {
+			continue;
+		}
+
+		let base_dep = dep.first();
+
+		let open_paren = config.color.bold("(");
+		let close_paren = config.color.bold(")");
+
+		if let Some(comp) = base_dep.comp() {
+			dep_string += &format!(
+				// libgnutls30 (>= 3.7.5)
+				"{} {open_paren}{comp} {}{close_paren}",
+				config.color.dependency(&base_dep.name(), red),
+				// There's a compare operator in the dependency.
+				// Dang better have a version smh my head.
+				config.color.blue(base_dep.version().unwrap())
+			);
+		} else {
+			dep_string += &config.color.dependency(&base_dep.name(), red);
+		}
+
+		if depends.len() > 4 {
+			dep_string += "\n    "
+		} else {
+			dep_string += " "
+		}
+		depends_string += &dep_string;
+	}
+	depends_string.trim_end().to_string()
 }
 
 /// The show command
@@ -44,7 +86,6 @@ pub fn show(config: &Config) -> Result<()> {
 		let ver = pkg.versions().next().unwrap();
 		// Temp change to installed for Pacstall testing.
 		// let ver = pkg.versions().last().unwrap();
-
 
 		// let mut show_map = HashMap::new();
 		// let mut show_map: HashMap<&str, String> = HashMap::from([
@@ -143,16 +184,6 @@ pub fn show(config: &Config) -> Result<()> {
 			);
 		}
 
-		// If there are provides then show them!
-		let providers: Vec<String> = ver
-			.provides()
-			.map(|p| config.color.package(p.name()).to_string())
-			.collect();
-
-		if !providers.is_empty() {
-			println!("{} {}", config.color.bold("Provides:"), providers.join(" "));
-		}
-
 		// Add Depends here, Not sure how I wanna do the dang thing.
 		// Second line comment so I extra don't forget.
 		// Will probably still forget.
@@ -209,53 +240,40 @@ pub fn show(config: &Config) -> Result<()> {
 			}
 		}
 
-		if let Some(depends) = ver.get_depends(&DepType::Depends) {
-			let mut depends_string = String::new();
+		// If there are provides then show them!
+		let providers: Vec<String> = ver
+			.provides()
+			.map(|p| config.color.package(p.name()).to_string())
+			.collect();
 
-			if depends.len() > 4 {
-				depends_string += "\n    "
+		if !providers.is_empty() {
+			println!("{} {}", config.color.bold("Provides:"), providers.join(" "));
+		}
+
+		let dependencies = [
+			("Depends:", DepType::Depends),
+			("Recommends:", DepType::Recommends),
+			("Suggests:", DepType::Suggests),
+			("Replaces:", DepType::Replaces),
+			("Conflicts:", DepType::Conflicts),
+			("Breaks:", DepType::Breaks),
+		];
+
+		for (header, deptype) in dependencies {
+			// These Dependency types will be colored red
+			let red = match deptype {
+				DepType::Conflicts => true,
+				DepType::Breaks => true,
+				_ => false,
+			};
+
+			if let Some(depends) = ver.get_depends(&deptype) {
+				println!(
+					"{} {}",
+					config.color.bold(header),
+					show_dependency(config, depends, red),
+				);
 			}
-
-			for dep in depends {
-				let mut dep_string = String::new();
-				// Or Deps need to be formatted slightly different.
-				if dep.is_or() {
-					continue;
-				}
-
-				let base_dep = dep.first();
-
-				let open_paren = config.color.bold("(");
-				let close_paren = config.color.bold(")");
-				//let name = config.color.package(&base_dep.name());
-
-				dep_string += " ";
-				if let Some(comp) = base_dep.comp() {
-					dep_string += &format!(
-						// libgnutls30 (>= 3.7.5)
-						"{} {open_paren}{comp} {}{close_paren}",
-						config.color.package(&base_dep.name()),
-						// There's a compare operator in the dependency.
-						// Dang better have a version smh my head.
-						config.color.blue(base_dep.version().unwrap())
-					);
-
-					if depends.len() > 4 {
-						dep_string += "\n    "
-					}
-
-				} else {
-					dep_string += &config.color.package(&base_dep.name());
-					if depends.len() > 4 {
-						dep_string += "\n    "
-					}
-				}
-				depends_string += &dep_string;
-			}
-			println!(
-				"{} {depends_string}",
-				config.color.bold("Depends:"),
-			);
 		}
 
 		println!(

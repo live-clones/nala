@@ -271,6 +271,14 @@ impl Color {
 		self.color(self.color_map.get("package").unwrap(), string)
 	}
 
+	/// Color the dependency, choosing if it's red or green
+	pub fn dependency<'a>(&self, string: &'a str, red: bool) -> Cow<'a, str> {
+		if red {
+			return self.color(self.color_map.get("bright_red").unwrap(), string);
+		}
+		self.color(self.color_map.get("package").unwrap(), string)
+	}
+
 	/// Color the version according to configuration
 	pub fn version<'a>(&self, string: &'a str) -> Cow<'a, str> {
 		let open = self.bold("(");
