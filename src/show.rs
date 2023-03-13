@@ -1,15 +1,10 @@
-use std::collections::HashMap;
-use std::fmt::format;
 use std::fs;
-use std::hash::Hash;
-use std::ops::Index;
-use std::path::PathBuf;
 
 use anyhow::{bail, Result};
 use regex::{Regex, RegexBuilder};
 use rust_apt::cache::PackageSort;
 use rust_apt::new_cache;
-use rust_apt::package::{DepType, Dependency};
+use rust_apt::package::{BaseDep, DepType, Dependency};
 use rust_apt::records::RecordField;
 use rust_apt::util::{unit_str, NumSys};
 
@@ -20,44 +15,59 @@ pub fn build_regex(pattern: &str) -> Result<Regex> {
 	Ok(RegexBuilder::new(pattern).case_insensitive(true).build()?)
 }
 
+pub fn format_dependency(config: &Config, base_dep: &BaseDep, red: bool) -> String {
+	let open_paren = config.color.bold("(");
+	let close_paren = config.color.bold(")");
+
+	if let Some(comp) = base_dep.comp() {
+		return format!(
+			// libgnutls30 (>= 3.7.5)
+			"{} {open_paren}{comp} {}{close_paren}",
+			config.color.dependency(base_dep.target_pkg().name(), red),
+			// There's a compare operator in the dependency.
+			// Dang better have a version smh my head.
+			config.color.blue(base_dep.version().unwrap())
+		);
+	}
+	config.color.dependency(base_dep.target_pkg().name(), red).to_string()
+}
+
+pub fn dependency_footer(total_deps: usize, index: usize) -> &'static str {
+	if total_deps > 4 {
+		return "\n    ";
+	}
+
+	// Only add the comma if it isn't the last.
+	if index + 1 != total_deps {
+		return ", ";
+	}
+
+	" "
+}
+
 pub fn show_dependency(config: &Config, depends: &Vec<Dependency>, red: bool) -> String {
 	let mut depends_string = String::new();
+	let total_deps = depends.len();
 
-	if depends.len() > 4 {
+	if total_deps > 4 {
 		depends_string += "\n    "
 	}
 
-	for dep in depends {
-		let mut dep_string = String::new();
+	for (i, dep) in depends.iter().enumerate() {
 		// Or Deps need to be formatted slightly different.
 		if dep.is_or() {
+			for (j, base_dep) in dep.base_deps.iter().enumerate() {
+				depends_string += &format_dependency(config, base_dep, red);
+				if j + 1 != dep.base_deps.len() {
+					depends_string += " | "
+				}
+			}
+			depends_string += dependency_footer(total_deps, i);
 			continue;
 		}
 
-		let base_dep = dep.first();
-
-		let open_paren = config.color.bold("(");
-		let close_paren = config.color.bold(")");
-
-		if let Some(comp) = base_dep.comp() {
-			dep_string += &format!(
-				// libgnutls30 (>= 3.7.5)
-				"{} {open_paren}{comp} {}{close_paren}",
-				config.color.dependency(&base_dep.name(), red),
-				// There's a compare operator in the dependency.
-				// Dang better have a version smh my head.
-				config.color.blue(base_dep.version().unwrap())
-			);
-		} else {
-			dep_string += &config.color.dependency(&base_dep.name(), red);
-		}
-
-		if depends.len() > 4 {
-			dep_string += "\n    "
-		} else {
-			dep_string += " "
-		}
-		depends_string += &dep_string;
+		depends_string += &format_dependency(config, dep.first(), red);
+		depends_string += dependency_footer(total_deps, i);
 	}
 	depends_string.trim_end().to_string()
 }
@@ -261,11 +271,7 @@ pub fn show(config: &Config) -> Result<()> {
 
 		for (header, deptype) in dependencies {
 			// These Dependency types will be colored red
-			let red = match deptype {
-				DepType::Conflicts => true,
-				DepType::Breaks => true,
-				_ => false,
-			};
+			let red = matches!(deptype, DepType::Conflicts | DepType::Breaks);
 
 			if let Some(depends) = ver.get_depends(&deptype) {
 				println!(
