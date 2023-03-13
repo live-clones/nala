@@ -4,7 +4,7 @@ use anyhow::{bail, Result};
 use regex::{Regex, RegexBuilder};
 use rust_apt::cache::PackageSort;
 use rust_apt::new_cache;
-use rust_apt::package::{BaseDep, DepType, Dependency};
+use rust_apt::package::{BaseDep, DepType, Dependency, Package};
 use rust_apt::records::RecordField;
 use rust_apt::util::{unit_str, NumSys};
 
@@ -29,7 +29,10 @@ pub fn format_dependency(config: &Config, base_dep: &BaseDep, red: bool) -> Stri
 			config.color.blue(base_dep.version().unwrap())
 		);
 	}
-	config.color.dependency(base_dep.target_pkg().name(), red).to_string()
+	config
+		.color
+		.dependency(base_dep.target_pkg().name(), red)
+		.to_string()
 }
 
 pub fn dependency_footer(total_deps: usize, index: usize) -> &'static str {
@@ -72,6 +75,31 @@ pub fn show_dependency(config: &Config, depends: &Vec<Dependency>, red: bool) ->
 	depends_string.trim_end().to_string()
 }
 
+pub fn format_local(pkg: &Package, config: &Config, pacstall_regex: &Regex) -> String {
+	// Check if this could potentially be a Pacstall Package.
+	let mut pac_repo = String::new();
+	let postfixes = ["", "-deb", "-git", "-bin", "-app"];
+	for postfix in postfixes {
+		if let Ok(metadata) = fs::read_to_string(format!(
+			"/var/log/pacstall/metadata/{}{}",
+			pkg.name(),
+			postfix
+		)) {
+			if let Some(repo) = pacstall_regex.captures(&metadata) {
+				pac_repo += repo.get(1).unwrap().as_str()
+			} else {
+				pac_repo += "https://github.com/pacstall/pacstall-programs"
+			}
+		}
+	}
+
+	if pac_repo.is_empty() {
+		return "local install".to_string();
+	}
+
+	config.color.blue(&pac_repo).to_string()
+}
+
 /// The show command
 pub fn show(config: &Config) -> Result<()> {
 	// let mut out = std::io::stdout().lock();
@@ -94,43 +122,7 @@ pub fn show(config: &Config) -> Result<()> {
 	for pkg in virtual_filter(packages, &cache, config)? {
 		// Because of the virtual filter, no virtual packages should make it here.
 		let ver = pkg.versions().next().unwrap();
-		// Temp change to installed for Pacstall testing.
-		// let ver = pkg.versions().last().unwrap();
 
-		// let mut show_map = HashMap::new();
-		// let mut show_map: HashMap<&str, String> = HashMap::from([
-		// 	("Package", pkg.fullname(true)),
-		// 	("Version", config.color.blue(ver.version())),
-		// 	("Architecture", pkg.arch().to_string()),
-		// 	("Installed", pkg.installed().is_some().to_string()),
-		// 	("Priority", priority.to_string()),
-		// 	("Essential", pkg.is_essential().to_string()),
-		// 	("Section", "contrib/oldlibs".to_string()),
-		// 	("Source", ver.source_name().to_string()),
-		// 	(
-		// 		"Origin",
-		// 		ver.package_files()
-		// 			.next()
-		// 			.unwrap()
-		// 			.origin()
-		// 			.unwrap()
-		// 			.to_string(),
-		// 	),
-		// ("Maintainer",),
-		// ("Installed-Size",),
-		// Maybe need to format the Provides the same as depends?
-		// ("Provides",),
-		// Need to figure out how I'm going to format the depends.
-		// ("Depends",),
-		// ("Homepage",),
-		// ("Download-Size",),
-		// ("APT-Sources",),
-		// ("Description",),
-		// ]);
-
-		// for (header, value) in show_map {
-		// 	println!("{} {value}", config.color.bold(header))
-		// }
 		println!(
 			"{} {}",
 			config.color.bold("Package:"),
@@ -185,6 +177,12 @@ pub fn show(config: &Config) -> Result<()> {
 			unit_str(ver.installed_size(), NumSys::Binary)
 		);
 
+		println!(
+			"{} {}",
+			config.color.bold("Download-Size:"),
+			unit_str(ver.size(), NumSys::Binary)
+		);
+
 		// Package File Section
 		if let Some(pkg_file) = ver.package_files().next() {
 			println!(
@@ -192,50 +190,12 @@ pub fn show(config: &Config) -> Result<()> {
 				config.color.bold("Origin:"),
 				pkg_file.origin().unwrap_or("Unknown")
 			);
-		}
 
-		// Add Depends here, Not sure how I wanna do the dang thing.
-		// Second line comment so I extra don't forget.
-		// Will probably still forget.
-
-		if let Some(record) = ver.get_record(RecordField::Homepage) {
-			println!("{} {}", config.color.bold("Homepage:"), record);
-		}
-
-		println!(
-			"{} {}",
-			config.color.bold("Download-Size:"),
-			unit_str(ver.size(), NumSys::Binary)
-		);
-
-		// Formating APT-Source. This is probably going to need extraction.
-		// We too will be adding support for Pacstall packages as python Nala has
-		if let Some(pkg_file) = ver.package_files().next() {
+			// Check if source is local, pacstall or from a repo
 			let mut source = String::new();
-			let mut pac_repo = String::new();
 			if let Ok(archive) = pkg_file.archive() {
 				if archive == "now" {
-					// Check if this could potentially be a Pacstall Package.
-					let postfixes = ["", "-deb", "-git", "-bin", "-app"];
-					for postfix in postfixes {
-						if let Ok(metadata) = fs::read_to_string(format!(
-							"/var/log/pacstall/metadata/{}{}",
-							pkg.name(),
-							postfix
-						)) {
-							if let Some(repo) = pacstall_regex.captures(&metadata) {
-								pac_repo += repo.get(1).unwrap().as_str()
-							} else {
-								pac_repo += "https://github.com/pacstall/pacstall-programs"
-							}
-						}
-					}
-
-					if pac_repo.is_empty() {
-						source += "local install"
-					} else {
-						source += &config.color.blue(&pac_repo)
-					}
+					source += &format_local(&pkg, config, &pacstall_regex);
 				} else {
 					let uri = ver.uris().next().unwrap();
 					source += url_regex.find(&uri).unwrap().as_str();
@@ -248,6 +208,10 @@ pub fn show(config: &Config) -> Result<()> {
 				}
 				println!("{} {source}", config.color.bold("APT-Sources:"));
 			}
+		}
+
+		if let Some(record) = ver.get_record(RecordField::Homepage) {
+			println!("{} {}", config.color.bold("Homepage:"), record);
 		}
 
 		// If there are provides then show them!
@@ -270,10 +234,10 @@ pub fn show(config: &Config) -> Result<()> {
 		];
 
 		for (header, deptype) in dependencies {
-			// These Dependency types will be colored red
-			let red = matches!(deptype, DepType::Conflicts | DepType::Breaks);
-
 			if let Some(depends) = ver.get_depends(&deptype) {
+				// These Dependency types will be colored red
+				let red = matches!(deptype, DepType::Conflicts | DepType::Breaks);
+
 				println!(
 					"{} {}",
 					config.color.bold(header),
