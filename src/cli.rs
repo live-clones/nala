@@ -33,6 +33,7 @@ pub enum Commands {
 	List(List),
 	Search(Search),
 	Show(Show),
+	Clean(Clean),
 }
 
 #[derive(Args, Debug)]
@@ -83,6 +84,7 @@ pub struct Search {
 }
 
 #[derive(Args, Debug)]
+<<<<<<< HEAD
 pub struct Show {
 	/// Package names to show
 	#[clap(required = false)]
@@ -90,4 +92,10 @@ pub struct Show {
 
 	#[clap(short = 'a', long, action)]
 	pub all_versions: bool,
+=======
+pub struct Clean {
+	#[clap(long, action)]
+	pub list: bool,
+	pub fetch: bool,
+>>>>>>> 5ba874b (feat: add `clean.rs`)
 }

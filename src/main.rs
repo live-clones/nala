@@ -7,6 +7,7 @@ use clap::{CommandFactory, FromArgMatches};
 mod cli;
 mod colors;
 mod config;
+mod clean;
 mod list;
 mod show;
 mod util;
@@ -15,6 +16,7 @@ use crate::colors::Color;
 use crate::config::Config;
 use crate::list::{list, search};
 use crate::show::show;
+use crate::clean::clean;
 
 fn main() -> ExitCode {
 	// Setup default color to print pretty even if the config fails
@@ -46,6 +48,7 @@ fn main_nala(color: &Color) -> Result<()> {
 		},
 	};
 
+	clean(&config);
 	if derived.license {
 		println!("Not Yet Implemented.");
 		return Ok(());
