@@ -84,7 +84,6 @@ pub struct Search {
 }
 
 #[derive(Args, Debug)]
-<<<<<<< HEAD
 pub struct Show {
 	/// Package names to show
 	#[clap(required = false)]
@@ -92,10 +91,13 @@ pub struct Show {
 
 	#[clap(short = 'a', long, action)]
 	pub all_versions: bool,
-=======
+}
+
+#[derive(Args, Debug)]
 pub struct Clean {
 	#[clap(long, action)]
-	pub list: bool,
+	pub lists: bool,
+
+	#[clap(long, action)]
 	pub fetch: bool,
->>>>>>> 5ba874b (feat: add `clean.rs`)
 }

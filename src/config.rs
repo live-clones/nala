@@ -72,8 +72,8 @@ impl Config {
 			"upgradable",
 			"virtual",
 			"names",
-			// "lists",
-			// "fetch",
+			"lists",
+			"fetch",
 		];
 
 		for opt in bool_opts {
