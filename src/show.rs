@@ -50,8 +50,10 @@ pub fn dependency_footer(total_deps: usize, index: usize) -> &'static str {
 
 pub fn show_dependency(config: &Config, depends: &Vec<Dependency>, red: bool) -> String {
 	let mut depends_string = String::new();
+	// Get total deps number to include Or Dependencies
 	let total_deps = depends.len();
 
+	// If there are more than 4 deps format with multiple lines
 	if total_deps > 4 {
 		depends_string += "\n    "
 	}
@@ -69,10 +71,11 @@ pub fn show_dependency(config: &Config, depends: &Vec<Dependency>, red: bool) ->
 			continue;
 		}
 
+		// Regular dependencies are more simple than Or
 		depends_string += &format_dependency(config, dep.first(), red);
 		depends_string += dependency_footer(total_deps, i);
 	}
-	depends_string.trim_end().to_string()
+	depends_string
 }
 
 pub fn format_local(pkg: &Package, config: &Config, pacstall_regex: &Regex) -> String {
@@ -241,7 +244,7 @@ pub fn show(config: &Config) -> Result<()> {
 				println!(
 					"{} {}",
 					config.color.bold(header),
-					show_dependency(config, depends, red),
+					show_dependency(config, depends, red).trim_end(),
 				);
 			}
 		}
