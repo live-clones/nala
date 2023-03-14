@@ -48,7 +48,7 @@ pub fn dependency_footer(total_deps: usize, index: usize) -> &'static str {
 	" "
 }
 
-pub fn show_dependency(config: &Config, depends: &Vec<Dependency>, red: bool) -> String {
+pub fn show_dependency(config: &Config, depends: &Vec<&Dependency>, red: bool) -> String {
 	let mut depends_string = String::new();
 	// Get total deps number to include Or Dependencies
 	let total_deps = depends.len();
@@ -238,13 +238,27 @@ pub fn show(config: &Config) -> Result<()> {
 
 		for (header, deptype) in dependencies {
 			if let Some(depends) = ver.get_depends(&deptype) {
+				// Dedupe dependencies as they have duplicates sometimes
+				// Believed to be due to multi arch
+				let mut depend_names = vec![];
+				let mut deduped_depends = vec![];
+
+				for dep in depends {
+					let name = dep.first().name();
+					if !depend_names.contains(&name) {
+						depend_names.push(name);
+						deduped_depends.push(dep);
+					}
+				}
+
 				// These Dependency types will be colored red
 				let red = matches!(deptype, DepType::Conflicts | DepType::Breaks);
 
 				println!(
 					"{} {}",
 					config.color.bold(header),
-					show_dependency(config, depends, red).trim_end(),
+					// Trim end because I have no idea how to code properly
+					show_dependency(config, &deduped_depends, red).trim_end(),
 				);
 			}
 		}
