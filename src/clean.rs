@@ -1,6 +1,6 @@
 use std::fs::{read_dir, remove_file};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use crate::config::Config;
 
@@ -11,7 +11,8 @@ fn remove_files(file_str: &str) -> Result<()> {
 		for path in paths.flatten() {
 			if let Ok(is_file) = path.file_type() {
 				if is_file.is_file() {
-					remove_file(path.path())?;
+					remove_file(path.path())
+						.with_context(|| format!("Failed to remove {}", path.path().display()))?;
 				}
 			}
 		}
@@ -26,7 +27,8 @@ pub fn clean(config: &Config) -> Result<()> {
 	}
 
 	if config.get_bool("fetch", false) {
-		remove_file("/etc/apt/sources.list.d/nala-sources.list")?;
+		remove_file("/etc/apt/sources.list.d/nala-sources.list")
+			.context("Failed to remove `/etc/apt/sources.list.d/nala-sources.list`")?;
 		// Because of anyhow we have to return Ok here.
 		return Ok(());
 	}
