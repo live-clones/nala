@@ -87,4 +87,7 @@ pub struct Show {
 	/// Package names to show
 	#[clap(required = false)]
 	pub pkg_names: Vec<String>,
+
+	#[clap(short = 'a', long, action)]
+	pub all_versions: bool,
 }

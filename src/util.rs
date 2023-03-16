@@ -108,7 +108,7 @@ pub fn glob_pkgs<'a, Container: IntoIterator<Item = Package<'a>>, T: AsRef<str>>
 	for pkg in packages {
 		// Check for pkg name matches first.
 		for glob in &globs {
-			if glob.is_match(pkg.name()) {
+			if glob.is_match(pkg.fullname(true)) {
 				found_pkgs.push(pkg);
 				// Globble Globble Globble this gives us a &str lol
 				not_found.remove(glob.glob().glob());

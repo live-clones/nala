@@ -4,7 +4,7 @@ use anyhow::{bail, Result};
 use regex::{Regex, RegexBuilder};
 use rust_apt::cache::PackageSort;
 use rust_apt::new_cache;
-use rust_apt::package::{BaseDep, DepType, Dependency, Package};
+use rust_apt::package::{BaseDep, DepType, Dependency, Package, Version};
 use rust_apt::records::RecordField;
 use rust_apt::util::{unit_str, NumSys};
 
@@ -104,6 +104,161 @@ pub fn format_local(pkg: &Package, config: &Config, pacstall_regex: &Regex) -> S
 }
 
 /// The show command
+pub fn show_version<'a>(
+	config: &Config,
+	pkg: &'a Package,
+	ver: &'a Version<'a>,
+	pacstall_regex: &Regex,
+	url_regex: &Regex,
+) -> Result<()> {
+	println!(
+		"{} {}",
+		config.color.bold("Package:"),
+		config.color.package(&pkg.fullname(true))
+	);
+
+	println!(
+		"{} {}",
+		config.color.bold("Version:"),
+		config.color.blue(ver.version())
+	);
+
+	println!("{} {}", config.color.bold("Architecture:"), pkg.arch());
+
+	println!(
+		"{} {}",
+		config.color.bold("Installed:"),
+		if ver.is_installed() { "Yes" } else { "No" }
+	);
+
+	println!(
+		"{} {}",
+		config.color.bold("Priority:"),
+		ver.priority_str().unwrap_or("Unknown")
+	);
+
+	println!(
+		"{} {}",
+		config.color.bold("Essential:"),
+		if pkg.is_essential() { "Yes" } else { "No" }
+	);
+
+	println!(
+		"{} {}",
+		config.color.bold("Section:"),
+		ver.section().unwrap_or("Unknown")
+	);
+
+	println!("{} {}", config.color.bold("Source:"), ver.source_name());
+
+	if let Some(record) = ver.get_record(RecordField::Maintainer) {
+		println!("{} {}", config.color.bold("Maintainer:"), record);
+	}
+
+	if let Some(record) = ver.get_record(RecordField::OriginalMaintainer) {
+		println!("{} {}", config.color.bold("Original-Maintainer:"), record);
+	}
+
+	println!(
+		"{} {}",
+		config.color.bold("Installed-Size:"),
+		unit_str(ver.installed_size(), NumSys::Binary)
+	);
+
+	println!(
+		"{} {}",
+		config.color.bold("Download-Size:"),
+		unit_str(ver.size(), NumSys::Binary)
+	);
+
+	// Package File Section
+	if let Some(pkg_file) = ver.package_files().next() {
+		println!(
+			"{} {}",
+			config.color.bold("Origin:"),
+			pkg_file.origin().unwrap_or("Unknown")
+		);
+
+		// Check if source is local, pacstall or from a repo
+		let mut source = String::new();
+		if let Ok(archive) = pkg_file.archive() {
+			if archive == "now" {
+				source += &format_local(pkg, config, pacstall_regex);
+			} else {
+				let uri = ver.uris().next().unwrap();
+				source += url_regex.find(&uri).unwrap().as_str();
+				source += &format!(
+					" {}/{} {} Packages",
+					pkg_file.codename().unwrap(),
+					pkg_file.component().unwrap(),
+					pkg_file.arch().unwrap()
+				);
+			}
+			println!("{} {source}", config.color.bold("APT-Sources:"));
+		}
+	}
+
+	if let Some(record) = ver.get_record(RecordField::Homepage) {
+		println!("{} {}", config.color.bold("Homepage:"), record);
+	}
+
+	// If there are provides then show them!
+	let providers: Vec<String> = ver
+		.provides()
+		.map(|p| config.color.package(p.name()).to_string())
+		.collect();
+
+	if !providers.is_empty() {
+		println!("{} {}", config.color.bold("Provides:"), providers.join(" "));
+	}
+
+	let dependencies = [
+		("Depends:", DepType::Depends),
+		("Recommends:", DepType::Recommends),
+		("Suggests:", DepType::Suggests),
+		("Replaces:", DepType::Replaces),
+		("Conflicts:", DepType::Conflicts),
+		("Breaks:", DepType::Breaks),
+	];
+
+	for (header, deptype) in dependencies {
+		if let Some(depends) = ver.get_depends(&deptype) {
+			// Dedupe dependencies as they have duplicates sometimes
+			// Believed to be due to multi arch
+			let mut depend_names = vec![];
+			let mut deduped_depends = vec![];
+
+			for dep in depends {
+				let name = dep.first().name();
+				if !depend_names.contains(&name) {
+					depend_names.push(name);
+					deduped_depends.push(dep);
+				}
+			}
+
+			// These Dependency types will be colored red
+			let red = matches!(deptype, DepType::Conflicts | DepType::Breaks);
+
+			println!(
+				"{} {}",
+				config.color.bold(header),
+				// Trim end because I have no idea how to code properly
+				show_dependency(config, &deduped_depends, red).trim_end(),
+			);
+		}
+	}
+
+	println!(
+		"{} {}",
+		config.color.bold("Description:"),
+		ver.description().unwrap_or_else(|| "Unknown".to_string())
+	);
+
+	println!();
+	Ok(())
+}
+
+/// The show command
 pub fn show(config: &Config) -> Result<()> {
 	// let mut out = std::io::stdout().lock();
 	let cache = new_cache!()?;
@@ -121,155 +276,37 @@ pub fn show(config: &Config) -> Result<()> {
 		None => bail!("At least one package name must be specified"),
 	};
 
+	let mut additional_records = 0;
 	// Filter virtual packages into their real package.
 	for pkg in virtual_filter(packages, &cache, config)? {
-		// Because of the virtual filter, no virtual packages should make it here.
-		let ver = pkg.versions().next().unwrap();
+		let versions = pkg.versions().collect::<Vec<_>>();
+		additional_records += versions.len();
 
-		println!(
-			"{} {}",
-			config.color.bold("Package:"),
-			config.color.package(&pkg.fullname(true))
-		);
-
-		println!(
-			"{} {}",
-			config.color.bold("Version:"),
-			config.color.blue(ver.version())
-		);
-
-		println!("{} {}", config.color.bold("Architecture:"), pkg.arch());
-
-		println!(
-			"{} {}",
-			config.color.bold("Installed:"),
-			if ver.is_installed() { "Yes" } else { "No" }
-		);
-
-		println!(
-			"{} {}",
-			config.color.bold("Priority:"),
-			ver.priority_str().unwrap_or("Unknown")
-		);
-
-		println!(
-			"{} {}",
-			config.color.bold("Essential:"),
-			if pkg.is_essential() { "Yes" } else { "No" }
-		);
-
-		println!(
-			"{} {}",
-			config.color.bold("Section:"),
-			ver.section().unwrap_or("Unknown")
-		);
-
-		println!("{} {}", config.color.bold("Source:"), ver.source_name());
-
-		if let Some(record) = ver.get_record(RecordField::Maintainer) {
-			println!("{} {}", config.color.bold("Maintainer:"), record);
-		}
-
-		if let Some(record) = ver.get_record(RecordField::OriginalMaintainer) {
-			println!("{} {}", config.color.bold("Original-Maintainer:"), record);
-		}
-
-		println!(
-			"{} {}",
-			config.color.bold("Installed-Size:"),
-			unit_str(ver.installed_size(), NumSys::Binary)
-		);
-
-		println!(
-			"{} {}",
-			config.color.bold("Download-Size:"),
-			unit_str(ver.size(), NumSys::Binary)
-		);
-
-		// Package File Section
-		if let Some(pkg_file) = ver.package_files().next() {
-			println!(
-				"{} {}",
-				config.color.bold("Origin:"),
-				pkg_file.origin().unwrap_or("Unknown")
-			);
-
-			// Check if source is local, pacstall or from a repo
-			let mut source = String::new();
-			if let Ok(archive) = pkg_file.archive() {
-				if archive == "now" {
-					source += &format_local(&pkg, config, &pacstall_regex);
-				} else {
-					let uri = ver.uris().next().unwrap();
-					source += url_regex.find(&uri).unwrap().as_str();
-					source += &format!(
-						" {}/{} {} Packages",
-						pkg_file.codename().unwrap(),
-						pkg_file.component().unwrap(),
-						pkg_file.arch().unwrap()
-					);
+		match config.get_bool("all-versions", false) {
+			false => {
+				if let Some(version) = versions.first() {
+					show_version(config, &pkg, version, &pacstall_regex, &url_regex)?;
+					additional_records -= 1;
 				}
-				println!("{} {source}", config.color.bold("APT-Sources:"));
-			}
-		}
-
-		if let Some(record) = ver.get_record(RecordField::Homepage) {
-			println!("{} {}", config.color.bold("Homepage:"), record);
-		}
-
-		// If there are provides then show them!
-		let providers: Vec<String> = ver
-			.provides()
-			.map(|p| config.color.package(p.name()).to_string())
-			.collect();
-
-		if !providers.is_empty() {
-			println!("{} {}", config.color.bold("Provides:"), providers.join(" "));
-		}
-
-		let dependencies = [
-			("Depends:", DepType::Depends),
-			("Recommends:", DepType::Recommends),
-			("Suggests:", DepType::Suggests),
-			("Replaces:", DepType::Replaces),
-			("Conflicts:", DepType::Conflicts),
-			("Breaks:", DepType::Breaks),
-		];
-
-		for (header, deptype) in dependencies {
-			if let Some(depends) = ver.get_depends(&deptype) {
-				// Dedupe dependencies as they have duplicates sometimes
-				// Believed to be due to multi arch
-				let mut depend_names = vec![];
-				let mut deduped_depends = vec![];
-
-				for dep in depends {
-					let name = dep.first().name();
-					if !depend_names.contains(&name) {
-						depend_names.push(name);
-						deduped_depends.push(dep);
-					}
+			},
+			true => {
+				for version in &versions {
+					show_version(config, &pkg, version, &pacstall_regex, &url_regex)?;
+					additional_records -= 1;
 				}
-
-				// These Dependency types will be colored red
-				let red = matches!(deptype, DepType::Conflicts | DepType::Breaks);
-
-				println!(
-					"{} {}",
-					config.color.bold(header),
-					// Trim end because I have no idea how to code properly
-					show_dependency(config, &deduped_depends, red).trim_end(),
-				);
-			}
+			},
 		}
+	}
 
-		println!(
-			"{} {}",
-			config.color.bold("Description:"),
-			ver.description().unwrap_or_else(|| "Unknown".to_string())
+	if additional_records != 0 {
+		config.color.notice(
+			&format_args!(
+				"There are {} additional records. Please use the {} switch to see them.",
+				config.color.yellow(&additional_records.to_string()),
+				config.color.yellow("'-a'"),
+			)
+			.to_string(),
 		);
-
-		println!("\n");
 	}
 
 	Ok(())
