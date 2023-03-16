@@ -17,7 +17,6 @@ use crate::colors::Color;
 use crate::config::Config;
 use crate::list::{list, search};
 use crate::show::show;
-use crate::clean::clean;
 
 fn main() -> ExitCode {
 	// Setup default color to print pretty even if the config fails
@@ -61,8 +60,6 @@ fn main_nala(color: &Color) -> Result<()> {
 				"list" => list(&config)?,
 				"search" => search(&config)?,
 				"show" => show(&config)?,
-				"list" => list(&config)?,
-				"search" => search(&config)?,
 				"clean" => clean(&config)?,
 				// Match other subcommands here...
 				_ => return Err(anyhow!("Unknown error in the argument parser")),
