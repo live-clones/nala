@@ -63,11 +63,9 @@ msgstr "{error} Version für {package} wurde nicht gefunden"
 msgid "There are broken packages that need to be fixed!"
 msgstr "Es gibt beschädigte Pakete, die repariert werden müssen!"
 
-# Try what?
 #: nala/nala.py:124
-#, fuzzy
 msgid "You can use {switch} if you'd like to try without fixing them."
-msgstr "Sie können {switch} verwenden, wenn Sie es versuchen möchten, ohne sie zu reparieren."
+msgstr "Sie können {switch} verwenden, wenn Sie es ohne Reparatur versuchen möchten."
 
 #: nala/nala.py:169
 msgid "{error} Missing packages to install"
