@@ -4,8 +4,8 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use clap::{ArgMatches, ValueSource};
-use serde::Deserialize;
 use rust_apt::config::Config as AptConfig;
+use serde::Deserialize;
 
 use crate::colors::{Color, ColorType, Style, Theme, COLOR_MAP};
 use crate::util::dprint;
@@ -175,7 +175,7 @@ impl Config {
 			// For now NalaSources is hard coded.
 			Paths::NalaSources => dir.path().to_string(),
 			// Everything else should be an Apt Path
-			_ => self.apt.dir(dir.path(), dir.default_path())
+			_ => self.apt.dir(dir.path(), dir.default_path()),
 		}
 	}
 
