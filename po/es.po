@@ -268,20 +268,24 @@ msgid ""
 "{error} No content length in response from {url}\n"
 "  Ensure the URL points to a Debian Package"
 msgstr ""
+"{error} Sin longitud de contenido en respuesta de {url}\n"
+"  Asegúrese de que el URL señale a un paquete Debian"
 
 #: nala/install.py:650
 msgid ""
 "{error} It is not secure to download a package without a hashsum verification.\n"
 "  If you are sure you do NOT want verification, use '-o APT::Get::AllowUnauthenticated=true'"
 msgstr ""
+"{error} No es seguro descargar un paquete sin la verificación de hashsum.\n"
+"  Si esta seguro que NO quiere verificación, use '-o APT::Get::AllowUnauthenticated=true'"
 
 #: nala/install.py:696
 msgid "{error} Hash does not match the '{hash_type}' Length"
-msgstr ""
+msgstr "{error} El Hash no coincide con la longitud de '{hash_type}'"
 
 #: nala/install.py:703
 msgid "{error} Hash Type '{hash_type}' specified with no hash"
-msgstr ""
+msgstr "{error} El Tipo de Hash '{hash_type}' está especificado sin hash"
 
 #: nala/install.py:710
 #, fuzzy
@@ -604,11 +608,11 @@ msgstr "Sugerido, no se instalará"
 
 #: nala/summary.py:249 nala/summary.py:267
 msgid "Kept Back, Will Not Be Upgraded"
-msgstr ""
+msgstr "Quedando atrás, no se actualizará"
 
 #: nala/summary.py:249 nala/summary.py:267
 msgid "Kept Back"
-msgstr ""
+msgstr "Quedando atrás"
 
 #: nala/summary.py:251
 msgid "Auto-Removable, Will Not Be Removed"
