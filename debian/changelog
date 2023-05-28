@@ -1,3 +1,10 @@
+nala (0.12.3+dev) unstable; urgency=medium
+
+  [ Bug Fixes ]
+  * Fix unable to download from authenticated repos
+
+ -- Blake Lee <blake@volian.org>  Sun, 19 Mar 2023 17:38:30 -0500
+
 nala (0.12.3) unstable; urgency=medium
 
   [ Bug Fixes ]
