@@ -1,10 +1,9 @@
-
 msgid ""
 msgstr ""
-"Project-Id-Version:  Nala\n"
+"Project-Id-Version: Nala\n"
 "Report-Msgid-Bugs-To: https://gitlab.com/volian/nala/-/issues\n"
 "POT-Creation-Date: 2022-11-22 00:13-0600\n"
-"PO-Revision-Date: 2022-09-04 13:15-0600\n"
+"PO-Revision-Date: 2023-09-10 23:30-0600\n"
 "Last-Translator: Andrés Rodríguez <andres@mailoo.org>\n"
 "Language: es\n"
 "Language-Team: es <LL@li.org>\n"
@@ -13,6 +12,7 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.10.3\n"
+"X-Generator: Poedit 3.3.2\n"
 
 #. Answers for the Question prompt "[Y/n]"
 #: nala/utils.py:64
@@ -33,7 +33,7 @@ msgstr ""
 
 #: nala/utils.py:343
 msgid "{error} failed regex compilation '{error_msg} at position {position}'"
-msgstr "{error} falló la compilación de expresiones regulares '{error_msg} en la posición {position}'"
+msgstr "{error} falló la compilación de la expresión regular '{error_msg} en la posición {position}'"
 
 #: nala/utils.py:354
 msgid "{error} Nala needs root to fix broken packages"
@@ -41,7 +41,7 @@ msgstr "{error} Nala requiere acceso de root para reparar paquetes rotos"
 
 #: nala/utils.py:359
 msgid "{error} Nala needs root to {command}"
-msgstr "{error} Nala requiere acceso de root para {command}"
+msgstr "{error} Nala requiere acceso de root para ejecutar {command}"
 
 #: nala/utils.py:382
 msgid "{error} Nala is already running another instance {last_pid}"
@@ -89,7 +89,7 @@ msgstr "Alternar la actualización completa"
 
 #: nala/nala.py:289
 msgid "Would you like us to protect these and try again?"
-msgstr "¿Quiere que protejamos estos e intentarlo de nuevo?"
+msgstr "¿Quiere que los protejamos e intentarlo de nuevo?"
 
 #: nala/error.py:581 nala/install.py:232 nala/nala.py:294
 msgid "{error} You have held broken packages"
@@ -145,7 +145,7 @@ msgstr "Expresión regular o palabra a buscar"
 
 #: nala/nala.py:519
 msgid "{error} {regex} not found."
-msgstr "{error} {regex} no encontrado."
+msgstr "{error} {regex} no se encontró."
 
 #: nala/nala.py:526
 msgid "List packages based on package names."
@@ -193,11 +193,11 @@ msgstr "No puedo mugir porque soy un gato"
 
 #: nala/nala.py:628
 msgid "What did you expect to update?"
-msgstr "¿Qué es lo que esperabas actualizar?"
+msgstr "¿Qué es lo que esperaba actualizar?"
 
 #: nala/nala.py:632
 msgid "What did you expect no-update to do?"
-msgstr "¿Qué esperabas que hiciera el no actualizar?"
+msgstr "¿Qué esperaba que hiciera el no actualizar?"
 
 #: nala/install.py:126
 msgid "Purging configuration files for {package}"
@@ -205,7 +205,7 @@ msgstr "Purgando archivos de configuración para {package}"
 
 #: nala/install.py:206
 msgid "{notice} Selected packages cannot be excluded from upgrade safely."
-msgstr "{notice} Los paquetes seleccionados no pueden ser excluidos de la actualización de forma segura."
+msgstr "{notice} Los paquetes seleccionados no pueden excluirse de forma segura de la actualización."
 
 #: nala/install.py:228
 msgid "{error} Unable to calculate how to protect the selected packages"
@@ -213,7 +213,7 @@ msgstr "{error} No se pudo calcular cómo proteger los paquetes seleccionados"
 
 #: nala/install.py:234
 msgid "{notice} The following packages need to be protected as well:"
-msgstr "{notice} Los siguientes paquetes también deben ser protegidos:"
+msgstr "{notice} Los siguientes paquetes también necesitan ser protegidos:"
 
 #: nala/install.py:289
 msgid "{error} The following hook arguments are invalid: {args}"
@@ -268,25 +268,28 @@ msgid ""
 "{error} No content length in response from {url}\n"
 "  Ensure the URL points to a Debian Package"
 msgstr ""
+"{error} Sin longitud de contenido en respuesta de {url}\n"
+"  Asegúrese de que la URL apunte a un paquete Debian"
 
 #: nala/install.py:650
 msgid ""
 "{error} It is not secure to download a package without a hashsum verification.\n"
 "  If you are sure you do NOT want verification, use '-o APT::Get::AllowUnauthenticated=true'"
 msgstr ""
+"{error} No es seguro descargar un paquete sin la verificación de la suma hash.\n"
+"  Si está seguro de que NO desea la verificación, use '-o APT::Get::AllowUnauthenticated=true'"
 
 #: nala/install.py:696
 msgid "{error} Hash does not match the '{hash_type}' Length"
-msgstr ""
+msgstr "{error} El hash no coincide con la longitud de '{hash_type}'"
 
 #: nala/install.py:703
 msgid "{error} Hash Type '{hash_type}' specified with no hash"
-msgstr ""
+msgstr "{error} El tipo de hash '{hash_type}' fue especificado sin hash"
 
 #: nala/install.py:710
-#, fuzzy
 msgid "{error} Hash Type '{hash_type}' is unsupported"
-msgstr "{error} {distro} {release} no está soportada."
+msgstr "{error} El tipo de hash '{hash_type}' es incompatible"
 
 #: nala/install.py:856
 msgid "{error} Version {version} not found for package {package}"
@@ -466,7 +469,7 @@ msgstr "{error} {package} no tiene candidato para la instalación."
 
 #: nala/error.py:197 nala/show.py:331
 msgid "{error} {package} not found"
-msgstr "{error} {package} no encontrado"
+msgstr "{error} {package} no se encontró"
 
 #: nala/error.py:231
 msgid ""
@@ -505,7 +508,6 @@ msgid "{package} but the cache version is {version}"
 msgstr "{package} pero la versión en caché es {version}"
 
 #: nala/error.py:405
-#, fuzzy
 msgid "{package} but it cannot be installed"
 msgstr "{package} pero no puede ser instalado"
 
@@ -604,11 +606,11 @@ msgstr "Sugerido, no se instalará"
 
 #: nala/summary.py:249 nala/summary.py:267
 msgid "Kept Back, Will Not Be Upgraded"
-msgstr ""
+msgstr "Retenido, no se actualizará"
 
 #: nala/summary.py:249 nala/summary.py:267
 msgid "Kept Back"
-msgstr ""
+msgstr "Retenido"
 
 #: nala/summary.py:251
 msgid "Auto-Removable, Will Not Be Removed"
@@ -647,7 +649,7 @@ msgid ""
 "\n"
 "For Ubuntu https://launchpad.net/ubuntu/+archivemirrors-rss"
 msgstr ""
-"Nala buscará los servidores espejo con la latencia más baja.\n"
+"Nala obtendrá los servidores espejo con la latencia más baja.\n"
 "\n"
 "Para Debian https://mirror-master.debian.org/status/Mirrors.masterlist\n"
 "\n"
@@ -658,9 +660,8 @@ msgid "Are these mirrors okay?"
 msgstr "¿Están bien estos servidores espejo?"
 
 #: nala/fetch.py:303
-#, fuzzy
 msgid "Mirrors you want to keep, separated by space or comma {selection}:"
-msgstr "Los servidores espejo que desea mantener, separados por espacios {selection}:"
+msgstr "Los servidores espejo que desea mantener, separados por espacios o comas {selection}:"
 
 #: nala/fetch.py:325
 msgid "{error} Index {index} doesn't exist."
@@ -668,11 +669,11 @@ msgstr "{error} El índice {index} no existe."
 
 #: nala/fetch.py:335
 msgid "{error} {value_error}"
-msgstr ""
+msgstr "{error} {value_error}"
 
 #: nala/fetch.py:345
 msgid "{error} Parser: {parser}"
-msgstr ""
+msgstr "{error} Parser: {parser}"
 
 #: nala/fetch.py:376
 msgid "Fetching {distro} mirrors"
@@ -708,7 +709,7 @@ msgstr "{error} Hubo un problema al detectar la versión."
 
 #: nala/fetch.py:780
 msgid "{error} {distro} {release} is unsupported."
-msgstr "{error} {distro} {release} no está soportada."
+msgstr "{error} {distro} {release} es incompatible."
 
 #: nala/fetch.py:784
 msgid "You can specify Ubuntu or Debian manually."
@@ -756,7 +757,7 @@ msgstr "Agregar los repositorios contrib y non-free."
 
 #: nala/fetch.py:838
 msgid "Run fetch uninteractively. Will still prompt for overwrite."
-msgstr "Ejecutar fetch de forma no interactiva. Seguirá preguntando para sobrescribir."
+msgstr "Ejecutar fetch de forma no interactiva. Aún preguntará para sobrescribir."
 
 #: nala/fetch.py:847
 msgid "Choose only mirrors of a specific ISO country code."
@@ -939,7 +940,7 @@ msgstr "{notice} No se puede leer el archivo de configuración: {filename}. Usan
 
 #: nala/options.py:72
 msgid "{error} Config key '{key}' should be a bool not {value}"
-msgstr "{error} La clave de configuración '{key}' debe ser un valor booleano no {value}"
+msgstr "{error} La clave de configuración '{key}' debe ser un valor booleano, no {value}"
 
 #: nala/options.py:324
 msgid "{error} Option {option}: Configuration item must have a '='"
@@ -951,7 +952,7 @@ msgid ""
 "The full GPLv3 can be found at:\n"
 "https://www.gnu.org/licenses/gpl-3.0.txt"
 msgstr ""
-"Parece que el sistema no tiene un archivo de licencia\n"
+"Parece que el sistema no tiene el archivo de licencia\n"
 "La GPLv3 completa se puede encontrar en:\n"
 "https://www.gnu.org/licenses/gpl-3.0.txt"
 
@@ -989,7 +990,7 @@ msgstr "Alternar la actualización de la lista de paquetes."
 
 #: nala/options.py:460
 msgid "Toggle a more condensed transaction summary."
-msgstr ""
+msgstr "Alternar un resumen de transacciones más condensado."
 
 #: nala/options.py:468
 msgid "Purge any packages that would be removed."
@@ -1005,7 +1006,7 @@ msgstr "Permitir la desinstalación de paquetes esenciales."
 
 #: nala/options.py:490 nala/options.py:551
 msgid "Packages are only retrieved, not unpacked or installed."
-msgstr "Los paquetes solo se recuperan, no se desempaquetan ni instalan."
+msgstr "Los paquetes solo se recuperan, no se desempaquetan ni se instalan."
 
 #: nala/options.py:499
 msgid "Toggle fix broken packages."
@@ -1065,7 +1066,7 @@ msgstr "Eliminar `nala-sources.list`."
 
 #: nala/options.py:627
 msgid "Run fetch uninteractively. Will still prompt for overwrite"
-msgstr "Ejecutar fetch de forma no interactiva. Seguirá preguntando para sobrescribir"
+msgstr "Ejecutar fetch de forma no interactiva. Aún preguntará para sobrescribir"
 
 #: nala/options.py:636
 msgid "Show this message and exit."
@@ -1073,7 +1074,7 @@ msgstr "Mostrar este mensaje y salir."
 
 #: nala/history.py:85
 msgid "{error} '{command}' for operations other than install or remove are not currently supported"
-msgstr "{error} '{command}' actualmente no tiene soporte para operaciones que no sean instalar o desinstalar"
+msgstr "{error} '{command}' actualmente no es compatible con operaciones distintas a instalar o desinstalar"
 
 #: nala/history.py:89
 msgid ""
@@ -1204,9 +1205,8 @@ msgid "{last_completed} {package}"
 msgstr "{last_completed} {package}"
 
 #: nala/downloader.py:107
-#, fuzzy
 msgid "{notice} Nala has removed {filename}"
-msgstr "{notice} Nala eliminó {filename} pero intentará con otro servidor espejo"
+msgstr "{notice} Nala ha eliminado {filename}"
 
 #: nala/downloader.py:108
 msgid "{error} Failed to move archive file, {str_err}: '{file1}' -> '{file2}'"
@@ -1222,7 +1222,7 @@ msgid ""
 "  Expected Hash: {expected}\n"
 "  Received Hash: {received}"
 msgstr ""
-"{error} La suma de verificación no coincide: {filename}\n"
+"{error} La suma hash no coincide: {filename}\n"
 "  Hash esperado: {expected}\n"
 "  Hash recibido: {received}"
 
@@ -1241,6 +1241,8 @@ msgid ""
 "{error} Improper Hash Syntax\n"
 "  Try '{url}:sha256:510b0c4f8fc3e7bd7182b53c0b81c1a113bea9fd3c18219eac0e18e601dc8d17'"
 msgstr ""
+"{error} Sintaxis hash incorrecta\n"
+"  Intente '{url}:sha256:510b0c4f8fc3e7bd7182b53c0b81c1a113bea9fd3c18219eac0e18e601dc8d17'"
 
 #: nala/downloader.py:296
 msgid "Exiting due to {signal}"
@@ -1263,9 +1265,8 @@ msgid "{error} No more mirrors available for {filename}"
 msgstr "{error} No hay más servidores espejo disponibles para {filename}"
 
 #: nala/downloader.py:513
-#, fuzzy
 msgid "{notice} Trying next url: {url}"
-msgstr "Probando la siguiente url: {url}"
+msgstr "{notice} Probando la siguiente url: {url}"
 
 #: nala/downloader.py:522
 msgid "{warning} The following packages cannot be authenticated!"
@@ -1473,10 +1474,3 @@ msgstr "{warning} ¡Salir ahora podría dañar su sistema!"
 #: nala/dpkg.py:1066
 msgid "Ctrl+C twice quickly will exit"
 msgstr "Presione Ctrl+C dos veces rápidamente para salir"
-
-#~ msgid "{error} Index {index} needs to be an integer."
-#~ msgstr "{error} El índice {index} debe ser un número entero."
-
-#~ msgid "Not a valid choice kiddo"
-#~ msgstr "No es una opción válida chico"
-
