@@ -75,6 +75,7 @@ from nala.rich import (
 	Panel,
 	Pretty,
 	Table,
+	Box,
 	from_ansi,
 	pkg_download_progress,
 )
@@ -384,6 +385,21 @@ class Downloader:  # pylint: disable=too-many-instance-attributes
 			title="[bold default]" + _("Downloading") + ELLIPSIS,
 			title_align="left",
 			border_style="bold green",
+			box = Box(
+				"\n".join(
+					(
+						"┌─┬┐", # Top left Corner, Fill, Unused, Top Right Corner
+						"    ", # Unused
+						"    ", # Unused
+						"│ ││", # Left Vertical, Unused, Unused, Right Vertical
+						"    ", # Unused
+						"    ", # Unused
+						"    ", # Unused
+						"└─┴┘", # Bottom Left Corner, Fill, Unused, Bottom Right Corner.
+					)
+				),
+				ascii=True,
+			)
 		)
 
 	async def _update_progress(self, len_data: int, failed: bool = False) -> None:
