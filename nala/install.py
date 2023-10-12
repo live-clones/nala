@@ -485,19 +485,19 @@ def install_local(nala_pkgs: PackageHandler, cache: Cache) -> None:
 				if dep.installed_target_versions:
 					continue
 
-				mark_pkg = None
+				candidate = None
 				# Check providers first to make sure we get the best package.
 				if providers := cache.get_providing_packages(
 					dep[0].name, include_nonvirtual=True
 				):
-					mark_pkg = providers[0]
+					candidate = providers[0]
 
 				# If there are no providers just try the cache
 				elif dep[0].name in cache:
-					mark_pkg = cache[dep[0].name]
+					candidate = cache[dep[0].name]
 
-				if mark_pkg and not mark_pkg.installed:
-					mark_pkg.mark_install(from_user=False)
+				if candidate and not candidate.installed:
+					candidate.mark_install(from_user=False)
 					depends.append(dep)
 
 		satisfy_notice(pkg, depends)
