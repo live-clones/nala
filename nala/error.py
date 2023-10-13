@@ -101,6 +101,10 @@ class FileDownloadError(Exception):
 		self.received = received
 
 
+class ParserError(Exception):
+	"""Exception class for errors with parsing."""
+
+
 # Should probably refactor this in the future. For now just disable the warning.
 # pylint: disable=too-many-branches
 def apt_error(apt_err: AptErrorTypes, update: bool = False) -> NoReturn | None:
@@ -154,7 +158,7 @@ def apt_error(apt_err: AptErrorTypes, update: bool = False) -> NoReturn | None:
 	eprint(f"{ERROR_PREFIX} {msg.replace('E:', '').strip()}")
 	if not term.is_su():
 		sys.exit(_("Are you root?"))
-	if update:
+	if update or "Failed to lock directory" in msg:
 		sys.exit(1)
 	return None
 
@@ -268,10 +272,10 @@ class BrokenError:
 		if not self.broken_list:
 			return 0
 		self.cache.clear()
-		ret_count = sum(self.broken_pkg(pkg) for pkg in self.broken_list)
-		if not ret_count:
+		if ret_count := sum(self.broken_pkg(pkg) for pkg in self.broken_list):
+			self._print_held_error()
+		else:
 			return ret_count
-		self._print_held_error()
 
 	def broken_remove(self, broken_list: list[Package]) -> NoReturn:
 		"""Calculate and print broken remove dependencies."""
@@ -398,7 +402,7 @@ class BrokenError:
 					version=color_version(candidate.version),
 				)
 			# If none of our conditions are met we just fall back to a general error
-			return _("{package} but it cannont be installed").format(
+			return _("{package} but it cannot be installed").format(
 				package=formatted_dep
 			)
 		return ""

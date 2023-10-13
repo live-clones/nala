@@ -27,7 +27,7 @@ from __future__ import annotations
 import sys
 from pydoc import pager
 from subprocess import run
-from typing import NoReturn, Optional, Union, cast
+from typing import Dict, List, NoReturn, Optional, Union, cast
 
 import tomli
 import typer
@@ -35,6 +35,8 @@ from apt_pkg import config as apt_config
 
 from nala import ROOT, _, __version__, color
 from nala.constants import ERROR_PREFIX, GPL3_LICENSE, NOTICE_PREFIX
+
+HookType = Dict[str, Union[str, Dict[str, Union[str, List[str]]]]]
 
 
 class Config:
@@ -86,10 +88,10 @@ class Config:
 			return value
 		self.key_error(key, value)
 
-	def get_hook(self, key: str) -> dict[str, Union[str, dict[str, str | list[str]]]]:
+	def get_hook(self, key: str) -> HookType:
 		"""Get Install Hooks from config."""
 		return cast(
-			dict[str, Union[str, dict[str, Union[str, list[str]]]]],
+			HookType,
 			self.data.get(key, {}),
 		)
 
@@ -145,12 +147,16 @@ class Arguments:
 		self.raw_dpkg: bool
 		self.purge: bool = False
 		self.fix_broken: bool
+		self.simple_summary: bool
 
 		# Used in Show, List and Search
 		self.all_versions: bool
 
 		# Used in Search
 		self.all_arches: bool
+
+		# Used in Upgrade
+		self.full_upgrade: bool
 
 		# Search and List Arguments
 		self.names: bool
@@ -187,6 +193,13 @@ class Arguments:
 			return
 		self.auto_remove = value
 
+	def set_summary(self, value: bool) -> None:
+		"""Set option."""
+		if value is None:
+			self.simple_summary = self.config.get_bool("simple_summary")
+			return
+		self.simple_summary = value
+
 	def set_purge(self, value: bool) -> None:
 		"""Set option."""
 		self.purge = value
@@ -202,6 +215,13 @@ class Arguments:
 	def set_fix_broken(self, value: bool) -> None:
 		"""Set option."""
 		self.fix_broken = value
+
+	def set_full_upgrade(self, value: bool) -> None:
+		"""Set option."""
+		if value is None:
+			self.full_upgrade = self.config.get_bool("full_upgrade")
+			return
+		self.full_upgrade = value
 
 	def set_assume_prompt(self, value: Optional[bool]) -> None:
 		"""Set option."""
@@ -276,6 +296,12 @@ class Arguments:
 		else:
 			self.config.apt.set("APT::Install-Suggests", "0")
 
+	def set_default_release(self, value: str) -> None:
+		"""Set option."""
+		if not value:
+			return
+		self.config.apt.set("APT::Default-Release", value)
+
 	def set_update(self, value: Optional[bool]) -> None:
 		"""Set option."""
 		if value is None:
@@ -296,7 +322,7 @@ class Arguments:
 			option = value
 		self.config.set(key.split("::", 1)[1], option)
 
-	def set_dpkg_option(self, value: list[str]) -> list[str]:
+	def set_dpkg_option(self, value: List[str]) -> List[str]:
 		"""Set option."""
 		if not value:
 			return value
@@ -436,11 +462,32 @@ SUGGESTS = typer.Option(
 	help=_("Toggle installing suggested packages."),
 )
 
+DEFAULT_RELEASE = typer.Option(
+	None,
+	"-t",
+	"--target-release",
+	callback=arguments.set_default_release,
+	help=_("Set the default release to install packages from."),
+)
+
+FULL_UPGRADE = typer.Option(
+	None,
+	"--full / --no-full",
+	callback=arguments.set_full_upgrade,
+	help=_("Toggle full-upgrade"),
+)
+
 UPDATE = typer.Option(
 	None,
 	callback=arguments.set_update,
-	is_eager=True,
 	help=_("Toggle updating the package list."),
+)
+
+SIMPLE = typer.Option(
+	None,
+	callback=arguments.set_summary,
+	is_eager=True,
+	help=_("Toggle a more condensed transaction summary."),
 )
 
 PURGE = typer.Option(
@@ -463,14 +510,6 @@ REMOVE_ESSENTIAL = typer.Option(
 	callback=arguments.set_remove_essential,
 	is_eager=True,
 	help=_("Allow the removal of essential packages."),
-)
-
-DOWNLOAD_ONLY = typer.Option(
-	False,
-	"--download-only",
-	callback=arguments.set_download_only,
-	is_eager=True,
-	help=_("Packages are only retrieved, not unpacked or installed."),
 )
 
 FIX_BROKEN = typer.Option(
@@ -528,6 +567,7 @@ ALL_ARCHES = typer.Option(
 
 DOWNLOAD_ONLY = typer.Option(
 	False,
+	"-d",
 	"--download-only",
 	callback=arguments.set_download_only,
 	is_eager=True,

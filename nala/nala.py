@@ -25,14 +25,15 @@
 """Main module for Nala which facilitates apt."""
 from __future__ import annotations
 
+import fnmatch
 import re
 import sys
-from subprocess import run
-from typing import Generator, Optional, Pattern
+from subprocess import CalledProcessError, run
+from typing import Generator, List, Optional, Pattern, cast
 
 import apt_pkg
 import typer
-from apt.package import Package, Version
+from apt import Package, Version
 
 from nala import _, color
 from nala.cache import Cache
@@ -54,7 +55,6 @@ from nala.install import (
 	auto_remover,
 	check_broken,
 	check_state,
-	check_term_ask,
 	fix_excluded,
 	get_changes,
 	install_local,
@@ -69,10 +69,12 @@ from nala.options import (
 	AUTO_REMOVE,
 	CONFIG,
 	DEBUG,
+	DEFAULT_RELEASE,
 	DOWNLOAD_ONLY,
 	FETCH,
 	FIX_BROKEN,
 	FULL,
+	FULL_UPGRADE,
 	INSTALLED,
 	LISTS,
 	MAN_HELP,
@@ -83,6 +85,7 @@ from nala.options import (
 	RAW_DPKG,
 	RECOMMENDS,
 	REMOVE_ESSENTIAL,
+	SIMPLE,
 	SUGGESTS,
 	UPDATE,
 	UPGRADABLE,
@@ -93,16 +96,16 @@ from nala.options import (
 	nala,
 )
 from nala.rich import ELLIPSIS
-from nala.search import iter_search, list_match, search_name
+from nala.search import iter_search, search_name, skip_pkg
 from nala.show import additional_notice, pkg_not_found, show_main
 from nala.utils import (
+	NalaPackage,
 	PackageHandler,
 	ask,
 	command_help,
 	compile_regex,
 	dedupe_list,
 	eprint,
-	get_version,
 	iter_remove,
 	sudo_check,
 	vprint,
@@ -213,14 +216,17 @@ def remove_completion(ctx: typer.Context) -> Generator[str, None, None]:
 
 def package_completion(cur: str) -> Generator[str, None, None]:
 	"""Complete install command arguments."""
-	yield from run(
-		["apt-cache", "--no-generate", "pkgnames", cur]
-		if PKGCACHE.exists()
-		else ["apt-cache", "pkgnames", cur],
-		capture_output=True,
-		check=True,
-		text=True,
-	).stdout.split()
+	try:
+		yield from run(
+			["apt-cache", "--no-generate", "pkgnames", cur]
+			if PKGCACHE.exists()
+			else ["apt-cache", "pkgnames", cur],
+			capture_output=True,
+			check=True,
+			text=True,
+		).stdout.split()
+	except CalledProcessError as error:
+		sys.exit(f"\n{error.stderr}")
 
 
 @nala.command("update", help=_("Update package list."))
@@ -228,7 +234,7 @@ def package_completion(cur: str) -> Generator[str, None, None]:
 def _update(
 	debug: bool = DEBUG,
 	raw_dpkg: bool = RAW_DPKG,
-	dpkg_option: list[str] = OPTION,
+	dpkg_option: List[str] = OPTION,
 	verbose: bool = VERBOSE,
 	man_help: bool = MAN_HELP,
 ) -> None:
@@ -238,10 +244,11 @@ def _update(
 	setup_cache().print_upgradable()
 
 
-@nala.command(help=_("Update package list and upgrade the system."))
+@nala.command("dist-upgrade", hidden=True)
+@nala.command("full-upgrade", hidden=True)
 # pylint: disable=unused-argument,too-many-arguments, too-many-locals
-def upgrade(
-	exclude: Optional[list[str]] = typer.Option(
+def dist_upgrade(
+	exclude: Optional[List[str]] = typer.Option(
 		None,
 		metavar="PKG",
 		help=_("Specify packages to exclude during upgrade. Accepts glob*"),
@@ -251,14 +258,63 @@ def upgrade(
 	raw_dpkg: bool = RAW_DPKG,
 	download_only: bool = DOWNLOAD_ONLY,
 	remove_essential: bool = REMOVE_ESSENTIAL,
-	full: bool = typer.Option(True, help=_("Toggle full-upgrade")),
+	full_upgrade: bool = FULL_UPGRADE,
 	update: bool = UPDATE,
 	auto_remove: bool = AUTO_REMOVE,
 	install_recommends: bool = RECOMMENDS,
 	install_suggests: bool = SUGGESTS,
 	fix_broken: bool = FIX_BROKEN,
 	assume_yes: bool = ASSUME_YES,
-	dpkg_option: list[str] = OPTION,
+	dpkg_option: List[str] = OPTION,
+	simple: bool = SIMPLE,
+	verbose: bool = VERBOSE,
+	man_help: bool = MAN_HELP,
+) -> None:
+	"""Upgrade alias."""
+	arguments.full_upgrade = True
+	upgrade(
+		exclude,
+		purge,
+		debug,
+		raw_dpkg,
+		download_only,
+		remove_essential,
+		full_upgrade,
+		update,
+		auto_remove,
+		install_recommends,
+		install_suggests,
+		fix_broken,
+		assume_yes,
+		dpkg_option,
+		simple,
+		verbose,
+		man_help,
+	)
+
+
+@nala.command(help=_("Update package list and upgrade the system."))
+# pylint: disable=unused-argument,too-many-arguments, too-many-locals
+def upgrade(
+	exclude: Optional[List[str]] = typer.Option(
+		None,
+		metavar="PKG",
+		help=_("Specify packages to exclude during upgrade. Accepts glob*"),
+	),
+	purge: bool = PURGE,
+	debug: bool = DEBUG,
+	raw_dpkg: bool = RAW_DPKG,
+	download_only: bool = DOWNLOAD_ONLY,
+	remove_essential: bool = REMOVE_ESSENTIAL,
+	full_upgrade: bool = FULL_UPGRADE,
+	update: bool = UPDATE,
+	auto_remove: bool = AUTO_REMOVE,
+	install_recommends: bool = RECOMMENDS,
+	install_suggests: bool = SUGGESTS,
+	fix_broken: bool = FIX_BROKEN,
+	assume_yes: bool = ASSUME_YES,
+	dpkg_option: List[str] = OPTION,
+	simple: bool = SIMPLE,
 	verbose: bool = VERBOSE,
 	man_help: bool = MAN_HELP,
 ) -> None:
@@ -266,7 +322,6 @@ def upgrade(
 	sudo_check()
 
 	def _upgrade(
-		full: bool = True,
 		exclude: list[str] | None = None,
 		nested_cache: Cache | None = None,
 	) -> None:
@@ -277,13 +332,13 @@ def upgrade(
 		is_upgrade = tuple(cache.upgradable_pkgs())
 		protected = cache.protect_upgrade_pkgs(exclude)
 		try:
-			cache.upgrade(dist_upgrade=full)
+			cache.upgrade(dist_upgrade=arguments.full_upgrade)
 		except apt_pkg.Error:
 			if exclude:
 				exclude = fix_excluded(protected, is_upgrade)
 				if ask(_("Would you like us to protect these and try again?")):
 					cache.clear()
-					_upgrade(full, exclude, cache)
+					_upgrade(exclude, cache)
 					sys.exit()
 				sys.exit(
 					_("{error} You have held broken packages").format(
@@ -295,25 +350,45 @@ def upgrade(
 				cache, tuple(pkg for pkg in cache if pkg.is_inst_broken)
 			).broken_install()
 
-		if kept_back := tuple(
-			pkg
-			for pkg in is_upgrade
-			if not (pkg.marked_upgrade or pkg.marked_delete or pkg in protected)
-		):
-			BrokenError(cache, kept_back).held_pkgs(protected)
-			check_term_ask()
+		# Add any held pkgs to show in the table
+		for pkg in is_upgrade:
+			if (
+				pkg.marked_upgrade
+				or pkg.marked_delete
+				or pkg in protected
+				or not pkg.installed
+			):
+				continue
+
+			if versions := pkg.versions:
+				# After Upgrade they change the candidate for held packages.
+				# This should get the latest version to show.
+				cand = cast(Version, versions[0])
+				nala_pkgs.held_pkgs.append(
+					NalaPackage(
+						pkg.name,
+						cand.version,
+						cand.installed_size,
+						pkg.installed.version,
+					)
+				)
+				continue
+			# Should not hit this, but just in case
+			nala_pkgs.held_pkgs.append(
+				NalaPackage(pkg.name, "Unknown", 0, pkg.installed.version)
+			)
 
 		auto_remover(cache, nala_pkgs)
 		get_changes(cache, nala_pkgs, "upgrade")
 
-	_upgrade(full, exclude)
+	_upgrade(exclude)
 
 
 @nala.command(help=_("Install packages."))
 # pylint: disable=unused-argument,too-many-arguments,too-many-locals
 def install(
 	ctx: typer.Context,
-	pkg_names: Optional[list[str]] = typer.Argument(
+	pkg_names: Optional[List[str]] = typer.Argument(
 		None,
 		metavar="PKGS ...",
 		help=_("Package(s) to install"),
@@ -330,7 +405,9 @@ def install(
 	install_suggests: bool = SUGGESTS,
 	fix_broken: bool = FIX_BROKEN,
 	assume_yes: bool = ASSUME_YES,
-	dpkg_option: list[str] = OPTION,
+	simple: bool = SIMPLE,
+	dpkg_option: List[str] = OPTION,
+	default_release: str = DEFAULT_RELEASE,
 	verbose: bool = VERBOSE,
 	man_help: bool = MAN_HELP,
 ) -> None:
@@ -343,7 +420,7 @@ def install(
 @nala.command("uninstall", hidden=True)
 # pylint: disable=unused-argument,too-many-arguments
 def remove(
-	pkg_names: list[str] = typer.Argument(
+	pkg_names: List[str] = typer.Argument(
 		...,
 		metavar="PKGS ...",
 		help=_("Package(s) to remove/purge"),
@@ -358,7 +435,8 @@ def remove(
 	auto_remove: bool = AUTO_REMOVE,
 	fix_broken: bool = FIX_BROKEN,
 	assume_yes: bool = ASSUME_YES,
-	dpkg_option: list[str] = OPTION,
+	simple: bool = SIMPLE,
+	dpkg_option: List[str] = OPTION,
 	verbose: bool = VERBOSE,
 	man_help: bool = MAN_HELP,
 ) -> None:
@@ -380,7 +458,8 @@ def _auto_remove(
 	update: bool = UPDATE,
 	fix_broken: bool = FIX_BROKEN,
 	assume_yes: bool = ASSUME_YES,
-	dpkg_option: list[str] = OPTION,
+	simple: bool = SIMPLE,
+	dpkg_option: List[str] = OPTION,
 	verbose: bool = VERBOSE,
 	man_help: bool = MAN_HELP,
 ) -> None:
@@ -407,7 +486,7 @@ def _auto_remove(
 @nala.command("info", hidden=True)
 # pylint: disable=unused-argument
 def show(
-	pkg_names: list[str] = typer.Argument(
+	pkg_names: List[str] = typer.Argument(
 		...,
 		help=_("Package(s) to show"),
 		autocompletion=package_completion,
@@ -443,7 +522,7 @@ def show(
 @nala.command(help=_("Search package names and descriptions."))
 # pylint: disable=unused-argument,too-many-arguments,too-many-locals
 def search(
-	word: str = typer.Argument(
+	words: List[str] = typer.Argument(
 		...,
 		help=_("Regex or word to search for"),
 		autocompletion=package_completion,
@@ -463,42 +542,42 @@ def search(
 ) -> None:
 	"""Search package names and descriptions."""
 	cache = Cache()
-	found: list[tuple[Package, Version]] = []
 	user_installed = (
 		get_list(get_history("Nala"), "User-Installed") if nala_installed else []
 	)
 
-	search_pattern: tuple[str, Pattern[str] | None]
-	if word.startswith("g/"):
-		search_pattern = (word, None)
-	elif word.startswith("r/"):
-		search_pattern = (word, compile_regex(word[2:]))
-	else:
-		search_pattern = (word, compile_regex(word))
+	patterns = [
+		compile_regex(fnmatch.translate(string[2:]))
+		if string.startswith("g/")
+		else compile_regex(string)
+		for string in words
+	]
 
+	found: list[Package] = []
 	arches = apt_pkg.get_architectures()
-
 	for pkg in cache:
-		if nala_installed and pkg.name not in user_installed:
+		if skip_pkg(cache, pkg, nala_installed, user_installed):
 			continue
-		if arguments.installed and not pkg.installed:
-			continue
-		if arguments.upgradable and not pkg.is_upgradable:
-			continue
-		if arguments.virtual and not cache.is_virtual_package(pkg.name):
-			continue
-		if arguments.all_arches or pkg.architecture() in arches:
-			found.extend(search_name(pkg, search_pattern))
+		if (
+			pkg.architecture() in arches[0]
+			or arguments.all_arches
+			and pkg.architecture() in arches
+		) and search_name(pkg, patterns):
+			found.append(pkg)
 
 	if not found:
-		sys.exit(_("{error} {regex} not found.").format(error=ERROR_PREFIX, regex=word))
+		sys.exit(
+			_("{error} {regex} not found.").format(
+				error=ERROR_PREFIX, regex=", ".join(words)
+			)
+		)
 	iter_search(found)
 
 
 @nala.command("list", help=_("List packages based on package names."))
 # pylint: disable=unused-argument,too-many-arguments,too-many-locals
 def list_pkgs(
-	pkg_names: Optional[list[str]] = typer.Argument(
+	pkg_names: Optional[List[str]] = typer.Argument(
 		None,
 		help=_("Package(s) to list."),
 		autocompletion=package_completion,
@@ -520,44 +599,33 @@ def list_pkgs(
 		get_list(get_history("Nala"), "User-Installed") if nala_installed else []
 	)
 
-	patterns: dict[str, Pattern[str] | None] = {}
+	patterns: list[Pattern[str]] = []
 	if pkg_names:
 		for name in pkg_names:
 			if name.startswith("r/"):
 				# Take out the prefix when we compile the regex
-				patterns[name] = compile_regex(name[2:])
+				patterns.append(compile_regex(name[2:]))
 				continue
-			if name.startswith("g/"):
-				# We won't be using regex here.
-				patterns[name] = None
-				continue
-			# Otherwise we can just compile it
-			patterns[name] = compile_regex(name)
+			# Otherwise we default to glob only for list
+			patterns.append(compile_regex(fnmatch.translate(name)))
 
-	def _list_gen() -> Generator[
-		tuple[Package, Version | tuple[Version, ...]], None, None
-	]:
+	def _list_gen() -> Generator[Package, None, None]:
 		"""Generate to speed things up."""
 		for pkg in cache:
-			if nala_installed and pkg.name not in user_installed:
-				continue
-			if arguments.installed and not pkg.installed:
-				continue
-			if arguments.upgradable and not pkg.is_upgradable:
-				continue
-			if arguments.virtual and not cache.is_virtual_package(pkg.name):
+			if skip_pkg(cache, pkg, nala_installed, user_installed):
 				continue
 			if pkg_names:
-				for name, regex in patterns.items():
-					if list_match(pkg.fullname, name, regex):
-						yield (pkg, get_version(pkg, inst_first=True))
+				for regex in patterns:
+					# Match against the shortname so that arch isn't included
+					if regex.match(pkg.shortname):
+						yield pkg
 						continue
 				# If names were supplied and no matches
 				# we don't want to grab everything
 				continue
 
 			# In this case no names were supplied so we list everything
-			yield (pkg, get_version(pkg, inst_first=True))
+			yield pkg
 
 	if not iter_search(_list_gen()):
 		sys.exit(_("Nothing was found to list."))
@@ -600,7 +668,7 @@ def clean(
 @nala.command(hidden=True, help=_("I beg, pls moo"))
 # pylint: disable=unused-argument
 def moo(
-	moos: Optional[list[str]] = typer.Argument(None, hidden=True),
+	moos: Optional[List[str]] = typer.Argument(None, hidden=True),
 	update: bool = typer.Option(None, hidden=True),
 ) -> None:
 	"""I beg, pls moo."""

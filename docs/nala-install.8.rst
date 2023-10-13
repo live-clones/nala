@@ -17,6 +17,9 @@ Install works similar to the way it does in **apt**.
 
 **nala** takes multiple packages as arguments and will install all of them.
 
+To install a specific version of a package you may use the *=* sign as below
+	**nala install** *tmux=3.3a-3~bpo11+1*
+
 OPTIONS
 =======
 
@@ -42,6 +45,13 @@ OPTIONS
 **-d**, **--download-only**
 	Packages are only retrieved, not unpacked or installed.
 
+**-t**, **--target-release**
+	Set the release in which Nala will install packages from
+
+	Example: Install neofetch from the testing repo:
+
+		**nala install --target-release** *testing neofetch*
+
 **--remove-essential**
 	Allow the removal of essential packages.
 
@@ -59,6 +69,18 @@ OPTIONS
 	*-n*, *--assume-no*
 
 		Automatically select *no* for any prompts which may need your input.
+
+**--simple**, **--no-simple**
+
+	*--simple*
+
+		Show a more simple and condensed transaction summary.
+
+	*--no-simple*
+
+		Show the standard table transatction summary with more information.
+
+		This variant is the **default**
 
 **-o**, **--option**
 	Set options to pass through to **apt**, **nala**, or **dpkg**.
@@ -119,13 +141,26 @@ OPTIONS
 
 		Recommended packages will be installed.
 
-		This variant is the **default**
+		This variant is the **default** unless changed with the **apt** config.
 
 	*--no-install-recommends*
 
 		Recommended package will **NOT** be installed.
 
 		If this option is selected **nala** will display the recommended packages that will not be installed.
+
+**--install-suggests**, **--no-install-suggests**
+	*--install-suggests*
+
+		Suggested packages will be installed.
+
+		This variant is the **default**
+
+	*--no-install-suggests*
+
+		This variant is the **default** unless changed with the **apt** config.
+
+		If this option is selected **nala** will display the suggested packages that will not be installed.
 
 **--fix-broken**, **--no-fix-broken**
 	*--fix-broken*
