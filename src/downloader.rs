@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::fs;
 use std::io::Read;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use anyhow::{bail, Context, Result};
 use bytes::{BufMut, Bytes, BytesMut};
@@ -77,7 +77,7 @@ impl URI {
 		println!("filename: {filename}");
 		Ok(Arc::new(URI {
 			uris: filter_uris(version, cache, config, downloader).await?,
-			size: 0,
+			size: version.size(),
 			path: "".to_string(),
 			hash_type: "".to_string(),
 			filename,
@@ -91,11 +91,11 @@ pub struct Progress {
 }
 
 impl Progress {
-	fn new(total: u64) -> Self {
-		Progress {
+	fn new(total: u64) -> Arc<Mutex<Self>> {
+		Arc::new(Mutex::new(Progress {
 			progress: ProgressBar::new(total),
 			data: 0,
-		}
+		}))
 	}
 }
 
@@ -134,7 +134,7 @@ impl Downloader {
 		let mut message = String::new();
 		message += "\n";
 		message += "│  Total Packages: 81/391\n";
-		message += "│  Last Completed: libreoffice-gtk3_4%3a7.5.7-1_amd64.deb\n";
+		message += "│  Last Completed: {msg}\n";
 		message += "│  [{eta}] [{wide_bar:.cyan/red}] {bytes}/{total_bytes}";
 
 		self.progress.set_style(
@@ -346,8 +346,30 @@ pub async fn download(config: &Config) -> Result<()> {
 
 	let mut set = JoinSet::new();
 
+	let mut total: u64 = 0;
+	for uri in &downloader.uri_list {
+		total += uri.size;
+	}
+	let progress = Progress::new(total);
+
+	let mut message = String::new();
+	message += "\n";
+	message += "│  Total Packages: 81/391\n";
+	message += "│  Last Completed: {msg}\n";
+	message += "│  [{eta}] [{wide_bar:.cyan/red}] {bytes}/{total_bytes}";
+
+
+	progress.lock().unwrap().progress.set_style(
+		ProgressStyle::with_template(&message)
+			.unwrap()
+			.with_key("eta", |state: &ProgressState, w: &mut dyn Write| {
+				write!(w, "{:.1}", state.eta().as_secs_f64()).unwrap()
+			})
+			.progress_chars("━━━"),
+	);
+
 	for uri in downloader.uri_list {
-		set.spawn(download_file(uri.clone()));
+		set.spawn(download_file(progress.clone(), uri.clone()));
 	}
 
 	while let Some(res) = set.join_next().await {
@@ -357,50 +379,16 @@ pub async fn download(config: &Config) -> Result<()> {
 	Ok(())
 }
 
-pub async fn download_file(uri: Arc<URI>) -> Result<()> {
+pub async fn download_file(progress: Arc<Mutex<Progress>>, uri: Arc<URI>) -> Result<()> {
 	let client = reqwest::Client::new();
 	let mut response = client.get(uri.uris.iter().next().unwrap()).send().await?;
-	let total = response
-		.headers()
-		.get("content-length")
-		.unwrap()
-		.to_str()?
-		.parse::<u64>()?;
 
-	let pb = ProgressBar::new(total);
-	pb.set_length(total);
-
-	let mut message = String::new();
-	message += "\n";
-	message += "│  Total Packages: 81/391\n";
-	message += "│  Last Completed: libreoffice-gtk3_4%3a7.5.7-1_amd64.deb\n";
-	message += "│  [{eta}] [{wide_bar:.cyan/red}] {bytes}/{total_bytes}";
-
-	pb.set_style(
-		ProgressStyle::with_template(&message)
-			.unwrap()
-			.with_key("eta", |state: &ProgressState, w: &mut dyn Write| {
-				write!(w, "{:.1}", state.eta().as_secs_f64()).unwrap()
-			})
-			.progress_chars("━━━"),
-	);
-	// state.eta().as_secs_f64()
-	// let data: BytesMut = BytesMut::new();
-	let mut data: u64 = 0;
-	// let data: Bytes = Bytes::new;
 	while let Some(chunk) = response.chunk().await? {
-		data += chunk.len() as u64;
-
-		// let new = min(downloaded + 223211, total_size);
-		// downloaded = new;
-		pb.set_position(data);
+		let mut pb = progress.lock().unwrap();
+		pb.data += chunk.len() as u64;
+		pb.progress.set_position(pb.data);
 	}
-	pb.finish_with_message("downloaded");
-	println!("{data} = {total}");
+	progress.lock().unwrap().progress.set_message(uri.filename.clone());
 
-	// let res = reqwest::get(uri.uris.first().unwrap()).await?;
-	// dbg!(res.headers());
-	// let end = res.bytes().await?.len();
-	// println!("{end}");
 	Ok(())
 }
