@@ -1,19 +1,16 @@
-use std::cmp::min;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::fs;
-use std::io::Read;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{bail, Context, Result};
-use bytes::{BufMut, Bytes, BytesMut};
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
-use once_cell::sync::{Lazy, OnceCell};
+use once_cell::sync::OnceCell;
 use regex::{Regex, RegexBuilder};
-use reqwest::{self, Client, Response};
+use reqwest::{self, Client};
 use rust_apt::cache::Cache;
 use rust_apt::new_cache;
-use rust_apt::package::{Package, Version};
+use rust_apt::package::Version;
 use rust_apt::records::RecordField;
 use tokio::task::JoinSet;
 
@@ -62,25 +59,22 @@ pub struct URI {
 impl URI {
 	async fn from_version<'a>(
 		version: &'a Version<'a>,
-		// 		package: &'a Package<'a>,
 		cache: &Cache,
 		config: &Config,
 		downloader: &mut Downloader,
 	) -> Result<Arc<URI>> {
-		let filename = version
-			.get_record(RecordField::Filename)
-			.unwrap()
-			.split_terminator("/")
-			.last()
-			.unwrap()
-			.to_string();
-		println!("filename: {filename}");
 		Ok(Arc::new(URI {
 			uris: filter_uris(version, cache, config, downloader).await?,
 			size: version.size(),
 			path: "".to_string(),
 			hash_type: "".to_string(),
-			filename,
+			filename: version
+				.get_record(RecordField::Filename)
+				.unwrap()
+				.split_terminator("/")
+				.last()
+				.unwrap()
+				.to_string(),
 		}))
 	}
 }
@@ -248,7 +242,6 @@ pub async fn filter_uris<'a>(
 		}
 
 		if uri.starts_with("mirror:") {
-			// Do some things or smth
 			if let Some(file_match) = downloader.mirror_regex.mirror()?.captures(&uri) {
 				let filename = file_match.get(1).unwrap().as_str();
 				if !downloader.mirrors.contains_key(filename) {
@@ -305,8 +298,6 @@ pub async fn download(config: &Config) -> Result<()> {
 		let cache = new_cache!()?;
 		for name in pkg_names {
 			if let Some(pkg) = cache.get(name) {
-				// This is a bug fix it. It resets the whole list. Is this supposed to be a list
-				// of a list?
 				let versions: Vec<Version> = pkg.versions().collect();
 				for version in &versions {
 					if version.is_downloadable() {
@@ -322,7 +313,6 @@ pub async fn download(config: &Config) -> Result<()> {
 						pkg.fullname(false)
 					));
 				}
-				println!("{}", downloader.uri_list.len())
 			} else {
 				downloader
 					.not_found
@@ -346,10 +336,7 @@ pub async fn download(config: &Config) -> Result<()> {
 
 	let mut set = JoinSet::new();
 
-	let mut total: u64 = 0;
-	for uri in &downloader.uri_list {
-		total += uri.size;
-	}
+	let total: u64 = downloader.uri_list.iter().map(|uri| uri.size).sum();
 	let progress = Progress::new(total);
 
 	let mut message = String::new();
@@ -357,7 +344,6 @@ pub async fn download(config: &Config) -> Result<()> {
 	message += "│  Total Packages: 81/391\n";
 	message += "│  Last Completed: {msg}\n";
 	message += "│  [{eta}] [{wide_bar:.cyan/red}] {bytes}/{total_bytes}";
-
 
 	progress.lock().unwrap().progress.set_style(
 		ProgressStyle::with_template(&message)
@@ -388,7 +374,11 @@ pub async fn download_file(progress: Arc<Mutex<Progress>>, uri: Arc<URI>) -> Res
 		pb.data += chunk.len() as u64;
 		pb.progress.set_position(pb.data);
 	}
-	progress.lock().unwrap().progress.set_message(uri.filename.clone());
+	progress
+		.lock()
+		.unwrap()
+		.progress
+		.set_message(uri.filename.clone());
 
 	Ok(())
 }
