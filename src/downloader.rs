@@ -4,7 +4,7 @@ use std::fs;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{bail, Context, Result};
-use indicatif::{ProgressBar, ProgressState, ProgressStyle};
+use indicatif::{MultiProgress, ProgressBar, ProgressState, ProgressStyle};
 use once_cell::sync::OnceCell;
 use regex::{Regex, RegexBuilder};
 use reqwest;
@@ -80,14 +80,34 @@ impl URI {
 }
 
 pub struct Progress {
+	multi: MultiProgress,
 	progress: ProgressBar,
+	pkgs_downloaded: u64,
+	total_pkgs: u64,
 	data: u64,
 }
 
 impl Progress {
-	fn new(total: u64) -> Arc<Mutex<Self>> {
+	fn new(total: u64, total_pkgs: u64) -> Arc<Mutex<Self>> {
+		let multi = MultiProgress::new();
+
+		let progress = multi.add(ProgressBar::new(total));
+		progress.set_style(
+			ProgressStyle::with_template(
+				"\n|  Downloading: {msg}\n|  Total Time Remaining: {eta_precise}\n|  \
+				 [{wide_bar:.cyan/red}] {percent}% • {bytes}/{total_bytes} • \
+				 {binary_bytes_per_sec}\n|\n",
+			)
+			.unwrap()
+			.progress_chars("━━━"),
+		);
+		progress.set_message(format!("{}/{}", 0, total_pkgs));
+
 		Arc::new(Mutex::new(Progress {
-			progress: ProgressBar::new(total),
+			multi,
+			progress,
+			pkgs_downloaded: 0,
+			total_pkgs,
 			data: 0,
 		}))
 	}
@@ -275,26 +295,16 @@ pub async fn download(config: &Config) -> Result<()> {
 		untrusted_error(config, &downloader.untrusted)?
 	}
 
-	let progress = Progress::new(downloader.uri_list.iter().map(|uri| uri.size).sum());
-
-	let mut message = String::new();
-	message += "\n";
-	message += "│  Total Packages: 81/391\n";
-	message += "│  Last Completed: {msg}\n";
-	message += "│  [{eta}] [{wide_bar:.cyan/red}] {bytes}/{total_bytes}";
-
-	progress.lock().unwrap().progress.set_style(
-		ProgressStyle::with_template(&message)
-			.unwrap()
-			.with_key("eta", |state: &ProgressState, w: &mut dyn Write| {
-				write!(w, "{:.1}", state.eta().as_secs_f64()).unwrap()
-			})
-			.progress_chars("━━━"),
+	let progress = Progress::new(
+		downloader.uri_list.iter().map(|uri| uri.size).sum(),
+		downloader.uri_list.len() as u64,
 	);
+	// progress.lock().unwrap().progress.set_style(sty);
 
 	let mut set = JoinSet::new();
 	for uri in downloader.uri_list {
-		set.spawn(download_file(progress.clone(), uri.clone()));
+		let pkg_name = config.color.package(&uri.filename).to_string();
+		set.spawn(download_file(progress.clone(), uri.clone(), pkg_name));
 	}
 
 	while let Some(res) = set.join_next().await {
@@ -304,20 +314,44 @@ pub async fn download(config: &Config) -> Result<()> {
 	Ok(())
 }
 
-pub async fn download_file(progress: Arc<Mutex<Progress>>, uri: Arc<URI>) -> Result<()> {
+pub async fn download_file(
+	progress: Arc<Mutex<Progress>>,
+	uri: Arc<URI>,
+	pkg_name: String,
+) -> Result<()> {
 	let client = reqwest::Client::new();
 	let mut response = client.get(uri.uris.iter().next().unwrap()).send().await?;
 
-	while let Some(chunk) = response.chunk().await? {
-		let mut pb = progress.lock().unwrap();
-		pb.data += chunk.len() as u64;
-		pb.progress.set_position(pb.data);
-	}
-	progress
+	// let pb = progress.lock().unwrap().multi.insert(0,
+	// ProgressBar::new(uri.size));
+	let pb = progress
 		.lock()
 		.unwrap()
-		.progress
-		.set_message(uri.filename.clone());
+		.multi
+		.add(ProgressBar::new(uri.size));
+	pb.set_style(
+		ProgressStyle::with_template(
+			"|  {msg} [{wide_bar:.cyan/red}] {percent}% • {bytes}/{total_bytes} • \
+			 {binary_bytes_per_sec}",
+		)
+		.unwrap()
+		.progress_chars("━━━"),
+	);
+
+	pb.set_message(pkg_name);
+
+	while let Some(chunk) = response.chunk().await? {
+		progress.lock().unwrap().progress.inc(chunk.len() as u64);
+		pb.inc(chunk.len() as u64);
+	}
+	pb.finish();
+
+	let mut total_pb = progress.lock().unwrap();
+	total_pb.pkgs_downloaded += 1;
+	total_pb.progress.set_message(format!(
+		"{}/{}",
+		total_pb.pkgs_downloaded, total_pb.total_pkgs
+	));
 
 	Ok(())
 }
