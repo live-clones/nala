@@ -7,7 +7,7 @@ use anyhow::{bail, Context, Result};
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use once_cell::sync::OnceCell;
 use regex::{Regex, RegexBuilder};
-use reqwest::{self, Client};
+use reqwest;
 use rust_apt::cache::Cache;
 use rust_apt::new_cache;
 use rust_apt::package::Version;
@@ -70,10 +70,10 @@ impl URI {
 			hash_type: "".to_string(),
 			filename: version
 				.get_record(RecordField::Filename)
-				.unwrap()
+				.expect("Record does not contain a filename!")
 				.split_terminator("/")
 				.last()
-				.unwrap()
+				.expect("Filename is malformed!")
 				.to_string(),
 		}))
 	}
@@ -94,81 +94,22 @@ impl Progress {
 }
 
 pub struct Downloader {
-	client: Client,
 	uri_list: Vec<Arc<URI>>,
 	untrusted: HashSet<String>,
 	not_found: Vec<String>,
 	mirrors: HashMap<String, String>,
 	mirror_regex: MirrorRegex,
-	progress: ProgressBar,
-	data: u64,
 }
 
 impl Downloader {
 	fn new() -> Self {
 		Downloader {
-			client: reqwest::Client::new(),
 			uri_list: vec![],
 			untrusted: HashSet::new(),
 			not_found: vec![],
 			mirrors: HashMap::new(),
 			mirror_regex: MirrorRegex::new(),
-			progress: ProgressBar::new(0),
-			data: 0,
 		}
-	}
-
-	fn start_progress(&self) {
-		let mut total: u64 = 0;
-		for uri in &self.uri_list {
-			total += uri.size;
-		}
-		self.progress.set_length(total);
-
-		let mut message = String::new();
-		message += "\n";
-		message += "│  Total Packages: 81/391\n";
-		message += "│  Last Completed: {msg}\n";
-		message += "│  [{eta}] [{wide_bar:.cyan/red}] {bytes}/{total_bytes}";
-
-		self.progress.set_style(
-			ProgressStyle::with_template(&message)
-				.unwrap()
-				.with_key("eta", |state: &ProgressState, w: &mut dyn Write| {
-					write!(w, "{:.1}", state.eta().as_secs_f64()).unwrap()
-				})
-				.progress_chars("━━━"),
-		);
-	}
-
-	// async fn start_downloads(&mut self) -> Result<()> {
-	// 	let mut set = JoinSet::new();
-
-	// 	for uri in &self.uri_list {
-	// 		set.spawn(self.download_file(uri.clone()));
-	// 	}
-
-	// 	while let Some(res) = set.join_next().await {
-	// 		let _out = res??;
-	// 	}
-	// 	drop(set);
-	// 	Ok(())
-	// }
-
-	async fn download_file(&mut self, uri: Arc<URI>) -> Result<()> {
-		let mut response = self
-			.client
-			.get(uri.uris.iter().next().unwrap())
-			.send()
-			.await?;
-		while let Some(chunk) = response.chunk().await? {
-			self.data += chunk.len() as u64;
-
-			// let new = min(downloaded + 223211, total_size);
-			// downloaded = new;
-			self.progress.set_position(self.data);
-		}
-		Ok(())
 	}
 }
 
@@ -334,10 +275,7 @@ pub async fn download(config: &Config) -> Result<()> {
 		untrusted_error(config, &downloader.untrusted)?
 	}
 
-	let mut set = JoinSet::new();
-
-	let total: u64 = downloader.uri_list.iter().map(|uri| uri.size).sum();
-	let progress = Progress::new(total);
+	let progress = Progress::new(downloader.uri_list.iter().map(|uri| uri.size).sum());
 
 	let mut message = String::new();
 	message += "\n";
@@ -354,6 +292,7 @@ pub async fn download(config: &Config) -> Result<()> {
 			.progress_chars("━━━"),
 	);
 
+	let mut set = JoinSet::new();
 	for uri in downloader.uri_list {
 		set.spawn(download_file(progress.clone(), uri.clone()));
 	}
