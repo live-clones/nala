@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct HistoryFile {
@@ -17,7 +17,7 @@ pub struct HistoryEntry {
 	purged: bool,
 	operation: Operation,
 	explicit: Vec<String>,
-	packages: Vec<HistoryPackage>
+	packages: Vec<HistoryPackage>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -41,8 +41,7 @@ enum Operation {
 	Downgrade,
 }
 
-
-pub fn history_test() -> Result<()>{
+pub fn history_test() -> Result<()> {
 	let pkg = HistoryPackage {
 		name: "Nala".to_string(),
 		version: "0.12.0".to_string(),
