@@ -5,16 +5,59 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{bail, Context, Result};
 use indicatif::{MultiProgress, ProgressBar, ProgressState, ProgressStyle};
-use once_cell::sync::OnceCell;
+use once_cell::sync::{OnceCell, Lazy};
 use regex::{Regex, RegexBuilder};
 use reqwest;
 use rust_apt::cache::Cache;
 use rust_apt::new_cache;
 use rust_apt::package::Version;
 use rust_apt::records::RecordField;
+use rust_apt::util::terminal_width;
 use tokio::task::JoinSet;
 
 use crate::config::Config;
+
+static HASHMAP: Lazy<HashMap<&str, &str>> = Lazy::new(|| {
+	println!("initializing");
+	HashMap::from([
+		("left_border", "│  "),
+		("right_border", "  │"),
+		("border", "─"),
+		("corner", "╭╮╰╯"),
+		("message", "{msg}"),
+
+		("red", "testing"),
+	])
+});
+
+pub fn build_progress(config: &Config) -> String {
+	let left_border = "│  ";
+	let right_border = "  │";
+	let border = "─";
+	let corner = "╭╮╰╯";
+
+	//let message = "{msg}";
+	let time_remaining = "";
+
+
+	let downloading = "Total:".to_string();
+	let total_time = "ETA:".to_string();
+
+	let download_fill = " ".repeat(terminal_width() - 6 - downloading.len() - 4);
+	let total_fill = " ".repeat(terminal_width() - 6 - total_time.len() - 9);
+
+	let mut message = String::new();
+	message += &format!("\n{} {{msg}}, {} {{eta_precise}} ", config.color.package(&downloading), config.color.package(&total_time));
+	message += "{wide_bar:.cyan/red} {percent}% • {bytes}/{total_bytes} • {binary_bytes_per_sec}";
+	message += &format!("\n╭{}╮", "─".repeat(terminal_width() - 2));
+	// message += &format!("\n{left_border}{} {{msg}}{download_fill}{right_border}", config.color.package(&downloading));
+	// message += &format!("\n{left_border}{} {{eta_precise}}{total_fill}{right_border}", config.color.package(&total_time));
+	//message += "\n│  [{wide_bar:.cyan/red}] {percent}% • {bytes}/{total_bytes} • {binary_bytes_per_sec}  │";
+	message += &format!("\n{left_border}{}{right_border}", " ".repeat(terminal_width() - 6));
+
+	message
+}
+
 
 pub struct MirrorRegex {
 	mirror: OnceCell<Regex>,
@@ -79,36 +122,55 @@ impl URI {
 	}
 }
 
+// pub struct ProgressString {
+// 	left_border: String,
+// 	right_border: String,
+// 	message: String,
+// 	bar: String,
+// 	percent: String,
+// 	bytes: Bu
+// }
+
 pub struct Progress {
 	multi: MultiProgress,
 	progress: ProgressBar,
 	pkgs_downloaded: u64,
 	total_pkgs: u64,
 	data: u64,
+	last_progress: ProgressBar,
 }
 
 impl Progress {
-	fn new(total: u64, total_pkgs: u64) -> Arc<Mutex<Self>> {
+	fn new(total: u64, total_pkgs: u64, message: String) -> Arc<Mutex<Self>> {
 		let multi = MultiProgress::new();
 
 		let progress = multi.add(ProgressBar::new(total));
 		progress.set_style(
 			ProgressStyle::with_template(
-				"\n|  Downloading: {msg}\n|  Total Time Remaining: {eta_precise}\n|  \
-				 [{wide_bar:.cyan/red}] {percent}% • {bytes}/{total_bytes} • \
-				 {binary_bytes_per_sec}\n|\n",
+				&message
 			)
 			.unwrap()
 			.progress_chars("━━━"),
 		);
-		progress.set_message(format!("{}/{}", 0, total_pkgs));
 
+		let last_progress = multi.add(ProgressBar::new(total));
+		last_progress.set_style(
+			ProgressStyle::with_template(
+				&format!("╰{}╯", "─".repeat(terminal_width() - 2)),
+			)
+			.unwrap()
+			.progress_chars("━━━"),
+		);
+		last_progress.inc(1);
+
+		progress.set_message(format!("{}/{}", 0, total_pkgs));
 		Arc::new(Mutex::new(Progress {
 			multi,
 			progress,
 			pkgs_downloaded: 0,
 			total_pkgs,
 			data: 0,
+			last_progress,
 		}))
 	}
 }
@@ -255,6 +317,11 @@ pub fn untrusted_error(config: &Config, untrusted: &HashSet<String>) -> Result<(
 pub async fn download(config: &Config) -> Result<()> {
 	let mut downloader = Downloader::new();
 
+	// HASHMAP.get("nothing").is_none();
+	// dbg!(&HASHMAP);
+	// print!("WoW!");
+	// panic!();
+
 	if let Some(pkg_names) = config.pkg_names() {
 		let cache = new_cache!()?;
 		for name in pkg_names {
@@ -298,8 +365,8 @@ pub async fn download(config: &Config) -> Result<()> {
 	let progress = Progress::new(
 		downloader.uri_list.iter().map(|uri| uri.size).sum(),
 		downloader.uri_list.len() as u64,
+		build_progress(config),
 	);
-	// progress.lock().unwrap().progress.set_style(sty);
 
 	let mut set = JoinSet::new();
 	for uri in downloader.uri_list {
@@ -322,17 +389,17 @@ pub async fn download_file(
 	let client = reqwest::Client::new();
 	let mut response = client.get(uri.uris.iter().next().unwrap()).send().await?;
 
-	// let pb = progress.lock().unwrap().multi.insert(0,
 	// ProgressBar::new(uri.size));
-	let pb = progress
-		.lock()
-		.unwrap()
-		.multi
-		.add(ProgressBar::new(uri.size));
+	// let pb = progress
+	// 	.lock()
+	// 	.unwrap()
+	// 	.multi
+	// 	.add(ProgressBar::new(uri.size));
+	let pb = progress.lock().unwrap().multi.insert_from_back(1, ProgressBar::new(uri.size));
 	pb.set_style(
 		ProgressStyle::with_template(
-			"|  {msg} [{wide_bar:.cyan/red}] {percent}% • {bytes}/{total_bytes} • \
-			 {binary_bytes_per_sec}",
+			"│  {msg} [{wide_bar:.cyan/red}] {percent}% • {bytes}/{total_bytes} • \
+			 {binary_bytes_per_sec}  │",
 		)
 		.unwrap()
 		.progress_chars("━━━"),
