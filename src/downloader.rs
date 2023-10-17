@@ -1,11 +1,21 @@
 use std::collections::{HashMap, HashSet};
+use std::error::Error;
 use std::fmt::Write;
-use std::fs;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+use std::{fs, io, thread, time, vec};
 
 use anyhow::{bail, Context, Result};
+use crossterm::event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode};
+use crossterm::execute;
+use crossterm::terminal::{
+	disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+};
 use indicatif::{MultiProgress, ProgressBar, ProgressState, ProgressStyle};
-use once_cell::sync::{OnceCell, Lazy};
+use once_cell::sync::{Lazy, OnceCell};
+use ratatui::prelude::*;
+use ratatui::style::Stylize;
+use ratatui::widgets::*;
 use regex::{Regex, RegexBuilder};
 use reqwest;
 use rust_apt::cache::Cache;
@@ -25,7 +35,6 @@ static HASHMAP: Lazy<HashMap<&str, &str>> = Lazy::new(|| {
 		("border", "─"),
 		("corner", "╭╮╰╯"),
 		("message", "{msg}"),
-
 		("red", "testing"),
 	])
 });
@@ -36,9 +45,8 @@ pub fn build_progress(config: &Config) -> String {
 	let border = "─";
 	let corner = "╭╮╰╯";
 
-	//let message = "{msg}";
+	// let message = "{msg}";
 	let time_remaining = "";
-
 
 	let downloading = "Total:".to_string();
 	let total_time = "ETA:".to_string();
@@ -47,17 +55,25 @@ pub fn build_progress(config: &Config) -> String {
 	let total_fill = " ".repeat(terminal_width() - 6 - total_time.len() - 9);
 
 	let mut message = String::new();
-	message += &format!("\n{} {{msg}}, {} {{eta_precise}} ", config.color.package(&downloading), config.color.package(&total_time));
+	message += &format!(
+		"\n{} {{msg}}, {} {{eta_precise}} ",
+		config.color.package(&downloading),
+		config.color.package(&total_time)
+	);
 	message += "{wide_bar:.cyan/red} {percent}% • {bytes}/{total_bytes} • {binary_bytes_per_sec}";
 	message += &format!("\n╭{}╮", "─".repeat(terminal_width() - 2));
-	// message += &format!("\n{left_border}{} {{msg}}{download_fill}{right_border}", config.color.package(&downloading));
-	// message += &format!("\n{left_border}{} {{eta_precise}}{total_fill}{right_border}", config.color.package(&total_time));
-	//message += "\n│  [{wide_bar:.cyan/red}] {percent}% • {bytes}/{total_bytes} • {binary_bytes_per_sec}  │";
-	message += &format!("\n{left_border}{}{right_border}", " ".repeat(terminal_width() - 6));
+	// message += &format!("\n{left_border}{} {{msg}}{download_fill}{right_border}",
+	// config.color.package(&downloading)); message += &format!("\n{left_border}{}
+	// {{eta_precise}}{total_fill}{right_border}",
+	// config.color.package(&total_time)); message += "\n│  [{wide_bar:.cyan/red}]
+	// {percent}% • {bytes}/{total_bytes} • {binary_bytes_per_sec}  │";
+	message += &format!(
+		"\n{left_border}{}{right_border}",
+		" ".repeat(terminal_width() - 6)
+	);
 
 	message
 }
-
 
 pub struct MirrorRegex {
 	mirror: OnceCell<Regex>,
@@ -146,20 +162,16 @@ impl Progress {
 
 		let progress = multi.add(ProgressBar::new(total));
 		progress.set_style(
-			ProgressStyle::with_template(
-				&message
-			)
-			.unwrap()
-			.progress_chars("━━━"),
+			ProgressStyle::with_template(&message)
+				.unwrap()
+				.progress_chars("━━━"),
 		);
 
 		let last_progress = multi.add(ProgressBar::new(total));
 		last_progress.set_style(
-			ProgressStyle::with_template(
-				&format!("╰{}╯", "─".repeat(terminal_width() - 2)),
-			)
-			.unwrap()
-			.progress_chars("━━━"),
+			ProgressStyle::with_template(&format!("╰{}╯", "─".repeat(terminal_width() - 2)))
+				.unwrap()
+				.progress_chars("━━━"),
 		);
 		last_progress.inc(1);
 
@@ -362,23 +374,182 @@ pub async fn download(config: &Config) -> Result<()> {
 		untrusted_error(config, &downloader.untrusted)?
 	}
 
-	let progress = Progress::new(
-		downloader.uri_list.iter().map(|uri| uri.size).sum(),
-		downloader.uri_list.len() as u64,
-		build_progress(config),
-	);
+	// let progress = Progress::new(
+	// 	downloader.uri_list.iter().map(|uri| uri.size).sum(),
+	// 	downloader.uri_list.len() as u64,
+	// 	build_progress(config),
+	// );
 
-	let mut set = JoinSet::new();
-	for uri in downloader.uri_list {
-		let pkg_name = config.color.package(&uri.filename).to_string();
-		set.spawn(download_file(progress.clone(), uri.clone(), pkg_name));
+	// setup terminal
+	enable_raw_mode()?;
+	let mut stdout = io::stdout();
+	execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+	let backend = CrosstermBackend::new(stdout);
+	// let mut terminal = Terminal::new(backend)?;
+	let mut terminal = Terminal::with_options(
+		backend,
+		TerminalOptions {
+			viewport: Viewport::Fullscreen,
+		},
+	)?;
+
+	// create app and run it
+	let tick_rate = Duration::from_millis(250);
+	let app = App::new();
+	let res = run_app(&mut terminal, app, tick_rate);
+
+	// restore terminal
+	disable_raw_mode()?;
+	execute!(
+		terminal.backend_mut(),
+		LeaveAlternateScreen,
+		DisableMouseCapture
+	)?;
+	terminal.show_cursor()?;
+
+	if let Err(err) = res {
+		println!("{err:?}");
 	}
 
-	while let Some(res) = set.join_next().await {
-		let _out = res??;
-	}
+	// let mut set = JoinSet::new();
+	// for uri in downloader.uri_list {
+	// 	let pkg_name = config.color.package(&uri.filename).to_string();
+	// 	set.spawn(download_file(progress.clone(), uri.clone(), pkg_name));
+	// }
+
+	// while let Some(res) = set.join_next().await {
+	// 	let _out = res??;
+	// }
 
 	Ok(())
+}
+
+fn run_app<B: Backend>(
+	terminal: &mut Terminal<B>,
+	mut app: App,
+	tick_rate: Duration,
+) -> io::Result<()> {
+	let mut last_tick = Instant::now();
+	loop {
+		terminal.draw(|f| ui(f, &app))?;
+
+		// thread::sleep(time::Duration::from_secs(2));
+
+		let timeout = tick_rate
+			.checked_sub(last_tick.elapsed())
+			.unwrap_or_else(|| Duration::from_secs(0));
+		if crossterm::event::poll(timeout)? {
+			if let Event::Key(key) = event::read()? {
+				if let KeyCode::Char('q') = key.code {
+					return Ok(());
+				}
+			}
+		}
+		if last_tick.elapsed() >= tick_rate {
+			app.on_tick();
+			last_tick = Instant::now();
+		}
+	}
+}
+
+struct App {
+	bars: HashMap<&'static str, f64>,
+}
+
+impl App {
+	fn new() -> App {
+		App {
+			bars: HashMap::from([
+				("nala.deb", 0.10),
+				("neofetch.deb", 0.20),
+				("apt.deb", 0.30),
+				("plastic.deb", 0.40),
+			]),
+		}
+	}
+
+	fn on_tick(&mut self) {}
+}
+
+fn ui<B: Backend>(f: &mut Frame<B>, app: &App) {
+	let mut constraints = vec![];
+
+	constraints.push(Constraint::Max(1));
+
+	for _item in app.bars.iter() {
+		constraints.push(Constraint::Max(1))
+	}
+
+	let outer_block = Block::new()
+		.borders(Borders::ALL)
+		.title("  Downloading...  ".reset().bold())
+		.style(
+			Style::default()
+				.fg(Color::Cyan)
+				.add_modifier(Modifier::BOLD),
+		);
+
+	let inner = outer_block.inner(f.size());
+	f.render_widget(outer_block, f.size());
+
+	let chunks = Layout::default()
+		.direction(Direction::Vertical)
+		.constraints(constraints)
+		.split(inner);
+
+	// let text = "Total Downloads!";
+	// let test_block = Paragraph::new(text.reset().bold())
+	// 	.wrap(Wrap { trim: true })
+	// 	.alignment(Alignment::Center);
+	// f.render_widget(test_block, chunks[0]);
+
+	// let total_download = chunks[1];
+	// let new_chunk = Layout::default()
+	// 	.direction(Direction::Horizontal)
+	// 	.constraints([Constraint::Percentage(80), Constraint::Percentage(20)])
+	// 	.split(total_download);
+
+	// let text = "After Line?";
+	// let test_block = Paragraph::new(text.reset().bold())
+	// 	.wrap(Wrap { trim: true })
+	// 	.alignment(Alignment::Center);
+
+	// let yolo = LineGauge::default()
+	// 	.line_set(symbols::line::THICK)
+	// 	.ratio(30 as f64 / 100.0)
+	// 	.gauge_style(Style::default().fg(Color::Cyan).bg(Color::Red));
+
+	// f.render_widget(yolo, new_chunk[0]);
+	// f.render_widget(test_block, new_chunk[1]);
+
+	for (i, (pkg_name, percent)) in app.bars.iter().enumerate() {
+		let split = chunks[i];
+		let gauge = LineGauge::default()
+			.line_set(symbols::line::THICK)
+			.ratio(*percent)
+			.gauge_style(Style::default().fg(Color::Cyan).bg(Color::Red));
+
+		let right_text = Paragraph::new(pkg_name.reset().bold())
+			.wrap(Wrap { trim: true })
+			.alignment(Alignment::Center);
+
+		let new_chunk = Layout::default()
+			.direction(Direction::Horizontal)
+			.constraints([Constraint::Percentage(80), Constraint::Percentage(20)])
+			.split(split);
+
+		f.render_widget(gauge, new_chunk[0]);
+		f.render_widget(right_text, new_chunk[1]);
+	}
+
+	// for (i, percent) in app.bars.iter().enumerate() {
+	// 	let gauge = LineGauge::default()
+	// 		.line_set(symbols::line::THICK)
+	// 		.ratio(*percent as f64 / 100.0)
+	// 		.gauge_style(Style::default().fg(Color::Cyan).bg(Color::Red));
+
+	// 	f.render_widget(gauge, chunks[i])
+	// }
 }
 
 pub async fn download_file(
@@ -389,13 +560,11 @@ pub async fn download_file(
 	let client = reqwest::Client::new();
 	let mut response = client.get(uri.uris.iter().next().unwrap()).send().await?;
 
-	// ProgressBar::new(uri.size));
-	// let pb = progress
-	// 	.lock()
-	// 	.unwrap()
-	// 	.multi
-	// 	.add(ProgressBar::new(uri.size));
-	let pb = progress.lock().unwrap().multi.insert_from_back(1, ProgressBar::new(uri.size));
+	let pb = progress
+		.lock()
+		.unwrap()
+		.multi
+		.insert_from_back(1, ProgressBar::new(uri.size));
 	pb.set_style(
 		ProgressStyle::with_template(
 			"│  {msg} [{wide_bar:.cyan/red}] {percent}% • {bytes}/{total_bytes} • \
