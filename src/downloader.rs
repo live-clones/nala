@@ -22,7 +22,7 @@ use rust_apt::cache::Cache;
 use rust_apt::new_cache;
 use rust_apt::package::Version;
 use rust_apt::records::RecordField;
-use rust_apt::util::terminal_width;
+use rust_apt::util::{terminal_width, unit_str, NumSys};
 use tokio::task::JoinSet;
 
 use crate::config::Config;
@@ -107,12 +107,12 @@ impl MirrorRegex {
 
 // #[derive(Clone, Debug)]
 pub struct URI {
-	// version: &'a Version<'a>,
 	uris: HashSet<String>,
 	size: u64,
 	path: String,
 	hash_type: String,
 	filename: String,
+	progress: Progress,
 }
 
 impl URI {
@@ -121,8 +121,10 @@ impl URI {
 		cache: &Cache,
 		config: &Config,
 		downloader: &mut Downloader,
-	) -> Result<Arc<URI>> {
-		Ok(Arc::new(URI {
+	) -> Result<URI> {
+		let progress = Progress::new(version.size());
+
+		Ok(URI {
 			uris: filter_uris(version, cache, config, downloader).await?,
 			size: version.size(),
 			path: "".to_string(),
@@ -134,61 +136,85 @@ impl URI {
 				.last()
 				.expect("Filename is malformed!")
 				.to_string(),
-		}))
+			progress,
+		})
 	}
 }
 
-// pub struct ProgressString {
-// 	left_border: String,
-// 	right_border: String,
-// 	message: String,
-// 	bar: String,
-// 	percent: String,
-// 	bytes: Bu
-// }
-
 pub struct Progress {
-	multi: MultiProgress,
-	progress: ProgressBar,
-	pkgs_downloaded: u64,
-	total_pkgs: u64,
-	data: u64,
-	last_progress: ProgressBar,
+	indicatif: ProgressBar,
+	bytes_per_sec: String,
+	current_total: String,
+	percentage: String,
 }
 
 impl Progress {
-	fn new(total: u64, total_pkgs: u64, message: String) -> Arc<Mutex<Self>> {
-		let multi = MultiProgress::new();
+	fn new(total: u64) -> Self {
+		let indicatif = ProgressBar::hidden();
+		indicatif.set_length(total);
 
-		let progress = multi.add(ProgressBar::new(total));
-		progress.set_style(
-			ProgressStyle::with_template(&message)
-				.unwrap()
-				.progress_chars("━━━"),
-		);
-
-		let last_progress = multi.add(ProgressBar::new(total));
-		last_progress.set_style(
-			ProgressStyle::with_template(&format!("╰{}╯", "─".repeat(terminal_width() - 2)))
-				.unwrap()
-				.progress_chars("━━━"),
-		);
-		last_progress.inc(1);
-
-		progress.set_message(format!("{}/{}", 0, total_pkgs));
-		Arc::new(Mutex::new(Progress {
-			multi,
-			progress,
-			pkgs_downloaded: 0,
-			total_pkgs,
-			data: 0,
-			last_progress,
-		}))
+		Progress {
+			indicatif,
+			bytes_per_sec: String::new(),
+			current_total: String::new(),
+			percentage: String::new(),
+		}
 	}
+
+	fn ratio(&self) -> f64 {
+		self.indicatif.position() as f64 / self.indicatif.length().unwrap() as f64
+	}
+
+	fn update_strings(&mut self) {
+		self.bytes_per_sec = format!(
+			"{}/s",
+			unit_str(self.indicatif.per_sec() as u64, NumSys::Binary)
+		);
+		self.current_total = format!(
+			"{}/{}",
+			unit_str(self.indicatif.position(), NumSys::Binary),
+			unit_str(self.indicatif.length().unwrap(), NumSys::Binary)
+		);
+		self.percentage = format!("{:.1} %", self.ratio() * 100.0);
+	}
+
+	fn bytes_per_sec(&self) -> &str { &self.bytes_per_sec }
+
+	fn current_total(&self) -> &str { &self.current_total }
+
+	fn percentage(&self) -> &str { &self.percentage }
+
+	fn bar_length(&self) -> u16 {
+		(terminal_width()
+			- (self.percentage().len()
+				+ self.current_total().len()
+				+ self.bytes_per_sec().len() + 8)) as u16
+	}
+
+	// fn current_total_length(&self) -> u16 {
+	// 	(terminal_width()
+	// 		- (self.percentage().len()
+	// 			+ self.bytes_per_sec().len()
+	// 			+ self.bar_length() as usize)) as u16
+	// }
+
+	// fn bytes_per_sec_length(&self) -> u16 {
+	// 	(terminal_width()
+	// 		- (self.percentage().len()
+	// 			+ self.current_total().len()
+	// 			+ self.bar_length()as usize)) as u16
+	// }
+
+	// fn percentage_length(&self) -> u16 {
+	// 	(terminal_width()
+	// 		- (self.bytes_per_sec().len()
+	// 			+ self.current_total().len()
+	// 			+ self.bar_length() as usize)) as u16
+	// }
 }
 
 pub struct Downloader {
-	uri_list: Vec<Arc<URI>>,
+	uri_list: Vec<URI>,
 	untrusted: HashSet<String>,
 	not_found: Vec<String>,
 	mirrors: HashMap<String, String>,
@@ -226,12 +252,10 @@ pub fn mirror_filter<'a>(
 	Ok(false)
 }
 
-pub fn uri_trusted<'a>(cache: &Cache, version: &'a Version<'a>, uri: &str) -> Result<bool> {
-	for mut package_file in version.package_files() {
-		let archive = package_file.archive()?;
-
-		if uri.contains(package_file.site()?) && archive != "now" {
-			return Ok(cache.is_trusted(&mut package_file));
+pub fn uri_trusted<'a>(cache: &Cache, version: &'a Version<'a>) -> Result<bool> {
+	for mut pf in version.package_files() {
+		if pf.archive()? != "now" {
+			return Ok(cache.is_trusted(&mut pf));
 		}
 	}
 	Ok(false)
@@ -252,7 +276,7 @@ pub async fn filter_uris<'a>(
 			continue;
 		}
 
-		if !uri_trusted(cache, version, &uri)? {
+		if !uri_trusted(cache, version)? {
 			downloader
 				.untrusted
 				.insert(config.color.red(version.parent().name()).to_string());
@@ -329,11 +353,6 @@ pub fn untrusted_error(config: &Config, untrusted: &HashSet<String>) -> Result<(
 pub async fn download(config: &Config) -> Result<()> {
 	let mut downloader = Downloader::new();
 
-	// HASHMAP.get("nothing").is_none();
-	// dbg!(&HASHMAP);
-	// print!("WoW!");
-	// panic!();
-
 	if let Some(pkg_names) = config.pkg_names() {
 		let cache = new_cache!()?;
 		for name in pkg_names {
@@ -395,8 +414,8 @@ pub async fn download(config: &Config) -> Result<()> {
 
 	// create app and run it
 	let tick_rate = Duration::from_millis(250);
-	let app = App::new();
-	let res = run_app(&mut terminal, app, tick_rate);
+	// let app = App::new();
+	let res = run_app(&mut terminal, &mut downloader, tick_rate);
 
 	// restore terminal
 	disable_raw_mode()?;
@@ -426,14 +445,19 @@ pub async fn download(config: &Config) -> Result<()> {
 
 fn run_app<B: Backend>(
 	terminal: &mut Terminal<B>,
-	mut app: App,
+	mut downloader: &mut Downloader,
 	tick_rate: Duration,
 ) -> io::Result<()> {
 	let mut last_tick = Instant::now();
 	loop {
-		terminal.draw(|f| ui(f, &app))?;
+		terminal.draw(|f| ui(f, &mut downloader))?;
 
-		// thread::sleep(time::Duration::from_secs(2));
+		for uri in downloader.uri_list.iter_mut() {
+			if (uri.progress.indicatif.position() + 1024) >= uri.progress.indicatif.length().unwrap() {
+				continue;
+			}
+			uri.progress.indicatif.inc(1024);
+		}
 
 		let timeout = tick_rate
 			.checked_sub(last_tick.elapsed())
@@ -446,37 +470,37 @@ fn run_app<B: Backend>(
 			}
 		}
 		if last_tick.elapsed() >= tick_rate {
-			app.on_tick();
+			// app.on_tick();
 			last_tick = Instant::now();
 		}
 	}
 }
 
-struct App {
-	bars: HashMap<&'static str, f64>,
-}
+// struct App {
+// 	bars: HashMap<&'static str, f64>,
+// }
 
-impl App {
-	fn new() -> App {
-		App {
-			bars: HashMap::from([
-				("nala.deb", 0.10),
-				("neofetch.deb", 0.20),
-				("apt.deb", 0.30),
-				("plastic.deb", 0.40),
-			]),
-		}
-	}
+// impl App {
+// 	fn new() -> App {
+// 		App {
+// 			bars: HashMap::from([
+// 				("nala.deb", 0.10),
+// 				("neofetch.deb", 0.20),
+// 				("apt.deb", 0.30),
+// 				("plastic.deb", 0.40),
+// 			]),
+// 		}
+// 	}
 
-	fn on_tick(&mut self) {}
-}
+// 	fn on_tick(&mut self) {}
+// }
 
-fn ui<B: Backend>(f: &mut Frame<B>, app: &App) {
+fn ui<B: Backend>(f: &mut Frame<B>, downloader: &mut Downloader) {
 	let mut constraints = vec![];
 
 	constraints.push(Constraint::Max(1));
 
-	for _item in app.bars.iter() {
+	for _item in &downloader.uri_list {
 		constraints.push(Constraint::Max(1))
 	}
 
@@ -497,59 +521,82 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &App) {
 		.constraints(constraints)
 		.split(inner);
 
-	// let text = "Total Downloads!";
-	// let test_block = Paragraph::new(text.reset().bold())
-	// 	.wrap(Wrap { trim: true })
-	// 	.alignment(Alignment::Center);
-	// f.render_widget(test_block, chunks[0]);
+	// let total = downloader
+	// 	.uri_list
+	// 	.iter()
+	// 	.map(|uri| uri.filename.len())
+	// 	.max()
+	// 	.unwrap();
 
-	// let total_download = chunks[1];
-	// let new_chunk = Layout::default()
-	// 	.direction(Direction::Horizontal)
-	// 	.constraints([Constraint::Percentage(80), Constraint::Percentage(20)])
-	// 	.split(total_download);
+	let mut total = 0;
+	let mut bar_length = 1024;
+	let mut current_total_length = 0;
+	let mut bytes_per_second_length = 0;
+	let mut percentage_length = 0;
+	for uri in downloader.uri_list.iter_mut() {
+		uri.progress.update_strings();
+		if uri.filename.len() > total {
+			total = uri.filename.len()
+		}
 
-	// let text = "After Line?";
-	// let test_block = Paragraph::new(text.reset().bold())
-	// 	.wrap(Wrap { trim: true })
-	// 	.alignment(Alignment::Center);
+		if uri.progress.bar_length() < bar_length {
+			bar_length = uri.progress.bar_length();
+		}
 
-	// let yolo = LineGauge::default()
-	// 	.line_set(symbols::line::THICK)
-	// 	.ratio(30 as f64 / 100.0)
-	// 	.gauge_style(Style::default().fg(Color::Cyan).bg(Color::Red));
+		if uri.progress.current_total.len() > current_total_length {
+			current_total_length = uri.progress.current_total.len();
+		}
 
-	// f.render_widget(yolo, new_chunk[0]);
-	// f.render_widget(test_block, new_chunk[1]);
+		if uri.progress.percentage.len() > percentage_length {
+			percentage_length = uri.progress.percentage.len();
+		}
 
-	for (i, (pkg_name, percent)) in app.bars.iter().enumerate() {
+		if uri.progress.bytes_per_sec.len() > bytes_per_second_length {
+			bytes_per_second_length = uri.progress.bytes_per_sec.len();
+		}
+	}
+
+	for (i, uri) in downloader.uri_list.iter().enumerate() {
+		let first_column = match uri.filename.len() < total {
+			true => uri.filename.to_string() + &" ".repeat(total - uri.filename.len()),
+			false => uri.filename.to_string(),
+		};
+
 		let split = chunks[i];
 		let gauge = LineGauge::default()
 			.line_set(symbols::line::THICK)
-			.ratio(*percent)
+			.ratio(uri.progress.ratio())
+			.label(first_column.reset().bold())
 			.gauge_style(Style::default().fg(Color::Cyan).bg(Color::Red));
 
-		let right_text = Paragraph::new(pkg_name.reset().bold())
+		let percentage = Paragraph::new(uri.progress.percentage())
 			.wrap(Wrap { trim: true })
-			.alignment(Alignment::Center);
+			.alignment(Alignment::Right);
+
+		let current_total = Paragraph::new(uri.progress.current_total())
+			.wrap(Wrap { trim: true })
+			.alignment(Alignment::Right);
+
+		// let bytes_per_sec_string = uri.progress.bytes_per_sec();
+		let bytes_per_sec = Paragraph::new(uri.progress.bytes_per_sec())
+			.wrap(Wrap { trim: true })
+			.alignment(Alignment::Right);
 
 		let new_chunk = Layout::default()
 			.direction(Direction::Horizontal)
-			.constraints([Constraint::Percentage(80), Constraint::Percentage(20)])
+			.constraints([
+				Constraint::Length(bar_length),
+				Constraint::Length(percentage_length as u16 + 2),
+				Constraint::Length(current_total_length as u16 + 2),
+				Constraint::Length(bytes_per_second_length as u16 + 2),
+			])
 			.split(split);
 
 		f.render_widget(gauge, new_chunk[0]);
-		f.render_widget(right_text, new_chunk[1]);
+		f.render_widget(percentage, new_chunk[1]);
+		f.render_widget(current_total, new_chunk[2]);
+		f.render_widget(bytes_per_sec, new_chunk[3]);
 	}
-
-	// for (i, percent) in app.bars.iter().enumerate() {
-	// 	let gauge = LineGauge::default()
-	// 		.line_set(symbols::line::THICK)
-	// 		.ratio(*percent as f64 / 100.0)
-	// 		.gauge_style(Style::default().fg(Color::Cyan).bg(Color::Red));
-
-	// 	f.render_widget(gauge, chunks[i])
-	// }
 }
 
 pub async fn download_file(
@@ -560,34 +607,34 @@ pub async fn download_file(
 	let client = reqwest::Client::new();
 	let mut response = client.get(uri.uris.iter().next().unwrap()).send().await?;
 
-	let pb = progress
-		.lock()
-		.unwrap()
-		.multi
-		.insert_from_back(1, ProgressBar::new(uri.size));
-	pb.set_style(
-		ProgressStyle::with_template(
-			"│  {msg} [{wide_bar:.cyan/red}] {percent}% • {bytes}/{total_bytes} • \
-			 {binary_bytes_per_sec}  │",
-		)
-		.unwrap()
-		.progress_chars("━━━"),
-	);
+	// let pb = progress
+	// 	.lock()
+	// 	.unwrap()
+	// 	.multi
+	// 	.insert_from_back(1, ProgressBar::new(uri.size));
+	// pb.set_style(
+	// 	ProgressStyle::with_template(
+	// 		"│  {msg} [{wide_bar:.cyan/red}] {percent}% • {bytes}/{total_bytes} • \
+	// 		 {binary_bytes_per_sec}  │",
+	// 	)
+	// 	.unwrap()
+	// 	.progress_chars("━━━"),
+	// );
 
-	pb.set_message(pkg_name);
+	// pb.set_message(pkg_name);
 
-	while let Some(chunk) = response.chunk().await? {
-		progress.lock().unwrap().progress.inc(chunk.len() as u64);
-		pb.inc(chunk.len() as u64);
-	}
-	pb.finish();
+	// while let Some(chunk) = response.chunk().await? {
+	// 	progress.lock().unwrap().progress.inc(chunk.len() as u64);
+	// 	pb.inc(chunk.len() as u64);
+	// }
+	// pb.finish();
 
-	let mut total_pb = progress.lock().unwrap();
-	total_pb.pkgs_downloaded += 1;
-	total_pb.progress.set_message(format!(
-		"{}/{}",
-		total_pb.pkgs_downloaded, total_pb.total_pkgs
-	));
+	// let mut total_pb = progress.lock().unwrap();
+	// total_pb.pkgs_downloaded += 1;
+	// total_pb.progress.set_message(format!(
+	// 	"{}/{}",
+	// 	total_pb.pkgs_downloaded, total_pb.total_pkgs
+	// ));
 
 	Ok(())
 }
