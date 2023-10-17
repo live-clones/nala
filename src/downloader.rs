@@ -1,9 +1,6 @@
 use std::collections::{HashMap, HashSet};
-use std::error::Error;
-use std::fmt::Write;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use std::{fs, io, thread, time, vec};
 
 use anyhow::{bail, Context, Result};
 use crossterm::event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode};
@@ -11,8 +8,8 @@ use crossterm::execute;
 use crossterm::terminal::{
 	disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
-use indicatif::{MultiProgress, ProgressBar, ProgressState, ProgressStyle};
-use once_cell::sync::{Lazy, OnceCell};
+use indicatif::ProgressBar;
+use once_cell::sync::OnceCell;
 use ratatui::prelude::*;
 use ratatui::style::Stylize;
 use ratatui::widgets::*;
@@ -26,54 +23,6 @@ use rust_apt::util::{terminal_width, unit_str, NumSys};
 use tokio::task::JoinSet;
 
 use crate::config::Config;
-
-static HASHMAP: Lazy<HashMap<&str, &str>> = Lazy::new(|| {
-	println!("initializing");
-	HashMap::from([
-		("left_border", "│  "),
-		("right_border", "  │"),
-		("border", "─"),
-		("corner", "╭╮╰╯"),
-		("message", "{msg}"),
-		("red", "testing"),
-	])
-});
-
-pub fn build_progress(config: &Config) -> String {
-	let left_border = "│  ";
-	let right_border = "  │";
-	let border = "─";
-	let corner = "╭╮╰╯";
-
-	// let message = "{msg}";
-	let time_remaining = "";
-
-	let downloading = "Total:".to_string();
-	let total_time = "ETA:".to_string();
-
-	let download_fill = " ".repeat(terminal_width() - 6 - downloading.len() - 4);
-	let total_fill = " ".repeat(terminal_width() - 6 - total_time.len() - 9);
-
-	let mut message = String::new();
-	message += &format!(
-		"\n{} {{msg}}, {} {{eta_precise}} ",
-		config.color.package(&downloading),
-		config.color.package(&total_time)
-	);
-	message += "{wide_bar:.cyan/red} {percent}% • {bytes}/{total_bytes} • {binary_bytes_per_sec}";
-	message += &format!("\n╭{}╮", "─".repeat(terminal_width() - 2));
-	// message += &format!("\n{left_border}{} {{msg}}{download_fill}{right_border}",
-	// config.color.package(&downloading)); message += &format!("\n{left_border}{}
-	// {{eta_precise}}{total_fill}{right_border}",
-	// config.color.package(&total_time)); message += "\n│  [{wide_bar:.cyan/red}]
-	// {percent}% • {bytes}/{total_bytes} • {binary_bytes_per_sec}  │";
-	message += &format!(
-		"\n{left_border}{}{right_border}",
-		" ".repeat(terminal_width() - 6)
-	);
-
-	message
-}
 
 pub struct MirrorRegex {
 	mirror: OnceCell<Regex>,
@@ -139,6 +88,17 @@ impl URI {
 			progress,
 		})
 	}
+
+	fn dummy() -> Self {
+		URI {
+			uris: HashSet::new(),
+			size: 10241024,
+			path: "".to_string(),
+			hash_type: "".to_string(),
+			filename: "dummy-data.deb".to_string(),
+			progress: Progress::new(10241024),
+		}
+	}
 }
 
 pub struct Progress {
@@ -188,29 +148,9 @@ impl Progress {
 		(terminal_width()
 			- (self.percentage().len()
 				+ self.current_total().len()
-				+ self.bytes_per_sec().len() + 8)) as u16
+				+ self.bytes_per_sec().len()
+				+ 8)) as u16
 	}
-
-	// fn current_total_length(&self) -> u16 {
-	// 	(terminal_width()
-	// 		- (self.percentage().len()
-	// 			+ self.bytes_per_sec().len()
-	// 			+ self.bar_length() as usize)) as u16
-	// }
-
-	// fn bytes_per_sec_length(&self) -> u16 {
-	// 	(terminal_width()
-	// 		- (self.percentage().len()
-	// 			+ self.current_total().len()
-	// 			+ self.bar_length()as usize)) as u16
-	// }
-
-	// fn percentage_length(&self) -> u16 {
-	// 	(terminal_width()
-	// 		- (self.bytes_per_sec().len()
-	// 			+ self.current_total().len()
-	// 			+ self.bar_length() as usize)) as u16
-	// }
 }
 
 pub struct Downloader {
@@ -288,7 +228,7 @@ pub async fn filter_uris<'a>(
 				if !downloader.mirrors.contains_key(filename) {
 					downloader.mirrors.insert(
 						filename.to_string(),
-						fs::read_to_string(filename).with_context(|| {
+						std::fs::read_to_string(filename).with_context(|| {
 							format!("Failed to read {filename}, using defaults")
 						})?,
 					);
@@ -393,15 +333,9 @@ pub async fn download(config: &Config) -> Result<()> {
 		untrusted_error(config, &downloader.untrusted)?
 	}
 
-	// let progress = Progress::new(
-	// 	downloader.uri_list.iter().map(|uri| uri.size).sum(),
-	// 	downloader.uri_list.len() as u64,
-	// 	build_progress(config),
-	// );
-
 	// setup terminal
 	enable_raw_mode()?;
-	let mut stdout = io::stdout();
+	let mut stdout = std::io::stdout();
 	execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
 	let backend = CrosstermBackend::new(stdout);
 	// let mut terminal = Terminal::new(backend)?;
@@ -447,13 +381,16 @@ fn run_app<B: Backend>(
 	terminal: &mut Terminal<B>,
 	mut downloader: &mut Downloader,
 	tick_rate: Duration,
-) -> io::Result<()> {
+) -> std::io::Result<()> {
 	let mut last_tick = Instant::now();
 	loop {
 		terminal.draw(|f| ui(f, &mut downloader))?;
 
+		downloader.uri_list.push(URI::dummy());
 		for uri in downloader.uri_list.iter_mut() {
-			if (uri.progress.indicatif.position() + 1024) >= uri.progress.indicatif.length().unwrap() {
+			if (uri.progress.indicatif.position() + 1024)
+				>= uri.progress.indicatif.length().unwrap()
+			{
 				continue;
 			}
 			uri.progress.indicatif.inc(1024);
@@ -476,33 +413,17 @@ fn run_app<B: Backend>(
 	}
 }
 
-// struct App {
-// 	bars: HashMap<&'static str, f64>,
-// }
-
-// impl App {
-// 	fn new() -> App {
-// 		App {
-// 			bars: HashMap::from([
-// 				("nala.deb", 0.10),
-// 				("neofetch.deb", 0.20),
-// 				("apt.deb", 0.30),
-// 				("plastic.deb", 0.40),
-// 			]),
-// 		}
-// 	}
-
-// 	fn on_tick(&mut self) {}
-// }
-
 fn ui<B: Backend>(f: &mut Frame<B>, downloader: &mut Downloader) {
 	let mut constraints = vec![];
-
-	constraints.push(Constraint::Max(1));
 
 	for _item in &downloader.uri_list {
 		constraints.push(Constraint::Max(1))
 	}
+
+	// Constraint for buffer
+	constraints.push(Constraint::Min(1));
+	// Constraint for the Total Progress bar
+	constraints.push(Constraint::Min(3));
 
 	let outer_block = Block::new()
 		.borders(Borders::ALL)
@@ -520,13 +441,6 @@ fn ui<B: Backend>(f: &mut Frame<B>, downloader: &mut Downloader) {
 		.direction(Direction::Vertical)
 		.constraints(constraints)
 		.split(inner);
-
-	// let total = downloader
-	// 	.uri_list
-	// 	.iter()
-	// 	.map(|uri| uri.filename.len())
-	// 	.max()
-	// 	.unwrap();
 
 	let mut total = 0;
 	let mut bar_length = 1024;
@@ -562,25 +476,11 @@ fn ui<B: Backend>(f: &mut Frame<B>, downloader: &mut Downloader) {
 			false => uri.filename.to_string(),
 		};
 
-		let split = chunks[i];
 		let gauge = LineGauge::default()
 			.line_set(symbols::line::THICK)
 			.ratio(uri.progress.ratio())
 			.label(first_column.reset().bold())
 			.gauge_style(Style::default().fg(Color::Cyan).bg(Color::Red));
-
-		let percentage = Paragraph::new(uri.progress.percentage())
-			.wrap(Wrap { trim: true })
-			.alignment(Alignment::Right);
-
-		let current_total = Paragraph::new(uri.progress.current_total())
-			.wrap(Wrap { trim: true })
-			.alignment(Alignment::Right);
-
-		// let bytes_per_sec_string = uri.progress.bytes_per_sec();
-		let bytes_per_sec = Paragraph::new(uri.progress.bytes_per_sec())
-			.wrap(Wrap { trim: true })
-			.alignment(Alignment::Right);
 
 		let new_chunk = Layout::default()
 			.direction(Direction::Horizontal)
@@ -590,13 +490,33 @@ fn ui<B: Backend>(f: &mut Frame<B>, downloader: &mut Downloader) {
 				Constraint::Length(current_total_length as u16 + 2),
 				Constraint::Length(bytes_per_second_length as u16 + 2),
 			])
-			.split(split);
+			.split(chunks[i]);
 
 		f.render_widget(gauge, new_chunk[0]);
-		f.render_widget(percentage, new_chunk[1]);
-		f.render_widget(current_total, new_chunk[2]);
-		f.render_widget(bytes_per_sec, new_chunk[3]);
+		f.render_widget(get_paragraph(uri.progress.percentage()), new_chunk[1]);
+		f.render_widget(get_paragraph(uri.progress.current_total()), new_chunk[2]);
+		f.render_widget(get_paragraph(uri.progress.bytes_per_sec()), new_chunk[3]);
 	}
+
+	f.render_widget(Block::new(), chunks[downloader.uri_list.len()]);
+	let total_progress = LineGauge::default()
+		.line_set(symbols::line::THICK)
+		.ratio(0.30)
+		.block(
+			Block::default()
+				.borders(Borders::ALL)
+				.padding(Padding::new(2, 2, 0, 0))
+				.title("  Total Progress...  ".reset().bold())
+				.title_alignment(Alignment::Center),
+		)
+		.gauge_style(Style::default().fg(Color::Cyan).bg(Color::Red));
+	f.render_widget(total_progress, chunks[downloader.uri_list.len() + 1])
+}
+
+fn get_paragraph(text: &str) -> Paragraph {
+	Paragraph::new(text)
+		.wrap(Wrap { trim: true })
+		.alignment(Alignment::Right)
 }
 
 pub async fn download_file(
