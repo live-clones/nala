@@ -34,12 +34,14 @@ ROOT = ""
 USR = "/usr"
 TERMUX = False
 
-# Before we import anything else we need to make sure that this is in our path
-# Else apt_pkg will give an import error. Conda is an example of this breaking
 # pylint: disable=wrong-import-position
-PY_PATH = f"{USR}/lib/python3/dist-packages"
-if PY_PATH not in sys.path:
-	sys.path.append(PY_PATH)
+# Before we import anything else we need to make sure that this is in our path
+# Else apt_pkg will give an import error. Conda is an example of this breaking.
+# Additionally if something is installed with pip and pulls in dependencies
+# That Nala uses this can also break. This fix is to add dist-packages to the beginning
+# So it's always queried first.
+sys.path.insert(0, f"{USR}/lib/python3/dist-packages")
+
 import gettext
 
 import apt_pkg
@@ -49,7 +51,7 @@ if "APT" not in apt_pkg.config:
 	apt_pkg.init_config()
 apt_pkg.init_system()
 
-__version__ = "0.11.1"
+__version__ = "0.14.0"
 
 console = Console()
 
@@ -72,11 +74,11 @@ def color(text: object, text_color: str = "") -> str:
 	"""Return bold text in the color of your choice."""
 	if not console.is_terminal or console.is_dumb_terminal:
 		return f"{text}"
-	if not text_color:
-		# Just return bolded text
-		return f"\x1b[1m{text}{COLOR_CODES['RESET']}"
-	# Return bolded choice of color
-	return f"\x1b[1;{COLOR_CODES[text_color]}m{text}{COLOR_CODES['RESET']}"
+	return (
+		f"\x1b[1;{COLOR_CODES[text_color]}m{text}{COLOR_CODES['RESET']}"
+		if text_color
+		else f"\x1b[1m{text}{COLOR_CODES['RESET']}"
+	)
 
 
 def color_version(version: str) -> str:

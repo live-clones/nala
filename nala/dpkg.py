@@ -72,6 +72,7 @@ from nala.rich import (
 	dpkg_progress,
 	from_ansi,
 	spinner,
+	to_str,
 )
 from nala.utils import dprint, eprint, term, unit_str
 
@@ -302,12 +303,17 @@ class UpdateProgress(text.AcquireProgress):
 
 	def final_msg(self) -> str:
 		"""Print closing fetched message."""
+		elapsed_time = int(time() - self.elapsed)
+		if elapsed_time == 0:
+			fetched_speed = self.current_cps
+		else:
+			fetched_speed = int(self.fetched_bytes) / elapsed_time
 		return color(
 			FETCHED_MSG.format(
 				fetched=FETCHED,
 				size=unit_str(int(self.fetched_bytes)).strip(),
-				elapsed=apt_pkg.time_to_str(int(time() - self.elapsed)),
-				speed=unit_str(int(self.current_cps)).strip(),
+				elapsed=apt_pkg.time_to_str(elapsed_time),
+				speed=to_str(int(fetched_speed), 1000).strip(),
 			)
 		)
 
@@ -633,7 +639,7 @@ class InstallProgress(base.InstallProgress):
 		# https://github.com/liske/needrestart/issues/129
 		if (
 			os.environ.get("DEBIAN_FRONTEND") == "noninteractive"
-			and b"so you should consider rebooting. [Return]" in data
+			and b"[Return]" in data
 		):
 			os.write(self.child_fd, term.CRLF)
 
@@ -732,7 +738,8 @@ class InstallProgress(base.InstallProgress):
 			term.RESTORE_TERM in rawline
 			or term.DISABLE_ALT_SCREEN in rawline
 			or self.conf_end(rawline)
-		):
+			# Fix for Dialog Debconf Frontend https://gitlab.com/volian/nala/-/issues/211
+		) and term.ENABLE_ALT_SCREEN not in rawline:
 			self.raw = False
 			self.bug_list = False
 			term.restore_mode()
@@ -806,7 +813,7 @@ def format_version(match: list[str], line: str) -> str:
 	"""Format version numbers."""
 	for ver in match:
 		version = ver[1:-1]
-		if version[0].isdigit():
+		if version and version[0].isdigit():
 			new_ver = ver.replace(version, color(version, "BLUE"))
 			new_ver = re.sub(PARENTHESIS_PATTERN, paren_color, new_ver)
 			line = line.replace(ver, new_ver)
@@ -941,7 +948,7 @@ class DpkgLive(Live):
 					msg += _("Purging Packages")
 				else:
 					msg += _("Removing Packages")
-			elif arguments.command == "upgrade":
+			elif arguments.command in ("upgrade", "dist-upgrade", "full-upgrade"):
 				msg += _("Updating Packages")
 			elif arguments.command == "install":
 				msg += _("Installing Packages")
