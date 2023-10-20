@@ -557,7 +557,10 @@ fn ui<B: Backend>(f: &mut Frame<B>, downloader: &mut Downloader, config: &Config
 	downloader.progress.update_strings();
 
 	f.render_widget(
-		get_paragraph("Packages: 0/12"),
+		Paragraph::new("Packages: 0/12")
+		.wrap(Wrap { trim: true })
+		.alignment(Alignment::Left)
+		.set_style(Style::default().fg(Color::White)),
 		total_inner_block[0],
 	);
 
