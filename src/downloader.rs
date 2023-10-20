@@ -1,4 +1,6 @@
 use std::collections::{HashMap, HashSet};
+use std::fmt::format;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -8,7 +10,7 @@ use crossterm::execute;
 use crossterm::terminal::{
 	disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
-use indicatif::ProgressBar;
+use indicatif::{BinaryBytes, FormattedDuration, HumanBytes, ProgressBar};
 use once_cell::sync::OnceCell;
 use ratatui::prelude::*;
 use ratatui::style::Stylize;
@@ -159,6 +161,9 @@ pub struct Downloader {
 	not_found: Vec<String>,
 	mirrors: HashMap<String, String>,
 	mirror_regex: MirrorRegex,
+	progress: Progress,
+	total_pkgs: usize,
+	finished: usize,
 }
 
 impl Downloader {
@@ -169,8 +174,31 @@ impl Downloader {
 			not_found: vec![],
 			mirrors: HashMap::new(),
 			mirror_regex: MirrorRegex::new(),
+			progress: Progress::new(0),
+			total_pkgs: 0,
+			finished: 0,
 		}
 	}
+
+	fn set_total(&mut self) {
+		self.total_pkgs = self.uri_list.len();
+		let total = self
+			.uri_list
+			.iter()
+			.map(|uri| uri.progress.indicatif.length().unwrap())
+			.sum();
+		self.progress.indicatif.set_length(total);
+	}
+
+	// fn ratio(&self) -> f64 {
+	// 	self.progress.indicatif.position() as f64 /
+	// self.progress.indicatif.length().unwrap() as f64 }
+
+	// /// This will advance the other progress bar and the total at once.
+	// fn advance_progress(&self, other_bar: &URI, length: u64) {
+	// 	other_bar.progress.indicatif.inc(length);
+	// 	self.progress.inc(length);
+	// }
 }
 
 pub fn mirror_filter<'a>(
@@ -333,6 +361,9 @@ pub async fn download(config: &Config) -> Result<()> {
 		untrusted_error(config, &downloader.untrusted)?
 	}
 
+	// Must set the total from the URIs we just gathered.
+	downloader.set_total();
+
 	// setup terminal
 	enable_raw_mode()?;
 	let mut stdout = std::io::stdout();
@@ -349,7 +380,7 @@ pub async fn download(config: &Config) -> Result<()> {
 	// create app and run it
 	let tick_rate = Duration::from_millis(250);
 	// let app = App::new();
-	let res = run_app(&mut terminal, &mut downloader, tick_rate);
+	let res = run_app(&mut terminal, &mut downloader, tick_rate, config);
 
 	// restore terminal
 	disable_raw_mode()?;
@@ -381,19 +412,22 @@ fn run_app<B: Backend>(
 	terminal: &mut Terminal<B>,
 	mut downloader: &mut Downloader,
 	tick_rate: Duration,
+	config: &Config,
 ) -> std::io::Result<()> {
 	let mut last_tick = Instant::now();
 	loop {
-		terminal.draw(|f| ui(f, &mut downloader))?;
+		terminal.draw(|f| ui(f, &mut downloader, config))?;
 
-		downloader.uri_list.push(URI::dummy());
 		for uri in downloader.uri_list.iter_mut() {
-			if (uri.progress.indicatif.position() + 1024)
+			if (uri.progress.indicatif.position() + 102400)
 				>= uri.progress.indicatif.length().unwrap()
 			{
 				continue;
 			}
-			uri.progress.indicatif.inc(1024);
+			uri.progress.indicatif.inc(102400);
+			downloader.progress.indicatif.inc(102400);
+
+
 		}
 
 		let timeout = tick_rate
@@ -413,20 +447,20 @@ fn run_app<B: Backend>(
 	}
 }
 
-fn ui<B: Backend>(f: &mut Frame<B>, downloader: &mut Downloader) {
+fn ui<B: Backend>(f: &mut Frame<B>, downloader: &mut Downloader, config: &Config) {
 	let mut constraints = vec![];
 
 	for _item in &downloader.uri_list {
 		constraints.push(Constraint::Max(1))
 	}
 
-	// Constraint for buffer
-	constraints.push(Constraint::Min(1));
-	// Constraint for the Total Progress bar
-	constraints.push(Constraint::Min(3));
+	constraints.push(Constraint::Min(5));
+	// Last Constraint stops expansion
+	constraints.push(Constraint::Min(0));
 
 	let outer_block = Block::new()
 		.borders(Borders::ALL)
+		.border_type(BorderType::Rounded)
 		.title("  Downloading...  ".reset().bold())
 		.style(
 			Style::default()
@@ -447,6 +481,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, downloader: &mut Downloader) {
 	let mut current_total_length = 0;
 	let mut bytes_per_second_length = 0;
 	let mut percentage_length = 0;
+	// This section is just for aligning columns
 	for uri in downloader.uri_list.iter_mut() {
 		uri.progress.update_strings();
 		if uri.filename.len() > total {
@@ -470,27 +505,28 @@ fn ui<B: Backend>(f: &mut Frame<B>, downloader: &mut Downloader) {
 		}
 	}
 
+	// This portion is what actually renders the progress bars.
+	// You can see we use some of that data from above
+	// and pad the strings if necessary.
 	for (i, uri) in downloader.uri_list.iter().enumerate() {
 		let first_column = match uri.filename.len() < total {
 			true => uri.filename.to_string() + &" ".repeat(total - uri.filename.len()),
 			false => uri.filename.to_string(),
 		};
 
-		let gauge = LineGauge::default()
-			.line_set(symbols::line::THICK)
-			.ratio(uri.progress.ratio())
-			.label(first_column.reset().bold())
-			.gauge_style(Style::default().fg(Color::Cyan).bg(Color::Red));
+		let gauge = progress_widget(first_column.reset().bold(), &uri.progress);
 
-		let new_chunk = Layout::default()
-			.direction(Direction::Horizontal)
-			.constraints([
+		let new_chunk = split_horizontal(
+			[
+				// We calculated how big each needed to be
+				// So that they are aligned properly.
 				Constraint::Length(bar_length),
 				Constraint::Length(percentage_length as u16 + 2),
 				Constraint::Length(current_total_length as u16 + 2),
 				Constraint::Length(bytes_per_second_length as u16 + 2),
-			])
-			.split(chunks[i]);
+			],
+			chunks[i],
+		);
 
 		f.render_widget(gauge, new_chunk[0]);
 		f.render_widget(get_paragraph(uri.progress.percentage()), new_chunk[1]);
@@ -498,25 +534,93 @@ fn ui<B: Backend>(f: &mut Frame<B>, downloader: &mut Downloader) {
 		f.render_widget(get_paragraph(uri.progress.bytes_per_sec()), new_chunk[3]);
 	}
 
-	f.render_widget(Block::new(), chunks[downloader.uri_list.len()]);
-	let total_progress = LineGauge::default()
+	// Padding buffer
+	// Adds a blank space between individual downloads and the total section
+	// f.render_widget(Block::new(), chunks[downloader.uri_list.len()]);
+
+	// This is where we build the "block" to render things inside.
+	let total_block = Block::default()
+		.borders(Borders::ALL)
+		.title("  Total Progress...  ".reset().bold())
+		.border_type(BorderType::Rounded)
+		.title_alignment(Alignment::Center);
+
+	// We now create the inner block for the total block
+	let total_inner = total_block.inner(chunks[downloader.uri_list.len()]);
+	let total_inner_block = Layout::default()
+		.direction(Direction::Vertical)
+		.constraints([Constraint::Min(1), Constraint::Min(1)])
+		.split(total_inner);
+	f.render_widget(total_block, chunks[downloader.uri_list.len()]);
+
+	// Update our information
+	downloader.progress.update_strings();
+
+	f.render_widget(
+		get_paragraph("Packages: 0/12"),
+		total_inner_block[0],
+	);
+
+	// We split the row horizontally so that we can organize information
+	let total_chunk = split_horizontal(
+		[
+			Constraint::Length((downloader.progress.bar_length() - 2) as u16),
+			Constraint::Length(downloader.progress.percentage().len() as u16 + 2),
+			Constraint::Length(downloader.progress.current_total().len() as u16 + 2),
+			Constraint::Length(downloader.progress.bytes_per_sec().len() as u16 + 2),
+		],
+		total_inner_block[1],
+	);
+
+	// Get the progress widget
+	let total_progress = progress_widget(
+		format!(
+			"Time Remaining: {}",
+			FormattedDuration(downloader.progress.indicatif.eta())
+		),
+		&downloader.progress,
+	);
+
+	// Finally render all of the bars for this row
+	f.render_widget(total_progress, total_chunk[0]);
+	f.render_widget(
+		get_paragraph(downloader.progress.percentage()),
+		total_chunk[1],
+	);
+	f.render_widget(
+		get_paragraph(downloader.progress.current_total()),
+		total_chunk[2],
+	);
+	f.render_widget(
+		get_paragraph(downloader.progress.bytes_per_sec()),
+		total_chunk[3],
+	);
+}
+
+// Splits a block horizontally with your contraints
+fn split_horizontal<T: Into<Vec<Constraint>>>(
+	constraints: T,
+	block: Rect,
+) -> Rc<[Rect]> {
+	Layout::default()
+		.direction(Direction::Horizontal)
+		.constraints(constraints)
+		.split(block)
+}
+
+fn progress_widget<'a, T: Into<Line<'a>>>(label: T, progress: &'a Progress) -> LineGauge<'a> {
+	LineGauge::default()
 		.line_set(symbols::line::THICK)
-		.ratio(0.30)
-		.block(
-			Block::default()
-				.borders(Borders::ALL)
-				.padding(Padding::new(2, 2, 0, 0))
-				.title("  Total Progress...  ".reset().bold())
-				.title_alignment(Alignment::Center),
-		)
-		.gauge_style(Style::default().fg(Color::Cyan).bg(Color::Red));
-	f.render_widget(total_progress, chunks[downloader.uri_list.len() + 1])
+		.ratio(progress.ratio())
+		.label(label).style(Style::default().fg(Color::White))
+		.gauge_style(Style::default().fg(Color::Cyan).bg(Color::Red))
 }
 
 fn get_paragraph(text: &str) -> Paragraph {
 	Paragraph::new(text)
 		.wrap(Wrap { trim: true })
 		.alignment(Alignment::Right)
+		.set_style(Style::default().fg(Color::White))
 }
 
 pub async fn download_file(
