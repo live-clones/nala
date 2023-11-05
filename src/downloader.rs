@@ -372,19 +372,11 @@ pub async fn download(config: &Config) -> Result<()> {
 
 	// create app and run it
 	let tick_rate = Duration::from_millis(250);
-	// let app = App::new();
-
 	let res = run_app(&mut terminal, &mut downloader, tick_rate).await;
 
 	// This is for closing out of the app.
 	if res.is_ok() {
-		disable_raw_mode()?;
-		execute!(
-			terminal.backend_mut(),
-			LeaveAlternateScreen,
-			DisableMouseCapture
-		)?;
-		terminal.show_cursor()?;
+		disable_raw(&mut terminal)?;
 		set.abort_all();
 	}
 
@@ -393,14 +385,7 @@ pub async fn download(config: &Config) -> Result<()> {
 		res??;
 	}
 
-	// restore terminal
-	disable_raw_mode()?;
-	execute!(
-		terminal.backend_mut(),
-		LeaveAlternateScreen,
-		DisableMouseCapture
-	)?;
-	terminal.show_cursor()?;
+	disable_raw(&mut terminal)?;
 
 	if let Err(err) = res {
 		println!("{err:?}");
@@ -644,6 +629,18 @@ fn get_paragraph(text: &str) -> Paragraph {
 		.wrap(Wrap { trim: true })
 		.alignment(Alignment::Right)
 		.set_style(Style::default().fg(Color::White))
+}
+
+/// Restore Terminal
+fn disable_raw<B: std::io::Write + Backend>(terminal: &mut Terminal<B>) -> Result<()> {
+	disable_raw_mode()?;
+	execute!(
+		terminal.backend_mut(),
+		LeaveAlternateScreen,
+		DisableMouseCapture
+	)?;
+	terminal.show_cursor()?;
+	Ok(())
 }
 
 pub async fn download_file(progress: Arc<Mutex<Progress>>, uri: Arc<Mutex<Uri>>) -> Result<()> {
