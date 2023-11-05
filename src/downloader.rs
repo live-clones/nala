@@ -13,6 +13,7 @@ use indicatif::{FormattedDuration, ProgressBar};
 use once_cell::sync::OnceCell;
 use ratatui::prelude::*;
 use ratatui::style::Stylize;
+use ratatui::widgets::block::Title;
 use ratatui::widgets::*;
 use regex::{Regex, RegexBuilder};
 use rust_apt::cache::Cache;
@@ -124,6 +125,7 @@ impl SubBar {
 struct BarAlignment {
 	pkg_name: usize,
 	bar: u16,
+	len: usize,
 	current_total: usize,
 	bytes_per_sec: usize,
 	percentage: usize,
@@ -134,6 +136,7 @@ impl BarAlignment {
 		BarAlignment {
 			pkg_name: 0,
 			bar: 1024,
+			len: 0,
 			current_total: 0,
 			bytes_per_sec: 0,
 			percentage: 0,
@@ -160,6 +163,9 @@ impl BarAlignment {
 		if uri.progress.bytes_per_sec.len() > self.bytes_per_sec {
 			self.bytes_per_sec = uri.progress.bytes_per_sec.len();
 		}
+
+		// Increase the amount of downloads
+		self.len += 1;
 	}
 
 	fn constraints(&self) -> [Constraint; 4] {
@@ -506,6 +512,7 @@ async fn run_app<B: Backend>(
 		let mut unlocked = downloader.progress.lock().await;
 		unlocked.update_strings();
 
+		// Total constraints have to be built outside of UI
 		let total_constraints = vec![
 			Constraint::Length((unlocked.bar_length() - 2) as u16),
 			Constraint::Length(unlocked.percentage().len() as u16 + 2),
@@ -528,7 +535,7 @@ async fn run_app<B: Backend>(
 			ratio: unlocked.ratio(),
 		});
 
-		terminal.draw(|f| ui(f, &downloader.uri_list, align, sub_bars, total_constraints))?;
+		terminal.draw(|f| ui(f, align, sub_bars, total_constraints))?;
 
 		let timeout = tick_rate
 			.checked_sub(last_tick.elapsed())
@@ -543,7 +550,7 @@ async fn run_app<B: Backend>(
 		}
 		if last_tick.elapsed() >= tick_rate {
 			// app.on_tick();
-			// We could potentially only update info at the tick rate.
+			// TODO: We could potentially only update info at the tick rate.
 			last_tick = Instant::now();
 		}
 	}
@@ -551,62 +558,28 @@ async fn run_app<B: Backend>(
 
 fn ui<B: Backend>(
 	f: &mut Frame<B>,
-	uri_list: &Vec<Arc<Mutex<Uri>>>,
 	align: BarAlignment,
-	mut sub_bars: Vec<SubBar>,
+	sub_bars: Vec<SubBar>,
 	total_constraints: Vec<Constraint>,
 ) {
-	let mut constraints = vec![];
-
-	for _item in uri_list {
-		constraints.push(Constraint::Max(1))
-	}
-
-	// Last Constraint stops element expansion
-	constraints.push(Constraint::Min(0));
-
-	let outer_block = Block::new()
-		.borders(Borders::ALL)
-		.border_type(BorderType::Rounded)
-		.title("  Downloading...  ".reset().bold())
-		.style(
-			Style::default()
-				.fg(Color::Cyan)
-				.add_modifier(Modifier::BOLD),
-		);
-
-	let inner = outer_block.inner(f.size());
-	f.render_widget(outer_block, f.size());
-
-	let chunks = Layout::default()
-		.direction(Direction::Vertical)
-		.constraints(constraints)
-		.split(inner);
-
-	// This portion is what actually renders the progress bars.
-	// You can see we use some of that data from above
-	// and pad the strings if necessary.
-	let total_bar = sub_bars.pop().unwrap();
-	for (i, bar) in sub_bars.into_iter().enumerate() {
-		let new_chunk = split_horizontal(align.constraints(), chunks[i]);
-		bar.render(f, new_chunk);
-	}
+	// Create the outer downloading block
+	let outer_block = build_block("  Downloading...  ".reset().bold());
+	let chunks = split_vertical(uri_constraints(align.len), outer_block.inner(f.size()));
 
 	// This is where we build the "block" to render things inside.
-	let total_block = Block::default()
-		.borders(Borders::ALL)
-		.title("  Total Progress...  ".reset().bold())
-		.border_type(BorderType::Rounded)
-		.title_alignment(Alignment::Center);
+	let total_block = build_block("  Total Progress...  ".reset().bold());
 
 	// We now create the inner block for the total block
-	let total_inner = total_block.inner(chunks[uri_list.len()]);
-	let total_inner_block = Layout::default()
-		.direction(Direction::Vertical)
-		.constraints([Constraint::Min(1), Constraint::Min(1)])
-		.split(total_inner);
-	f.render_widget(total_block, chunks[uri_list.len()]);
+	let total_inner_block = split_vertical(
+		[Constraint::Min(1), Constraint::Min(1)],
+		total_block.inner(chunks[align.len]),
+	);
 
+	// Start rendering our blocks
+	f.render_widget(outer_block, f.size());
+	f.render_widget(total_block, chunks[align.len]);
+
+	// Render the bars
 	f.render_widget(
 		Paragraph::new("Packages: 0/12")
 			.wrap(Wrap { trim: true })
@@ -615,13 +588,18 @@ fn ui<B: Backend>(
 		total_inner_block[0],
 	);
 
-	// We split the row horizontally so that we can organize information
-	let total_chunk = split_horizontal(total_constraints, total_inner_block[1]);
-
-	total_bar.render(f, total_chunk);
+	// This portion renders the progress bars.
+	// The total progress bar is last.
+	for (i, bar) in sub_bars.into_iter().enumerate() {
+		let new_chunk = match bar.is_total {
+			true => split_horizontal(total_constraints.as_slice(), total_inner_block[1]),
+			false => split_horizontal(align.constraints(), chunks[i]),
+		};
+		bar.render(f, new_chunk);
+	}
 }
 
-// Splits a block horizontally with your contraints
+/// Splits a block horizontally with your contraints
 fn split_horizontal<T: Into<Vec<Constraint>>>(constraints: T, block: Rect) -> Rc<[Rect]> {
 	Layout::default()
 		.direction(Direction::Horizontal)
@@ -629,11 +607,45 @@ fn split_horizontal<T: Into<Vec<Constraint>>>(constraints: T, block: Rect) -> Rc
 		.split(block)
 }
 
+/// Splits a block vertically with your contraints
+fn split_vertical<T: Into<Vec<Constraint>>>(constraints: T, block: Rect) -> Rc<[Rect]> {
+	Layout::default()
+		.direction(Direction::Vertical)
+		.constraints(constraints)
+		.split(block)
+}
+
+/// Build constraints based on how many downloads
+fn uri_constraints(num: usize) -> Vec<Constraint> {
+	let mut constraints = vec![
+		// Last Constraint stops element expansion
+		Constraint::Min(0),
+	];
+
+	for _ in 0..num {
+		constraints.insert(0, Constraint::Max(1));
+	}
+	constraints
+}
+
 fn get_paragraph(text: &str) -> Paragraph {
 	Paragraph::new(text)
 		.wrap(Wrap { trim: true })
 		.alignment(Alignment::Right)
 		.set_style(Style::default().fg(Color::White))
+}
+
+fn build_block<'a, T: Into<Title<'a>>>(title: T) -> Block<'a> {
+	Block::new()
+		.borders(Borders::ALL)
+		.border_type(BorderType::Rounded)
+		.title_alignment(Alignment::Center)
+		.title(title)
+		.style(
+			Style::default()
+				.fg(Color::Cyan)
+				.add_modifier(Modifier::BOLD),
+		)
 }
 
 /// Restore Terminal
