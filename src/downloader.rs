@@ -266,7 +266,7 @@ impl Downloader {
 	}
 
 	/// Add the filtered Uris into the HashSet if applicable.
-	fn mirror_filter<'a>(
+	fn get_from_mirrors<'a>(
 		&self,
 		version: &'a Version<'a>,
 		uris: &mut HashSet<String>,
@@ -284,6 +284,23 @@ impl Downloader {
 			return Ok(true);
 		}
 		Ok(false)
+	}
+
+	async fn add_to_mirrors(&mut self, uri: &str, filename: &str) -> Result<()> {
+		self.mirrors.insert(
+			filename.to_string(),
+			match uri.starts_with("mirror+file:") {
+				true => std::fs::read_to_string(filename)
+					.with_context(|| format!("Failed to read {filename}, using defaults"))?,
+				false => {
+					reqwest::get("http://".to_string() + filename)
+						.await?
+						.text()
+						.await?
+				},
+			},
+		);
+		Ok(())
 	}
 
 	/// Filter Uris from a package version.
@@ -311,38 +328,14 @@ impl Downloader {
 					.insert(config.color.red(version.parent().name()).to_string());
 			}
 
-			if uri.starts_with("mirror+file:") {
+			if uri.starts_with("mirror+file:") || uri.starts_with("mirror:") {
 				if let Some(file_match) = self.mirror_regex.mirror_file()?.captures(&uri) {
 					let filename = file_match.get(1).unwrap().as_str();
 					if !self.mirrors.contains_key(filename) {
-						self.mirrors.insert(
-							filename.to_string(),
-							std::fs::read_to_string(filename).with_context(|| {
-								format!("Failed to read {filename}, using defaults")
-							})?,
-						);
+						self.add_to_mirrors(&uri, filename).await?;
 					};
 
-					if self.mirror_filter(version, &mut filtered, filename)? {
-						continue;
-					}
-				}
-			}
-
-			if uri.starts_with("mirror:") {
-				if let Some(file_match) = self.mirror_regex.mirror()?.captures(&uri) {
-					let filename = file_match.get(1).unwrap().as_str();
-					if !self.mirrors.contains_key(filename) {
-						self.mirrors.insert(
-							filename.to_string(),
-							reqwest::get("http://".to_string() + filename)
-								.await?
-								.text()
-								.await?,
-						);
-					}
-
-					if self.mirror_filter(version, &mut filtered, filename)? {
+					if self.get_from_mirrors(version, &mut filtered, filename)? {
 						continue;
 					}
 				}
