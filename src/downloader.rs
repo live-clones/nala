@@ -286,6 +286,8 @@ pub fn mirror_filter<'a>(
 
 pub fn uri_trusted<'a>(cache: &Cache, version: &'a Version<'a>) -> Result<bool> {
 	for mut pf in version.package_files() {
+		// TODO: There is a bug here with codium specifically
+		// It doesn't have an archive. Check apt source for clues here.
 		if pf.archive()? != "now" {
 			return Ok(cache.is_trusted(&mut pf));
 		}
@@ -492,15 +494,12 @@ async fn run_app<B: Backend>(
 		let mut sub_bars = vec![];
 		for uri in &downloader.uri_list {
 			let unlocked = uri.lock().await;
-			let filename = &unlocked.filename;
-			let first_column = match filename.len() < align.pkg_name {
-				true => filename.to_string() + &" ".repeat(align.pkg_name - filename.len()),
-				false => filename.to_string(),
-			};
 
 			sub_bars.push(SubBar {
 				is_total: false,
-				first_column,
+				// Pad the package name if necessary for alignment.
+				first_column: unlocked.filename.to_string()
+					+ &" ".repeat(align.pkg_name - unlocked.filename.len()),
 				ratio: unlocked.progress.ratio(),
 				percentage: unlocked.progress.percentage().to_string(),
 				current_total: unlocked.progress.current_total().to_string(),
