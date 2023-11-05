@@ -1,8 +1,7 @@
 use std::collections::{HashMap, HashSet};
-use std::fmt::format;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::time::Instant;
 
 use anyhow::{bail, Context, Result};
 use crossterm::event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode};
@@ -10,19 +9,20 @@ use crossterm::execute;
 use crossterm::terminal::{
 	disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
-use indicatif::{BinaryBytes, FormattedDuration, HumanBytes, ProgressBar};
+use indicatif::{FormattedDuration, ProgressBar};
 use once_cell::sync::OnceCell;
 use ratatui::prelude::*;
 use ratatui::style::Stylize;
 use ratatui::widgets::*;
 use regex::{Regex, RegexBuilder};
-use reqwest;
 use rust_apt::cache::Cache;
 use rust_apt::new_cache;
 use rust_apt::package::Version;
 use rust_apt::records::RecordField;
 use rust_apt::util::{terminal_width, unit_str, NumSys};
+use tokio::sync::Mutex;
 use tokio::task::JoinSet;
+use tokio::time::Duration;
 
 use crate::config::Config;
 
@@ -57,7 +57,7 @@ impl MirrorRegex {
 }
 
 // #[derive(Clone, Debug)]
-pub struct URI {
+pub struct Uri {
 	uris: HashSet<String>,
 	size: u64,
 	path: String,
@@ -66,16 +66,16 @@ pub struct URI {
 	progress: Progress,
 }
 
-impl URI {
+impl Uri {
 	async fn from_version<'a>(
 		version: &'a Version<'a>,
 		cache: &Cache,
 		config: &Config,
 		downloader: &mut Downloader,
-	) -> Result<URI> {
+	) -> Result<Arc<Mutex<Uri>>> {
 		let progress = Progress::new(version.size());
 
-		Ok(URI {
+		Ok(Arc::new(Mutex::new(Uri {
 			uris: filter_uris(version, cache, config, downloader).await?,
 			size: version.size(),
 			path: "".to_string(),
@@ -83,23 +83,12 @@ impl URI {
 			filename: version
 				.get_record(RecordField::Filename)
 				.expect("Record does not contain a filename!")
-				.split_terminator("/")
+				.split_terminator('/')
 				.last()
 				.expect("Filename is malformed!")
 				.to_string(),
 			progress,
-		})
-	}
-
-	fn dummy() -> Self {
-		URI {
-			uris: HashSet::new(),
-			size: 10241024,
-			path: "".to_string(),
-			hash_type: "".to_string(),
-			filename: "dummy-data.deb".to_string(),
-			progress: Progress::new(10241024),
-		}
+		})))
 	}
 }
 
@@ -156,12 +145,12 @@ impl Progress {
 }
 
 pub struct Downloader {
-	uri_list: Vec<URI>,
+	uri_list: Vec<Arc<Mutex<Uri>>>,
 	untrusted: HashSet<String>,
 	not_found: Vec<String>,
 	mirrors: HashMap<String, String>,
 	mirror_regex: MirrorRegex,
-	progress: Progress,
+	progress: Arc<Mutex<Progress>>,
 	total_pkgs: usize,
 	finished: usize,
 }
@@ -174,31 +163,20 @@ impl Downloader {
 			not_found: vec![],
 			mirrors: HashMap::new(),
 			mirror_regex: MirrorRegex::new(),
-			progress: Progress::new(0),
+			progress: Arc::new(Mutex::new(Progress::new(0))),
 			total_pkgs: 0,
 			finished: 0,
 		}
 	}
 
-	fn set_total(&mut self) {
+	async fn set_total(&mut self) {
 		self.total_pkgs = self.uri_list.len();
-		let total = self
-			.uri_list
-			.iter()
-			.map(|uri| uri.progress.indicatif.length().unwrap())
-			.sum();
-		self.progress.indicatif.set_length(total);
+		let mut total = 0;
+		for uri in &self.uri_list {
+			total += uri.lock().await.progress.indicatif.length().unwrap();
+		}
+		self.progress.lock().await.indicatif.set_length(total);
 	}
-
-	// fn ratio(&self) -> f64 {
-	// 	self.progress.indicatif.position() as f64 /
-	// self.progress.indicatif.length().unwrap() as f64 }
-
-	// /// This will advance the other progress bar and the total at once.
-	// fn advance_progress(&self, other_bar: &URI, length: u64) {
-	// 	other_bar.progress.indicatif.inc(length);
-	// 	self.progress.inc(length);
-	// }
 }
 
 pub fn mirror_filter<'a>(
@@ -209,7 +187,7 @@ pub fn mirror_filter<'a>(
 ) -> Result<bool> {
 	if let Some(data) = mirrors.get(filename) {
 		for line in data.lines() {
-			if !line.is_empty() && !line.starts_with("#") {
+			if !line.is_empty() && !line.starts_with('#') {
 				uris.insert(
 					line.to_string() + "/" + &version.get_record(RecordField::Filename).unwrap(),
 				);
@@ -329,7 +307,7 @@ pub async fn download(config: &Config) -> Result<()> {
 				for version in &versions {
 					if version.is_downloadable() {
 						let uri =
-							URI::from_version(version, &cache, config, &mut downloader).await?;
+							Uri::from_version(version, &cache, config, &mut downloader).await?;
 						downloader.uri_list.push(uri);
 						break;
 					}
@@ -361,8 +339,14 @@ pub async fn download(config: &Config) -> Result<()> {
 		untrusted_error(config, &downloader.untrusted)?
 	}
 
-	// Must set the total from the URIs we just gathered.
-	downloader.set_total();
+	// Must set the total from the Uris we just gathered.
+	downloader.set_total().await;
+
+	// Set up the futures
+	let mut set = JoinSet::new();
+	for uri in &downloader.uri_list {
+		set.spawn(download_file(downloader.progress.clone(), uri.clone()));
+	}
 
 	// setup terminal
 	enable_raw_mode()?;
@@ -380,7 +364,25 @@ pub async fn download(config: &Config) -> Result<()> {
 	// create app and run it
 	let tick_rate = Duration::from_millis(250);
 	// let app = App::new();
-	let res = run_app(&mut terminal, &mut downloader, tick_rate, config);
+
+	let res = run_app(&mut terminal, &mut downloader, tick_rate).await;
+
+	// This is for closing out of the app.
+	if res.is_ok() {
+		disable_raw_mode()?;
+		execute!(
+			terminal.backend_mut(),
+			LeaveAlternateScreen,
+			DisableMouseCapture
+		)?;
+		terminal.show_cursor()?;
+		set.abort_all();
+	}
+
+	// Run all of the futures.
+	while let Some(res) = set.join_next().await {
+		res??;
+	}
 
 	// restore terminal
 	disable_raw_mode()?;
@@ -395,44 +397,116 @@ pub async fn download(config: &Config) -> Result<()> {
 		println!("{err:?}");
 	}
 
-	// let mut set = JoinSet::new();
-	// for uri in downloader.uri_list {
-	// 	let pkg_name = config.color.package(&uri.filename).to_string();
-	// 	set.spawn(download_file(progress.clone(), uri.clone(), pkg_name));
-	// }
-
-	// while let Some(res) = set.join_next().await {
-	// 	let _out = res??;
-	// }
-
 	Ok(())
 }
 
-fn run_app<B: Backend>(
+struct SubBar {
+	first_column: String,
+	percentage: String,
+	current_total: String,
+	bytes_per_sec: String,
+	ratio: f64,
+}
+
+async fn run_app<B: Backend>(
 	terminal: &mut Terminal<B>,
-	mut downloader: &mut Downloader,
+	downloader: &mut Downloader,
 	tick_rate: Duration,
-	config: &Config,
 ) -> std::io::Result<()> {
 	let mut last_tick = Instant::now();
+
 	loop {
-		terminal.draw(|f| ui(f, &mut downloader, config))?;
-
+		let mut total = 0;
+		let mut bar_length = 1024;
+		let mut current_total_length = 0;
+		let mut bytes_per_second_length = 0;
+		let mut percentage_length = 0;
+		// This section is just for aligning columns
 		for uri in downloader.uri_list.iter_mut() {
-			if (uri.progress.indicatif.position() + 102400)
-				>= uri.progress.indicatif.length().unwrap()
-			{
-				continue;
+			uri.lock().await.progress.update_strings();
+
+			if uri.lock().await.filename.len() > total {
+				total = uri.lock().await.filename.len()
 			}
-			uri.progress.indicatif.inc(102400);
-			downloader.progress.indicatif.inc(102400);
 
+			if uri.lock().await.progress.bar_length() < bar_length {
+				bar_length = uri.lock().await.progress.bar_length();
+			}
 
+			if uri.lock().await.progress.current_total.len() > current_total_length {
+				current_total_length = uri.lock().await.progress.current_total.len();
+			}
+
+			if uri.lock().await.progress.percentage.len() > percentage_length {
+				percentage_length = uri.lock().await.progress.percentage.len();
+			}
+
+			if uri.lock().await.progress.bytes_per_sec.len() > bytes_per_second_length {
+				bytes_per_second_length = uri.lock().await.progress.bytes_per_sec.len();
+			}
 		}
+
+		let mut sub_bars = vec![];
+		for uri in &downloader.uri_list {
+			let unlocked = uri.lock().await;
+			let filename = &unlocked.filename;
+			let first_column = match filename.len() < total {
+				true => filename.to_string() + &" ".repeat(total - filename.len()),
+				false => filename.to_string(),
+			};
+
+			sub_bars.push(SubBar {
+				first_column,
+				ratio: unlocked.progress.ratio(),
+				percentage: unlocked.progress.percentage().to_string(),
+				current_total: unlocked.progress.current_total().to_string(),
+				bytes_per_sec: unlocked.progress.bytes_per_sec().to_string(),
+			})
+		}
+
+		// Update our information
+		let mut unlocked = downloader.progress.lock().await;
+		unlocked.update_strings();
+
+		let total_constraints = vec![
+			Constraint::Length((unlocked.bar_length() - 2) as u16),
+			Constraint::Length(unlocked.percentage().len() as u16 + 2),
+			Constraint::Length(unlocked.current_total().len() as u16 + 2),
+			Constraint::Length(unlocked.bytes_per_sec().len() as u16 + 2),
+		];
+
+		let total_bar = SubBar {
+			first_column: format!(
+				"Time Remaining: {}",
+				FormattedDuration(unlocked.indicatif.eta())
+			),
+			percentage: unlocked.percentage().to_string(),
+			current_total: unlocked.current_total().to_string(),
+			bytes_per_sec: unlocked.bytes_per_sec().to_string(),
+			ratio: unlocked.ratio(),
+		};
+
+		// This will unlock the mutex so it can be used in ui.
+		drop(unlocked);
+
+		terminal.draw(|f| {
+			ui(
+				f,
+				downloader,
+				bar_length,
+				current_total_length,
+				bytes_per_second_length,
+				percentage_length,
+				sub_bars,
+				total_bar,
+				total_constraints,
+			)
+		})?;
 
 		let timeout = tick_rate
 			.checked_sub(last_tick.elapsed())
 			.unwrap_or_else(|| Duration::from_secs(0));
+
 		if crossterm::event::poll(timeout)? {
 			if let Event::Key(key) = event::read()? {
 				if let KeyCode::Char('q') = key.code {
@@ -447,7 +521,17 @@ fn run_app<B: Backend>(
 	}
 }
 
-fn ui<B: Backend>(f: &mut Frame<B>, downloader: &mut Downloader, config: &Config) {
+fn ui<B: Backend>(
+	f: &mut Frame<B>,
+	downloader: &mut Downloader,
+	bar_length: u16,
+	current_total_length: usize,
+	bytes_per_second_length: usize,
+	percentage_length: usize,
+	sub_bars: Vec<SubBar>,
+	total_bar: SubBar,
+	total_constraints: Vec<Constraint>,
+) {
 	let mut constraints = vec![];
 
 	for _item in &downloader.uri_list {
@@ -476,45 +560,11 @@ fn ui<B: Backend>(f: &mut Frame<B>, downloader: &mut Downloader, config: &Config
 		.constraints(constraints)
 		.split(inner);
 
-	let mut total = 0;
-	let mut bar_length = 1024;
-	let mut current_total_length = 0;
-	let mut bytes_per_second_length = 0;
-	let mut percentage_length = 0;
-	// This section is just for aligning columns
-	for uri in downloader.uri_list.iter_mut() {
-		uri.progress.update_strings();
-		if uri.filename.len() > total {
-			total = uri.filename.len()
-		}
-
-		if uri.progress.bar_length() < bar_length {
-			bar_length = uri.progress.bar_length();
-		}
-
-		if uri.progress.current_total.len() > current_total_length {
-			current_total_length = uri.progress.current_total.len();
-		}
-
-		if uri.progress.percentage.len() > percentage_length {
-			percentage_length = uri.progress.percentage.len();
-		}
-
-		if uri.progress.bytes_per_sec.len() > bytes_per_second_length {
-			bytes_per_second_length = uri.progress.bytes_per_sec.len();
-		}
-	}
-
 	// This portion is what actually renders the progress bars.
 	// You can see we use some of that data from above
 	// and pad the strings if necessary.
-	for (i, uri) in downloader.uri_list.iter().enumerate() {
-		let first_column = match uri.filename.len() < total {
-			true => uri.filename.to_string() + &" ".repeat(total - uri.filename.len()),
-			false => uri.filename.to_string(),
-		};
-
-		let gauge = progress_widget(first_column.reset().bold(), &uri.progress);
+	for (i, uri) in sub_bars.iter().enumerate() {
+		let gauge = progress_widget(uri.first_column.to_string(), uri.ratio);
 
 		let new_chunk = split_horizontal(
 			[
@@ -529,14 +579,10 @@ fn ui<B: Backend>(f: &mut Frame<B>, downloader: &mut Downloader, config: &Config
 		);
 
 		f.render_widget(gauge, new_chunk[0]);
-		f.render_widget(get_paragraph(uri.progress.percentage()), new_chunk[1]);
-		f.render_widget(get_paragraph(uri.progress.current_total()), new_chunk[2]);
-		f.render_widget(get_paragraph(uri.progress.bytes_per_sec()), new_chunk[3]);
+		f.render_widget(get_paragraph(&uri.percentage), new_chunk[1]);
+		f.render_widget(get_paragraph(&uri.current_total), new_chunk[2]);
+		f.render_widget(get_paragraph(&uri.bytes_per_sec), new_chunk[3]);
 	}
-
-	// Padding buffer
-	// Adds a blank space between individual downloads and the total section
-	// f.render_widget(Block::new(), chunks[downloader.uri_list.len()]);
 
 	// This is where we build the "block" to render things inside.
 	let total_block = Block::default()
@@ -553,69 +599,41 @@ fn ui<B: Backend>(f: &mut Frame<B>, downloader: &mut Downloader, config: &Config
 		.split(total_inner);
 	f.render_widget(total_block, chunks[downloader.uri_list.len()]);
 
-	// Update our information
-	downloader.progress.update_strings();
-
 	f.render_widget(
 		Paragraph::new("Packages: 0/12")
-		.wrap(Wrap { trim: true })
-		.alignment(Alignment::Left)
-		.set_style(Style::default().fg(Color::White)),
+			.wrap(Wrap { trim: true })
+			.alignment(Alignment::Left)
+			.set_style(Style::default().fg(Color::White)),
 		total_inner_block[0],
 	);
 
 	// We split the row horizontally so that we can organize information
-	let total_chunk = split_horizontal(
-		[
-			Constraint::Length((downloader.progress.bar_length() - 2) as u16),
-			Constraint::Length(downloader.progress.percentage().len() as u16 + 2),
-			Constraint::Length(downloader.progress.current_total().len() as u16 + 2),
-			Constraint::Length(downloader.progress.bytes_per_sec().len() as u16 + 2),
-		],
-		total_inner_block[1],
-	);
+	let total_chunk = split_horizontal(total_constraints, total_inner_block[1]);
 
 	// Get the progress widget
-	let total_progress = progress_widget(
-		format!(
-			"Time Remaining: {}",
-			FormattedDuration(downloader.progress.indicatif.eta())
-		),
-		&downloader.progress,
-	);
+	let total_progress = progress_widget(total_bar.first_column, total_bar.ratio);
 
 	// Finally render all of the bars for this row
 	f.render_widget(total_progress, total_chunk[0]);
-	f.render_widget(
-		get_paragraph(downloader.progress.percentage()),
-		total_chunk[1],
-	);
-	f.render_widget(
-		get_paragraph(downloader.progress.current_total()),
-		total_chunk[2],
-	);
-	f.render_widget(
-		get_paragraph(downloader.progress.bytes_per_sec()),
-		total_chunk[3],
-	);
+	f.render_widget(get_paragraph(&total_bar.percentage), total_chunk[1]);
+	f.render_widget(get_paragraph(&total_bar.current_total), total_chunk[2]);
+	f.render_widget(get_paragraph(&total_bar.bytes_per_sec), total_chunk[3]);
 }
 
 // Splits a block horizontally with your contraints
-fn split_horizontal<T: Into<Vec<Constraint>>>(
-	constraints: T,
-	block: Rect,
-) -> Rc<[Rect]> {
+fn split_horizontal<T: Into<Vec<Constraint>>>(constraints: T, block: Rect) -> Rc<[Rect]> {
 	Layout::default()
 		.direction(Direction::Horizontal)
 		.constraints(constraints)
 		.split(block)
 }
 
-fn progress_widget<'a, T: Into<Line<'a>>>(label: T, progress: &'a Progress) -> LineGauge<'a> {
+fn progress_widget<'a, T: Into<Line<'a>>>(label: T, ratio: f64) -> LineGauge<'a> {
 	LineGauge::default()
 		.line_set(symbols::line::THICK)
-		.ratio(progress.ratio())
-		.label(label).style(Style::default().fg(Color::White))
+		.ratio(ratio)
+		.label(label)
+		.style(Style::default().fg(Color::White))
 		.gauge_style(Style::default().fg(Color::Cyan).bg(Color::Red))
 }
 
@@ -626,42 +644,17 @@ fn get_paragraph(text: &str) -> Paragraph {
 		.set_style(Style::default().fg(Color::White))
 }
 
-pub async fn download_file(
-	progress: Arc<Mutex<Progress>>,
-	uri: Arc<URI>,
-	pkg_name: String,
-) -> Result<()> {
+pub async fn download_file(progress: Arc<Mutex<Progress>>, uri: Arc<Mutex<Uri>>) -> Result<()> {
 	let client = reqwest::Client::new();
-	let mut response = client.get(uri.uris.iter().next().unwrap()).send().await?;
+	let mut response = client
+		.get(uri.lock().await.uris.iter().next().unwrap())
+		.send()
+		.await?;
 
-	// let pb = progress
-	// 	.lock()
-	// 	.unwrap()
-	// 	.multi
-	// 	.insert_from_back(1, ProgressBar::new(uri.size));
-	// pb.set_style(
-	// 	ProgressStyle::with_template(
-	// 		"│  {msg} [{wide_bar:.cyan/red}] {percent}% • {bytes}/{total_bytes} • \
-	// 		 {binary_bytes_per_sec}  │",
-	// 	)
-	// 	.unwrap()
-	// 	.progress_chars("━━━"),
-	// );
-
-	// pb.set_message(pkg_name);
-
-	// while let Some(chunk) = response.chunk().await? {
-	// 	progress.lock().unwrap().progress.inc(chunk.len() as u64);
-	// 	pb.inc(chunk.len() as u64);
-	// }
-	// pb.finish();
-
-	// let mut total_pb = progress.lock().unwrap();
-	// total_pb.pkgs_downloaded += 1;
-	// total_pb.progress.set_message(format!(
-	// 	"{}/{}",
-	// 	total_pb.pkgs_downloaded, total_pb.total_pkgs
-	// ));
+	while let Some(chunk) = response.chunk().await? {
+		progress.lock().await.indicatif.inc(chunk.len() as u64);
+		uri.lock().await.progress.indicatif.inc(chunk.len() as u64);
+	}
 
 	Ok(())
 }
