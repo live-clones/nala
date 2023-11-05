@@ -497,10 +497,16 @@ async fn run_app<B: Backend>(
 			ratio: unlocked.ratio(),
 		};
 
-		// The Mutex needs to be dropped so UI can use it.
-		drop(unlocked);
-
-		terminal.draw(|f| ui(f, downloader, align, sub_bars, total_bar, total_constraints))?;
+		terminal.draw(|f| {
+			ui(
+				f,
+				&downloader.uri_list,
+				align,
+				sub_bars,
+				total_bar,
+				total_constraints,
+			)
+		})?;
 
 		let timeout = tick_rate
 			.checked_sub(last_tick.elapsed())
@@ -515,6 +521,7 @@ async fn run_app<B: Backend>(
 		}
 		if last_tick.elapsed() >= tick_rate {
 			// app.on_tick();
+			// We could potentially only update info at the tick rate.
 			last_tick = Instant::now();
 		}
 	}
@@ -522,7 +529,7 @@ async fn run_app<B: Backend>(
 
 fn ui<B: Backend>(
 	f: &mut Frame<B>,
-	downloader: &mut Downloader,
+	uri_list: &Vec<Arc<Mutex<Uri>>>,
 	align: BarAlignment,
 	sub_bars: Vec<SubBar>,
 	total_bar: SubBar,
@@ -530,7 +537,7 @@ fn ui<B: Backend>(
 ) {
 	let mut constraints = vec![];
 
-	for _item in &downloader.uri_list {
+	for _item in uri_list {
 		constraints.push(Constraint::Max(1))
 	}
 
@@ -586,12 +593,12 @@ fn ui<B: Backend>(
 		.title_alignment(Alignment::Center);
 
 	// We now create the inner block for the total block
-	let total_inner = total_block.inner(chunks[downloader.uri_list.len()]);
+	let total_inner = total_block.inner(chunks[uri_list.len()]);
 	let total_inner_block = Layout::default()
 		.direction(Direction::Vertical)
 		.constraints([Constraint::Min(1), Constraint::Min(1)])
 		.split(total_inner);
-	f.render_widget(total_block, chunks[downloader.uri_list.len()]);
+	f.render_widget(total_block, chunks[uri_list.len()]);
 
 	f.render_widget(
 		Paragraph::new("Packages: 0/12")
