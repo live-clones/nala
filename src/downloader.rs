@@ -77,7 +77,7 @@ impl Uri {
 		let progress = Progress::new(version.size());
 
 		Ok(Arc::new(Mutex::new(Uri {
-			uris: filter_uris(version, cache, config, downloader).await?,
+			uris: downloader.filter_uris(version, cache, config).await?,
 			size: version.size(),
 			path: "".to_string(),
 			hash_type: "".to_string(),
@@ -255,6 +255,7 @@ impl Downloader {
 		}
 	}
 
+	/// Set the total for total progress based on the totals for Uri Progress.
 	async fn set_total(&mut self) {
 		self.total_pkgs = self.uri_list.len();
 		let mut total = 0;
@@ -263,25 +264,95 @@ impl Downloader {
 		}
 		self.progress.lock().await.indicatif.set_length(total);
 	}
-}
 
-pub fn mirror_filter<'a>(
-	version: &'a Version<'a>,
-	mirrors: &mut HashMap<String, String>,
-	uris: &mut HashSet<String>,
-	filename: &str,
-) -> Result<bool> {
-	if let Some(data) = mirrors.get(filename) {
-		for line in data.lines() {
-			if !line.is_empty() && !line.starts_with('#') {
-				uris.insert(
-					line.to_string() + "/" + &version.get_record(RecordField::Filename).unwrap(),
-				);
+	/// Add the filtered Uris into the HashSet if applicable.
+	fn mirror_filter<'a>(
+		&self,
+		version: &'a Version<'a>,
+		uris: &mut HashSet<String>,
+		filename: &str,
+	) -> Result<bool> {
+		if let Some(data) = self.mirrors.get(filename) {
+			for line in data.lines() {
+				if !line.is_empty() && !line.starts_with('#') {
+					uris.insert(
+						line.to_string()
+							+ "/" + &version.get_record(RecordField::Filename).unwrap(),
+					);
+				}
 			}
+			return Ok(true);
 		}
-		return Ok(true);
+		Ok(false)
 	}
-	Ok(false)
+
+	/// Filter Uris from a package version.
+	/// This will normalize different kinds of possible Uris
+	/// Which are not http
+	async fn filter_uris<'a>(
+		&mut self,
+		version: &'a Version<'a>,
+		cache: &Cache,
+		config: &Config,
+	) -> Result<HashSet<String>> {
+		let mut filtered = HashSet::new();
+
+		for uri in version.uris() {
+			// Sending a file path through the downloader will cause it to lock up
+			// These have already been handled before the downloader runs.
+			// TODO: We haven't actually handled anything yet. In python nala it happens
+			// before it gets here. lol
+			if uri.starts_with("file:") {
+				continue;
+			}
+
+			if !uri_trusted(cache, version)? {
+				self.untrusted
+					.insert(config.color.red(version.parent().name()).to_string());
+			}
+
+			if uri.starts_with("mirror+file:") {
+				if let Some(file_match) = self.mirror_regex.mirror_file()?.captures(&uri) {
+					let filename = file_match.get(1).unwrap().as_str();
+					if !self.mirrors.contains_key(filename) {
+						self.mirrors.insert(
+							filename.to_string(),
+							std::fs::read_to_string(filename).with_context(|| {
+								format!("Failed to read {filename}, using defaults")
+							})?,
+						);
+					};
+
+					if self.mirror_filter(version, &mut filtered, filename)? {
+						continue;
+					}
+				}
+			}
+
+			if uri.starts_with("mirror:") {
+				if let Some(file_match) = self.mirror_regex.mirror()?.captures(&uri) {
+					let filename = file_match.get(1).unwrap().as_str();
+					if !self.mirrors.contains_key(filename) {
+						self.mirrors.insert(
+							filename.to_string(),
+							reqwest::get("http://".to_string() + filename)
+								.await?
+								.text()
+								.await?,
+						);
+					}
+
+					if self.mirror_filter(version, &mut filtered, filename)? {
+						continue;
+					}
+				}
+			}
+
+			// If none of the conditions meet then we just add it to the uris
+			filtered.insert(uri);
+		}
+		Ok(filtered)
+	}
 }
 
 pub fn uri_trusted<'a>(cache: &Cache, version: &'a Version<'a>) -> Result<bool> {
@@ -293,70 +364,6 @@ pub fn uri_trusted<'a>(cache: &Cache, version: &'a Version<'a>) -> Result<bool> 
 		}
 	}
 	Ok(false)
-}
-
-pub async fn filter_uris<'a>(
-	version: &'a Version<'a>,
-	cache: &Cache,
-	config: &Config,
-	downloader: &mut Downloader,
-) -> Result<HashSet<String>> {
-	let mut filtered = HashSet::new();
-
-	for uri in version.uris() {
-		// Sending a file path through the downloader will cause it to lock up
-		// These have already been handled before the downloader runs.
-		if uri.starts_with("file:") {
-			continue;
-		}
-
-		if !uri_trusted(cache, version)? {
-			downloader
-				.untrusted
-				.insert(config.color.red(version.parent().name()).to_string());
-		}
-
-		if uri.starts_with("mirror+file:") {
-			if let Some(file_match) = downloader.mirror_regex.mirror_file()?.captures(&uri) {
-				let filename = file_match.get(1).unwrap().as_str();
-				if !downloader.mirrors.contains_key(filename) {
-					downloader.mirrors.insert(
-						filename.to_string(),
-						std::fs::read_to_string(filename).with_context(|| {
-							format!("Failed to read {filename}, using defaults")
-						})?,
-					);
-				};
-
-				if mirror_filter(version, &mut downloader.mirrors, &mut filtered, filename)? {
-					continue;
-				}
-			}
-		}
-
-		if uri.starts_with("mirror:") {
-			if let Some(file_match) = downloader.mirror_regex.mirror()?.captures(&uri) {
-				let filename = file_match.get(1).unwrap().as_str();
-				if !downloader.mirrors.contains_key(filename) {
-					downloader.mirrors.insert(
-						filename.to_string(),
-						reqwest::get("http://".to_string() + filename)
-							.await?
-							.text()
-							.await?,
-					);
-				}
-
-				if mirror_filter(version, &mut downloader.mirrors, &mut filtered, filename)? {
-					continue;
-				}
-			}
-		}
-
-		// If none of the conditions meet then we just add it to the uris
-		filtered.insert(uri);
-	}
-	Ok(filtered)
 }
 
 pub fn untrusted_error(config: &Config, untrusted: &HashSet<String>) -> Result<()> {
