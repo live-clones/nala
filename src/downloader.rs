@@ -94,6 +94,7 @@ impl Uri {
 
 /// Struct used for sending progress data to UI
 struct SubBar {
+	is_total: bool,
 	first_column: String,
 	percentage: String,
 	current_total: String,
@@ -465,6 +466,7 @@ async fn run_app<B: Backend>(
 			};
 
 			sub_bars.push(SubBar {
+				is_total: false,
 				first_column,
 				ratio: unlocked.progress.ratio(),
 				percentage: unlocked.progress.percentage().to_string(),
@@ -485,8 +487,10 @@ async fn run_app<B: Backend>(
 		];
 
 		// Create a bar for the total progress.
+		// It should always be last in the Vec.
 		// TODO: Maybe SubBar isn't the best name?
-		let total_bar = SubBar {
+		sub_bars.push(SubBar {
+			is_total: true,
 			first_column: format!(
 				"Time Remaining: {}",
 				FormattedDuration(unlocked.indicatif.eta())
@@ -495,18 +499,9 @@ async fn run_app<B: Backend>(
 			current_total: unlocked.current_total().to_string(),
 			bytes_per_sec: unlocked.bytes_per_sec().to_string(),
 			ratio: unlocked.ratio(),
-		};
+		});
 
-		terminal.draw(|f| {
-			ui(
-				f,
-				&downloader.uri_list,
-				align,
-				sub_bars,
-				total_bar,
-				total_constraints,
-			)
-		})?;
+		terminal.draw(|f| ui(f, &downloader.uri_list, align, sub_bars, total_constraints))?;
 
 		let timeout = tick_rate
 			.checked_sub(last_tick.elapsed())
@@ -531,8 +526,7 @@ fn ui<B: Backend>(
 	f: &mut Frame<B>,
 	uri_list: &Vec<Arc<Mutex<Uri>>>,
 	align: BarAlignment,
-	sub_bars: Vec<SubBar>,
-	total_bar: SubBar,
+	mut sub_bars: Vec<SubBar>,
 	total_constraints: Vec<Constraint>,
 ) {
 	let mut constraints = vec![];
@@ -541,8 +535,7 @@ fn ui<B: Backend>(
 		constraints.push(Constraint::Max(1))
 	}
 
-	constraints.push(Constraint::Min(5));
-	// Last Constraint stops expansion
+	// Last Constraint stops element expansion
 	constraints.push(Constraint::Min(0));
 
 	let outer_block = Block::new()
@@ -566,8 +559,9 @@ fn ui<B: Backend>(
 	// This portion is what actually renders the progress bars.
 	// You can see we use some of that data from above
 	// and pad the strings if necessary.
-	for (i, uri) in sub_bars.iter().enumerate() {
-		let gauge = progress_widget(uri.first_column.to_string(), uri.ratio);
+	let total_bar = sub_bars.pop().unwrap();
+	for (i, uri) in sub_bars.into_iter().enumerate() {
+		let gauge = progress_widget(uri.first_column, uri.ratio);
 
 		let new_chunk = split_horizontal(
 			[
