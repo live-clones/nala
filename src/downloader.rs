@@ -423,26 +423,27 @@ async fn run_app<B: Backend>(
 		let mut percentage_length = 0;
 		// This section is just for aligning columns
 		for uri in downloader.uri_list.iter_mut() {
-			uri.lock().await.progress.update_strings();
+			let mut unlocked = uri.lock().await;
+			unlocked.progress.update_strings();
 
-			if uri.lock().await.filename.len() > total {
-				total = uri.lock().await.filename.len()
+			if unlocked.filename.len() > total {
+				total = unlocked.filename.len()
 			}
 
-			if uri.lock().await.progress.bar_length() < bar_length {
-				bar_length = uri.lock().await.progress.bar_length();
+			if unlocked.progress.bar_length() < bar_length {
+				bar_length = unlocked.progress.bar_length();
 			}
 
-			if uri.lock().await.progress.current_total.len() > current_total_length {
-				current_total_length = uri.lock().await.progress.current_total.len();
+			if unlocked.progress.current_total.len() > current_total_length {
+				current_total_length = unlocked.progress.current_total.len();
 			}
 
-			if uri.lock().await.progress.percentage.len() > percentage_length {
-				percentage_length = uri.lock().await.progress.percentage.len();
+			if unlocked.progress.percentage.len() > percentage_length {
+				percentage_length = unlocked.progress.percentage.len();
 			}
 
-			if uri.lock().await.progress.bytes_per_sec.len() > bytes_per_second_length {
-				bytes_per_second_length = uri.lock().await.progress.bytes_per_sec.len();
+			if unlocked.progress.bytes_per_sec.len() > bytes_per_second_length {
+				bytes_per_second_length = unlocked.progress.bytes_per_sec.len();
 			}
 		}
 
