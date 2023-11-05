@@ -102,6 +102,24 @@ struct SubBar {
 	ratio: f64,
 }
 
+impl SubBar {
+	/// Consume the Bar and render it to the terminal.
+	fn render<B: Backend>(self, f: &mut Frame<B>, chunk: Rc<[Rect]>) {
+		f.render_widget(
+			LineGauge::default()
+				.line_set(symbols::line::THICK)
+				.ratio(self.ratio)
+				.label(self.first_column)
+				.style(Style::default().fg(Color::White))
+				.gauge_style(Style::default().fg(Color::Cyan).bg(Color::Red)),
+			chunk[0],
+		);
+		f.render_widget(get_paragraph(&self.percentage), chunk[1]);
+		f.render_widget(get_paragraph(&self.current_total), chunk[2]);
+		f.render_widget(get_paragraph(&self.bytes_per_sec), chunk[3]);
+	}
+}
+
 /// Struct used for aligning the progress segments
 struct BarAlignment {
 	pkg_name: usize,
@@ -142,6 +160,15 @@ impl BarAlignment {
 		if uri.progress.bytes_per_sec.len() > self.bytes_per_sec {
 			self.bytes_per_sec = uri.progress.bytes_per_sec.len();
 		}
+	}
+
+	fn constraints(&self) -> [Constraint; 4] {
+		[
+			Constraint::Length(self.bar),
+			Constraint::Length(self.percentage as u16 + 2),
+			Constraint::Length(self.current_total as u16 + 2),
+			Constraint::Length(self.bytes_per_sec as u16 + 2),
+		]
 	}
 }
 
@@ -560,23 +587,9 @@ fn ui<B: Backend>(
 	// You can see we use some of that data from above
 	// and pad the strings if necessary.
 	let total_bar = sub_bars.pop().unwrap();
-	for (i, uri) in sub_bars.into_iter().enumerate() {
-		let gauge = progress_widget(uri.first_column, uri.ratio);
-
-		let new_chunk = split_horizontal(
-			[
-				Constraint::Length(align.bar),
-				Constraint::Length(align.percentage as u16 + 2),
-				Constraint::Length(align.current_total as u16 + 2),
-				Constraint::Length(align.bytes_per_sec as u16 + 2),
-			],
-			chunks[i],
-		);
-
-		f.render_widget(gauge, new_chunk[0]);
-		f.render_widget(get_paragraph(&uri.percentage), new_chunk[1]);
-		f.render_widget(get_paragraph(&uri.current_total), new_chunk[2]);
-		f.render_widget(get_paragraph(&uri.bytes_per_sec), new_chunk[3]);
+	for (i, bar) in sub_bars.into_iter().enumerate() {
+		let new_chunk = split_horizontal(align.constraints(), chunks[i]);
+		bar.render(f, new_chunk);
 	}
 
 	// This is where we build the "block" to render things inside.
@@ -605,14 +618,7 @@ fn ui<B: Backend>(
 	// We split the row horizontally so that we can organize information
 	let total_chunk = split_horizontal(total_constraints, total_inner_block[1]);
 
-	// Get the progress widget
-	let total_progress = progress_widget(total_bar.first_column, total_bar.ratio);
-
-	// Finally render all of the bars for this row
-	f.render_widget(total_progress, total_chunk[0]);
-	f.render_widget(get_paragraph(&total_bar.percentage), total_chunk[1]);
-	f.render_widget(get_paragraph(&total_bar.current_total), total_chunk[2]);
-	f.render_widget(get_paragraph(&total_bar.bytes_per_sec), total_chunk[3]);
+	total_bar.render(f, total_chunk);
 }
 
 // Splits a block horizontally with your contraints
@@ -621,15 +627,6 @@ fn split_horizontal<T: Into<Vec<Constraint>>>(constraints: T, block: Rect) -> Rc
 		.direction(Direction::Horizontal)
 		.constraints(constraints)
 		.split(block)
-}
-
-fn progress_widget<'a, T: Into<Line<'a>>>(label: T, ratio: f64) -> LineGauge<'a> {
-	LineGauge::default()
-		.line_set(symbols::line::THICK)
-		.ratio(ratio)
-		.label(label)
-		.style(Style::default().fg(Color::White))
-		.gauge_style(Style::default().fg(Color::Cyan).bg(Color::Red))
 }
 
 fn get_paragraph(text: &str) -> Paragraph {
