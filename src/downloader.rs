@@ -20,7 +20,7 @@ use rust_apt::new_cache;
 use rust_apt::package::Version;
 use rust_apt::records::RecordField;
 use rust_apt::util::{terminal_width, unit_str, NumSys};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, MutexGuard};
 use tokio::task::JoinSet;
 use tokio::time::Duration;
 
@@ -99,6 +99,49 @@ struct SubBar {
 	current_total: String,
 	bytes_per_sec: String,
 	ratio: f64,
+}
+
+/// Struct used for aligning the progress segments
+struct BarAlignment {
+	pkg_name: usize,
+	bar: u16,
+	current_total: usize,
+	bytes_per_sec: usize,
+	percentage: usize,
+}
+
+impl BarAlignment {
+	fn new() -> Self {
+		BarAlignment {
+			pkg_name: 0,
+			bar: 1024,
+			current_total: 0,
+			bytes_per_sec: 0,
+			percentage: 0,
+		}
+	}
+
+	fn update_from_uri(&mut self, uri: MutexGuard<Uri>) {
+		if uri.filename.len() > self.pkg_name {
+			self.pkg_name = uri.filename.len()
+		}
+
+		if uri.progress.bar_length() < self.bar {
+			self.bar = uri.progress.bar_length();
+		}
+
+		if uri.progress.current_total.len() > self.current_total {
+			self.current_total = uri.progress.current_total.len();
+		}
+
+		if uri.progress.percentage.len() > self.percentage {
+			self.percentage = uri.progress.percentage.len();
+		}
+
+		if uri.progress.bytes_per_sec.len() > self.bytes_per_sec {
+			self.bytes_per_sec = uri.progress.bytes_per_sec.len();
+		}
+	}
 }
 
 pub struct Progress {
@@ -402,43 +445,22 @@ async fn run_app<B: Backend>(
 	let mut last_tick = Instant::now();
 
 	loop {
-		let mut total = 0;
-		let mut bar_length = 1024;
-		let mut current_total_length = 0;
-		let mut bytes_per_second_length = 0;
-		let mut percentage_length = 0;
-		// This section is just for aligning columns
+		// Calculate the alignment for rendering.
+		let mut align = BarAlignment::new();
 		for uri in downloader.uri_list.iter_mut() {
 			let mut unlocked = uri.lock().await;
 			unlocked.progress.update_strings();
 
-			if unlocked.filename.len() > total {
-				total = unlocked.filename.len()
-			}
-
-			if unlocked.progress.bar_length() < bar_length {
-				bar_length = unlocked.progress.bar_length();
-			}
-
-			if unlocked.progress.current_total.len() > current_total_length {
-				current_total_length = unlocked.progress.current_total.len();
-			}
-
-			if unlocked.progress.percentage.len() > percentage_length {
-				percentage_length = unlocked.progress.percentage.len();
-			}
-
-			if unlocked.progress.bytes_per_sec.len() > bytes_per_second_length {
-				bytes_per_second_length = unlocked.progress.bytes_per_sec.len();
-			}
+			align.update_from_uri(unlocked);
 		}
 
+		// Build the progress bar data for individual packages.
 		let mut sub_bars = vec![];
 		for uri in &downloader.uri_list {
 			let unlocked = uri.lock().await;
 			let filename = &unlocked.filename;
-			let first_column = match filename.len() < total {
-				true => filename.to_string() + &" ".repeat(total - filename.len()),
+			let first_column = match filename.len() < align.pkg_name {
+				true => filename.to_string() + &" ".repeat(align.pkg_name - filename.len()),
 				false => filename.to_string(),
 			};
 
@@ -451,7 +473,7 @@ async fn run_app<B: Backend>(
 			})
 		}
 
-		// Update our information
+		// Update our total information
 		let mut unlocked = downloader.progress.lock().await;
 		unlocked.update_strings();
 
@@ -462,6 +484,8 @@ async fn run_app<B: Backend>(
 			Constraint::Length(unlocked.bytes_per_sec().len() as u16 + 2),
 		];
 
+		// Create a bar for the total progress.
+		// TODO: Maybe SubBar isn't the best name?
 		let total_bar = SubBar {
 			first_column: format!(
 				"Time Remaining: {}",
@@ -473,22 +497,10 @@ async fn run_app<B: Backend>(
 			ratio: unlocked.ratio(),
 		};
 
-		// This will unlock the mutex so it can be used in ui.
+		// The Mutex needs to be dropped so UI can use it.
 		drop(unlocked);
 
-		terminal.draw(|f| {
-			ui(
-				f,
-				downloader,
-				bar_length,
-				current_total_length,
-				bytes_per_second_length,
-				percentage_length,
-				sub_bars,
-				total_bar,
-				total_constraints,
-			)
-		})?;
+		terminal.draw(|f| ui(f, downloader, align, sub_bars, total_bar, total_constraints))?;
 
 		let timeout = tick_rate
 			.checked_sub(last_tick.elapsed())
@@ -511,10 +523,7 @@ async fn run_app<B: Backend>(
 fn ui<B: Backend>(
 	f: &mut Frame<B>,
 	downloader: &mut Downloader,
-	bar_length: u16,
-	current_total_length: usize,
-	bytes_per_second_length: usize,
-	percentage_length: usize,
+	align: BarAlignment,
 	sub_bars: Vec<SubBar>,
 	total_bar: SubBar,
 	total_constraints: Vec<Constraint>,
@@ -555,12 +564,10 @@ fn ui<B: Backend>(
 
 		let new_chunk = split_horizontal(
 			[
-				// We calculated how big each needed to be
-				// So that they are aligned properly.
-				Constraint::Length(bar_length),
-				Constraint::Length(percentage_length as u16 + 2),
-				Constraint::Length(current_total_length as u16 + 2),
-				Constraint::Length(bytes_per_second_length as u16 + 2),
+				Constraint::Length(align.bar),
+				Constraint::Length(align.percentage as u16 + 2),
+				Constraint::Length(align.current_total as u16 + 2),
+				Constraint::Length(align.bytes_per_sec as u16 + 2),
 			],
 			chunks[i],
 		);
