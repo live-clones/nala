@@ -92,6 +92,15 @@ impl Uri {
 	}
 }
 
+/// Struct used for sending progress data to UI
+struct SubBar {
+	first_column: String,
+	percentage: String,
+	current_total: String,
+	bytes_per_sec: String,
+	ratio: f64,
+}
+
 pub struct Progress {
 	indicatif: ProgressBar,
 	bytes_per_sec: String,
@@ -398,14 +407,6 @@ pub async fn download(config: &Config) -> Result<()> {
 	}
 
 	Ok(())
-}
-
-struct SubBar {
-	first_column: String,
-	percentage: String,
-	current_total: String,
-	bytes_per_sec: String,
-	ratio: f64,
 }
 
 async fn run_app<B: Backend>(
