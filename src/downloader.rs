@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::fmt::format;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
@@ -240,6 +241,7 @@ pub struct Downloader {
 	mirror_regex: MirrorRegex,
 	progress: Arc<Mutex<Progress>>,
 	total_pkgs: usize,
+	finished_pkgs: usize,
 }
 
 impl Downloader {
@@ -252,6 +254,7 @@ impl Downloader {
 			mirror_regex: MirrorRegex::new(),
 			progress: Arc::new(Mutex::new(Progress::new(0))),
 			total_pkgs: 0,
+			finished_pkgs: 0,
 		}
 	}
 
@@ -266,6 +269,7 @@ impl Downloader {
 
 		for i in indexes {
 			self.uri_list.remove(i);
+			self.finished_pkgs += 1;
 		}
 	}
 
@@ -549,7 +553,7 @@ async fn run_app<B: Backend>(
 			ratio: unlocked.ratio(),
 		});
 
-		terminal.draw(|f| ui(f, align, sub_bars, total_constraints))?;
+		terminal.draw(|f| ui(f, align, sub_bars, total_constraints, downloader))?;
 
 		let timeout = tick_rate
 			.checked_sub(last_tick.elapsed())
@@ -575,6 +579,7 @@ fn ui<B: Backend>(
 	align: BarAlignment,
 	sub_bars: Vec<SubBar>,
 	total_constraints: Vec<Constraint>,
+	downloader: &Downloader,
 ) {
 	// Create the outer downloading block
 	let outer_block = build_block("  Downloading...  ".reset().bold());
@@ -595,10 +600,13 @@ fn ui<B: Backend>(
 
 	// Render the bars
 	f.render_widget(
-		Paragraph::new("Packages: 0/12")
-			.wrap(Wrap { trim: true })
-			.alignment(Alignment::Left)
-			.set_style(Style::default().fg(Color::White)),
+		Paragraph::new(format!(
+			"Packages: {}/{}",
+			downloader.finished_pkgs, downloader.total_pkgs
+		))
+		.wrap(Wrap { trim: true })
+		.alignment(Alignment::Left)
+		.set_style(Style::default().fg(Color::White)),
 		total_inner_block[0],
 	);
 
