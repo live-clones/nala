@@ -62,7 +62,7 @@ impl MirrorRegex {
 
 // #[derive(Clone, Debug)]
 pub struct Uri {
-	uris: HashSet<String>,
+	uris: Vec<String>,
 	size: u64,
 	path: String,
 	hash_type: String,
@@ -71,6 +71,7 @@ pub struct Uri {
 	progress: Progress,
 	is_finished: bool,
 	crash: bool,
+	errors: Vec<String>,
 }
 
 impl Uri {
@@ -100,6 +101,7 @@ impl Uri {
 			progress,
 			is_finished: false,
 			crash: false,
+			errors: vec![],
 		})))
 	}
 }
@@ -353,13 +355,13 @@ impl Downloader {
 	fn get_from_mirrors<'a>(
 		&self,
 		version: &'a Version<'a>,
-		uris: &mut HashSet<String>,
+		uris: &mut Vec<String>,
 		filename: &str,
 	) -> Result<bool> {
 		if let Some(data) = self.mirrors.get(filename) {
 			for line in data.lines() {
 				if !line.is_empty() && !line.starts_with('#') {
-					uris.insert(
+					uris.push(
 						line.to_string()
 							+ "/" + &version.get_record(RecordField::Filename).unwrap(),
 					);
@@ -395,8 +397,8 @@ impl Downloader {
 		version: &'a Version<'a>,
 		cache: &Cache,
 		config: &Config,
-	) -> Result<HashSet<String>> {
-		let mut filtered = HashSet::new();
+	) -> Result<Vec<String>> {
+		let mut filtered = Vec::new();
 
 		for uri in version.uris() {
 			// Sending a file path through the downloader will cause it to lock up
@@ -426,7 +428,7 @@ impl Downloader {
 			}
 
 			// If none of the conditions meet then we just add it to the uris
-			filtered.insert(uri);
+			filtered.push(uri);
 		}
 		Ok(filtered)
 	}
@@ -566,6 +568,17 @@ pub async fn download(config: &Config) -> Result<()> {
 			config.color.package(&unlocked.filename),
 			config.color.package(&unlocked.path),
 		)
+	}
+
+	// Time to print any errors
+	for uri in &downloader.uri_list {
+		let unlocked = uri.lock().await;
+
+		if !unlocked.is_finished {
+			for error in &unlocked.errors {
+				config.color.error(error);
+			}
+		}
 	}
 
 	Ok(())
@@ -755,36 +768,61 @@ fn get_hash(config: &Config, version: &Version) -> Result<(String, String)> {
 
 pub async fn download_file(progress: Arc<Mutex<Progress>>, uri: Arc<Mutex<Uri>>) -> Result<()> {
 	let client = reqwest::Client::new();
-	let mut response = client
-		.get(uri.lock().await.uris.iter().next().unwrap())
-		.send()
-		.await?;
 
-	let mut hasher: Box<dyn DynDigest + Send> = match uri.lock().await.hash_type.as_str() {
-		"sha256" => Box::new(Sha256::new()),
-		_ => Box::new(Sha512::new()),
-	};
+	loop {
+		// Break out of the loop if there are no URIs left
+		// TODO: Probably want to check a field here as this should error
+		// Or Return an error idk.
+		if uri.lock().await.uris.is_empty() {
+			break;
+		}
 
-	while let Some(chunk) = response.chunk().await? {
-		progress.lock().await.indicatif.inc(chunk.len() as u64);
-		uri.lock().await.progress.indicatif.inc(chunk.len() as u64);
-		hasher.update(&chunk);
+		let response = client
+			// There should always be a uri in here since we check if it's empty above
+			.get(uri.lock().await.uris.iter().next().unwrap())
+			.send()
+			.await;
+
+		if let Err(err) = response {
+			uri.lock().await.errors.push(err.to_string());
+			uri.lock().await.uris.remove(0);
+			continue;
+		}
+
+		let mut hasher: Box<dyn DynDigest + Send> = match uri.lock().await.hash_type.as_str() {
+			"sha256" => Box::new(Sha256::new()),
+			_ => Box::new(Sha512::new()),
+		};
+
+		let mut unwrapped = response.unwrap();
+
+		// Iter over the response stream and update the hasher and progress bars
+		while let Some(chunk) = unwrapped.chunk().await? {
+			progress.lock().await.indicatif.inc(chunk.len() as u64);
+			uri.lock().await.progress.indicatif.inc(chunk.len() as u64);
+			hasher.update(&chunk);
+		}
+
+		let mut download_hash = String::new();
+		for byte in hasher.finalize().as_ref() {
+			write!(&mut download_hash, "{:02x}", byte).expect("Unable to write hash to string");
+		}
+
+		// Handle if the hash doesn't check out.
+		if download_hash != uri.lock().await.hash_value {
+			let filename = &uri.lock().await.filename;
+
+			uri.lock().await.errors.push(
+				format!("Checksum did not match for {filename}")
+			);
+			uri.lock().await.uris.remove(0);
+			// TODO: We want to remove the bad file if the hash doesn't match.
+			continue;
+		}
+
+		// Mark the uri as done downloading
+		uri.lock().await.is_finished = true;
+		break;
 	}
-
-	let mut download_hash = String::new();
-	for byte in hasher.finalize().as_ref() {
-		write!(&mut download_hash, "{:02x}", byte).expect("Unable to write hash to string");
-	}
-
-	// Handle if the hash doesn't check out. Eventually needs to loop so we can try
-	// other URIs
-	if download_hash != uri.lock().await.hash_value {
-		uri.lock().await.crash = true;
-		bail!("Whoops hash sucks bruh")
-	}
-
-	// Mark the uri as done downloading
-	uri.lock().await.is_finished = true;
-
 	Ok(())
 }
