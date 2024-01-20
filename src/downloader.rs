@@ -70,6 +70,7 @@ pub struct Uri {
 	filename: String,
 	progress: Progress,
 	is_finished: bool,
+	crash: bool,
 }
 
 impl Uri {
@@ -98,6 +99,7 @@ impl Uri {
 				.to_string(),
 			progress,
 			is_finished: false,
+			crash: false,
 		})))
 	}
 }
@@ -548,8 +550,8 @@ pub async fn download(config: &Config) -> Result<()> {
 
 	disable_raw(&mut terminal)?;
 
-	if let Err(err) = res {
-		println!("{err:?}");
+	if res.is_err() {
+		res?
 	}
 
 	Ok(())
@@ -563,7 +565,19 @@ async fn run_app<B: Backend>(
 	let mut last_tick = Instant::now();
 
 	loop {
+		// Check if we need to leave UI due to an error
+		for uri in &downloader.uri_list {
+			if uri.lock().await.crash {
+				return Ok(());
+			}
+		}
+
 		downloader.remove_finished_uris().await;
+
+		// If there are no more URIs it's time to leave the UI
+		if downloader.uri_list.is_empty() {
+			return Ok(());
+		}
 
 		// Calculate the alignment for rendering.
 		let align = downloader.calculate_alignment().await;
@@ -698,7 +712,7 @@ fn disable_raw<B: std::io::Write + Backend>(terminal: &mut Terminal<B>) -> Resul
 	execute!(
 		terminal.backend_mut(),
 		LeaveAlternateScreen,
-		DisableMouseCapture
+		DisableMouseCapture,
 	)?;
 	terminal.show_cursor()?;
 	Ok(())
@@ -743,9 +757,16 @@ pub async fn download_file(progress: Arc<Mutex<Progress>>, uri: Arc<Mutex<Uri>>)
 		hasher.update(&chunk);
 	}
 
-	let mut s = String::new();
+	let mut download_hash = String::new();
 	for byte in hasher.finalize().as_ref() {
-		write!(&mut s, "{:02x}", byte).expect("Unable to write has to string");
+		write!(&mut download_hash, "{:02x}", byte).expect("Unable to write hash to string");
+	}
+
+	// Handle if the hash doesn't check out. Eventually needs to loop so we can try
+	// other URIs
+	if download_hash != uri.lock().await.hash_value {
+		uri.lock().await.crash = true;
+		bail!("Whoops hash sucks bruh")
 	}
 
 	// Mark the uri as done downloading
