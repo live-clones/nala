@@ -273,6 +273,64 @@ impl Downloader {
 		}
 	}
 
+	/// Return a Vector of contraints for ratatui
+	async fn get_contraints(&self) -> Vec<Constraint> {
+		let unlocked = self.progress.lock().await;
+
+		vec![
+			Constraint::Length((unlocked.bar_length() - 2) as u16),
+			Constraint::Length(unlocked.percentage().len() as u16 + 2),
+			Constraint::Length(unlocked.current_total().len() as u16 + 2),
+			Constraint::Length(unlocked.bytes_per_sec().len() as u16 + 2),
+		]
+	}
+
+	/// Generate the uri progress bars for packages.
+	async fn gen_uri_bars(&self, align: &BarAlignment) -> Vec<SubBar> {
+		let mut sub_bars = vec![];
+		for uri in &self.uri_list {
+			let unlocked = uri.lock().await;
+
+			sub_bars.push(SubBar {
+				is_total: false,
+				// Pad the package name if necessary for alignment.
+				first_column: unlocked.filename.to_string()
+					+ &" ".repeat(align.pkg_name - unlocked.filename.len()),
+				ratio: unlocked.progress.ratio(),
+				percentage: unlocked.progress.percentage().to_string(),
+				current_total: unlocked.progress.current_total().to_string(),
+				bytes_per_sec: unlocked.progress.bytes_per_sec().to_string(),
+			})
+		}
+
+		// Generate total progress bar and put it last in the vector
+		let unlocked = self.progress.lock().await;
+		sub_bars.push(SubBar {
+			is_total: true,
+			first_column: format!(
+				"Time Remaining: {}",
+				FormattedDuration(unlocked.indicatif.eta())
+			),
+			percentage: unlocked.percentage().to_string(),
+			current_total: unlocked.current_total().to_string(),
+			bytes_per_sec: unlocked.bytes_per_sec().to_string(),
+			ratio: unlocked.ratio(),
+		});
+		sub_bars
+	}
+
+	/// Calculate the text alignment for rendering
+	async fn calculate_alignment(&mut self) -> BarAlignment {
+		let mut align = BarAlignment::new();
+		for uri in self.uri_list.iter_mut() {
+			let mut unlocked = uri.lock().await;
+			unlocked.progress.update_strings();
+
+			align.update_from_uri(unlocked);
+		}
+		align
+	}
+
 	/// Set the total for total progress based on the totals for Uri Progress.
 	async fn set_total(&mut self) {
 		self.total_pkgs = self.uri_list.len();
@@ -500,60 +558,18 @@ async fn run_app<B: Backend>(
 
 	loop {
 		downloader.remove_finished_uris().await;
+
 		// Calculate the alignment for rendering.
-		let mut align = BarAlignment::new();
-		for uri in downloader.uri_list.iter_mut() {
-			let mut unlocked = uri.lock().await;
-			unlocked.progress.update_strings();
+		let align = downloader.calculate_alignment().await;
 
-			align.update_from_uri(unlocked);
-		}
+		// Update total information
+		downloader.progress.lock().await.update_strings();
 
-		// Build the progress bar data for individual packages.
-		let mut sub_bars = vec![];
-		for uri in &downloader.uri_list {
-			let unlocked = uri.lock().await;
+		let bars = downloader.gen_uri_bars(&align).await;
+		let constraints = downloader.get_contraints().await;
 
-			sub_bars.push(SubBar {
-				is_total: false,
-				// Pad the package name if necessary for alignment.
-				first_column: unlocked.filename.to_string()
-					+ &" ".repeat(align.pkg_name - unlocked.filename.len()),
-				ratio: unlocked.progress.ratio(),
-				percentage: unlocked.progress.percentage().to_string(),
-				current_total: unlocked.progress.current_total().to_string(),
-				bytes_per_sec: unlocked.progress.bytes_per_sec().to_string(),
-			})
-		}
-
-		// Update our total information
-		let mut unlocked = downloader.progress.lock().await;
-		unlocked.update_strings();
-
-		// Total constraints have to be built outside of UI
-		let total_constraints = vec![
-			Constraint::Length((unlocked.bar_length() - 2) as u16),
-			Constraint::Length(unlocked.percentage().len() as u16 + 2),
-			Constraint::Length(unlocked.current_total().len() as u16 + 2),
-			Constraint::Length(unlocked.bytes_per_sec().len() as u16 + 2),
-		];
-
-		// Create a bar for the total progress.
-		// It should always be last in the Vec.
-		// TODO: Maybe SubBar isn't the best name?
-		sub_bars.push(SubBar {
-			is_total: true,
-			first_column: format!(
-				"Time Remaining: {}",
-				FormattedDuration(unlocked.indicatif.eta())
-			),
-			percentage: unlocked.percentage().to_string(),
-			current_total: unlocked.current_total().to_string(),
-			bytes_per_sec: unlocked.bytes_per_sec().to_string(),
-			ratio: unlocked.ratio(),
-		});
-
-		terminal.draw(|f| ui(f, align, sub_bars, total_constraints, downloader))?;
+		// Async things have to be done outside of the UI function
+		terminal.draw(|f| ui(f, align, bars, constraints, downloader))?;
 
 		let timeout = tick_rate
 			.checked_sub(last_tick.elapsed())
