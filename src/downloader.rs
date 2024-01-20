@@ -65,6 +65,7 @@ pub struct Uri {
 	hash_type: String,
 	filename: String,
 	progress: Progress,
+	is_finished: bool,
 }
 
 impl Uri {
@@ -89,6 +90,7 @@ impl Uri {
 				.expect("Filename is malformed!")
 				.to_string(),
 			progress,
+			is_finished: false,
 		})))
 	}
 }
@@ -238,7 +240,6 @@ pub struct Downloader {
 	mirror_regex: MirrorRegex,
 	progress: Arc<Mutex<Progress>>,
 	total_pkgs: usize,
-	finished: usize,
 }
 
 impl Downloader {
@@ -251,7 +252,20 @@ impl Downloader {
 			mirror_regex: MirrorRegex::new(),
 			progress: Arc::new(Mutex::new(Progress::new(0))),
 			total_pkgs: 0,
-			finished: 0,
+		}
+	}
+
+	/// Remove any uris that are finished downloading from the uri list.
+	async fn remove_finished_uris(&mut self) {
+		let mut indexes = vec![];
+		for (i, uri) in self.uri_list.iter().enumerate() {
+			if uri.lock().await.is_finished {
+				indexes.push(i)
+			}
+		}
+
+		for i in indexes {
+			self.uri_list.remove(i);
 		}
 	}
 
@@ -481,6 +495,7 @@ async fn run_app<B: Backend>(
 	let mut last_tick = Instant::now();
 
 	loop {
+		downloader.remove_finished_uris().await;
 		// Calculate the alignment for rendering.
 		let mut align = BarAlignment::new();
 		for uri in downloader.uri_list.iter_mut() {
@@ -670,6 +685,9 @@ pub async fn download_file(progress: Arc<Mutex<Progress>>, uri: Arc<Mutex<Uri>>)
 		progress.lock().await.indicatif.inc(chunk.len() as u64);
 		uri.lock().await.progress.indicatif.inc(chunk.len() as u64);
 	}
+
+	// Mark the uri as done downloading
+	uri.lock().await.is_finished = true;
 
 	Ok(())
 }
