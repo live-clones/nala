@@ -87,7 +87,7 @@ impl Uri {
 		Ok(Arc::new(Mutex::new(Uri {
 			uris: downloader.filter_uris(version, cache, config).await?,
 			size: version.size(),
-			path: "".to_string(),
+			path: "/path/not/implemented/lol.deb".to_string(),
 			hash_type,
 			hash_value,
 			filename: version
@@ -248,8 +248,6 @@ pub struct Downloader {
 	mirrors: HashMap<String, String>,
 	mirror_regex: MirrorRegex,
 	progress: Arc<Mutex<Progress>>,
-	total_pkgs: usize,
-	finished_pkgs: usize,
 }
 
 impl Downloader {
@@ -261,24 +259,17 @@ impl Downloader {
 			mirrors: HashMap::new(),
 			mirror_regex: MirrorRegex::new(),
 			progress: Arc::new(Mutex::new(Progress::new(0))),
-			total_pkgs: 0,
-			finished_pkgs: 0,
 		}
 	}
 
-	/// Remove any uris that are finished downloading from the uri list.
-	async fn remove_finished_uris(&mut self) {
-		let mut indexes = vec![];
-		for (i, uri) in self.uri_list.iter().enumerate() {
+	async fn total_uris_finished(&self) -> usize {
+		let mut total = 0;
+		for uri in self.uri_list.iter() {
 			if uri.lock().await.is_finished {
-				indexes.push(i)
+				total += 1;
 			}
 		}
-
-		for i in indexes {
-			self.uri_list.remove(i);
-			self.finished_pkgs += 1;
-		}
+		total
 	}
 
 	/// Return a Vector of contraints for ratatui
@@ -298,6 +289,11 @@ impl Downloader {
 		let mut sub_bars = vec![];
 		for uri in &self.uri_list {
 			let unlocked = uri.lock().await;
+
+			// Don't add finished downloads
+			if unlocked.is_finished {
+				continue;
+			}
 
 			sub_bars.push(SubBar {
 				is_total: false,
@@ -332,6 +328,11 @@ impl Downloader {
 		let mut align = BarAlignment::new();
 		for uri in self.uri_list.iter_mut() {
 			let mut unlocked = uri.lock().await;
+
+			// Don't calculate finished downloads
+			if unlocked.is_finished {
+				continue;
+			}
 			unlocked.progress.update_strings();
 
 			align.update_from_uri(unlocked);
@@ -341,7 +342,6 @@ impl Downloader {
 
 	/// Set the total for total progress based on the totals for Uri Progress.
 	async fn set_total(&mut self) {
-		self.total_pkgs = self.uri_list.len();
 		let mut total = 0;
 		for uri in &self.uri_list {
 			total += uri.lock().await.progress.indicatif.length().unwrap();
@@ -554,6 +554,20 @@ pub async fn download(config: &Config) -> Result<()> {
 		res?
 	}
 
+	println!("Downloads Complete:");
+	for uri in &downloader.uri_list {
+		let unlocked = uri.lock().await;
+		// Don't print packages that are not finished
+		if !unlocked.is_finished {
+			continue;
+		}
+		println!(
+			"  {} was written to {}",
+			config.color.package(&unlocked.filename),
+			config.color.package(&unlocked.path),
+		)
+	}
+
 	Ok(())
 }
 
@@ -572,10 +586,8 @@ async fn run_app<B: Backend>(
 			}
 		}
 
-		downloader.remove_finished_uris().await;
-
 		// If there are no more URIs it's time to leave the UI
-		if downloader.uri_list.is_empty() {
+		if downloader.total_uris_finished().await == downloader.uri_list.len() {
 			return Ok(());
 		}
 
@@ -587,9 +599,10 @@ async fn run_app<B: Backend>(
 
 		let bars = downloader.gen_uri_bars(&align).await;
 		let constraints = downloader.get_contraints().await;
+		let pkgs_finished = downloader.total_uris_finished().await;
 
 		// Async things have to be done outside of the UI function
-		terminal.draw(|f| ui(f, align, bars, constraints, downloader))?;
+		terminal.draw(|f| ui(f, align, bars, constraints, pkgs_finished, downloader))?;
 
 		let timeout = tick_rate
 			.checked_sub(last_tick.elapsed())
@@ -615,6 +628,7 @@ fn ui<B: Backend>(
 	align: BarAlignment,
 	sub_bars: Vec<SubBar>,
 	total_constraints: Vec<Constraint>,
+	pkgs_finished: usize,
 	downloader: &Downloader,
 ) {
 	// Create the outer downloading block
@@ -637,8 +651,8 @@ fn ui<B: Backend>(
 	// Render the bars
 	f.render_widget(
 		Paragraph::new(format!(
-			"Packages: {}/{}",
-			downloader.finished_pkgs, downloader.total_pkgs
+			"Packages: {pkgs_finished}/{}",
+			downloader.uri_list.len()
 		))
 		.wrap(Wrap { trim: true })
 		.alignment(Alignment::Left)
