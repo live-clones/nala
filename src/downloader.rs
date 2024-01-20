@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::fmt::format;
+use std::fmt::Write;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
@@ -10,6 +10,7 @@ use crossterm::execute;
 use crossterm::terminal::{
 	disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
+use digest::DynDigest;
 use indicatif::{FormattedDuration, ProgressBar};
 use once_cell::sync::OnceCell;
 use ratatui::prelude::*;
@@ -22,6 +23,7 @@ use rust_apt::new_cache;
 use rust_apt::package::Version;
 use rust_apt::records::RecordField;
 use rust_apt::util::{terminal_width, unit_str, NumSys};
+use sha2::{Digest, Sha256, Sha512};
 use tokio::sync::{Mutex, MutexGuard};
 use tokio::task::JoinSet;
 use tokio::time::Duration;
@@ -64,6 +66,7 @@ pub struct Uri {
 	size: u64,
 	path: String,
 	hash_type: String,
+	hash_value: String,
 	filename: String,
 	progress: Progress,
 	is_finished: bool,
@@ -78,11 +81,14 @@ impl Uri {
 	) -> Result<Arc<Mutex<Uri>>> {
 		let progress = Progress::new(version.size());
 
+		let (hash_type, hash_value) = get_hash(config, version)?;
+
 		Ok(Arc::new(Mutex::new(Uri {
 			uris: downloader.filter_uris(version, cache, config).await?,
 			size: version.size(),
 			path: "".to_string(),
-			hash_type: "".to_string(),
+			hash_type,
+			hash_value,
 			filename: version
 				.get_record(RecordField::Filename)
 				.expect("Record does not contain a filename!")
@@ -698,6 +704,27 @@ fn disable_raw<B: std::io::Write + Backend>(terminal: &mut Terminal<B>) -> Resul
 	Ok(())
 }
 
+/// Return the hash_type and the hash_value to be used.
+fn get_hash(config: &Config, version: &Version) -> Result<(String, String)> {
+	// From Debian's requirements we are not to use these for security checking.
+	// https://wiki.debian.org/DebianRepository/Format#MD5Sum.2C_SHA1.2C_SHA256
+	// Clients may not use the MD5Sum and SHA1 fields for security purposes,
+	// and must require a SHA256 or a SHA512 field.
+	// hashes = ('SHA512', 'SHA256', 'SHA1', 'MD5')
+
+	for hash_type in ["sha512", "sha256"] {
+		if let Some(hash_value) = version.hash(hash_type) {
+			return Ok((hash_type.to_string(), hash_value));
+		}
+	}
+
+	bail!(
+		"{} {} can't be checked for integrity.\nThere are no hashes available for this package.",
+		config.color.yellow(version.parent().name()),
+		config.color.yellow(version.version()),
+	);
+}
+
 pub async fn download_file(progress: Arc<Mutex<Progress>>, uri: Arc<Mutex<Uri>>) -> Result<()> {
 	let client = reqwest::Client::new();
 	let mut response = client
@@ -705,9 +732,20 @@ pub async fn download_file(progress: Arc<Mutex<Progress>>, uri: Arc<Mutex<Uri>>)
 		.send()
 		.await?;
 
+	let mut hasher: Box<dyn DynDigest + Send> = match uri.lock().await.hash_type.as_str() {
+		"sha256" => Box::new(Sha256::new()),
+		_ => Box::new(Sha512::new()),
+	};
+
 	while let Some(chunk) = response.chunk().await? {
 		progress.lock().await.indicatif.inc(chunk.len() as u64);
 		uri.lock().await.progress.indicatif.inc(chunk.len() as u64);
+		hasher.update(&chunk);
+	}
+
+	let mut s = String::new();
+	for byte in hasher.finalize().as_ref() {
+		write!(&mut s, "{:02x}", byte).expect("Unable to write has to string");
 	}
 
 	// Mark the uri as done downloading
