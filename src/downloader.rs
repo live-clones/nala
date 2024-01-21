@@ -24,6 +24,8 @@ use rust_apt::package::Version;
 use rust_apt::records::RecordField;
 use rust_apt::util::{terminal_width, unit_str, NumSys};
 use sha2::{Digest, Sha256, Sha512};
+use tokio::fs;
+use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::sync::{Mutex, MutexGuard};
 use tokio::task::JoinSet;
 use tokio::time::Duration;
@@ -80,7 +82,7 @@ fn get_pkg_name(version: &Version) -> String {
 // #[derive(Clone, Debug)]
 pub struct Uri {
 	uris: Vec<String>,
-	size: u64,
+	archive: String,
 	destination: String,
 	hash_type: String,
 	hash_value: String,
@@ -106,7 +108,7 @@ impl Uri {
 
 		Ok(Arc::new(Mutex::new(Uri {
 			uris: downloader.filter_uris(version, cache, config).await?,
-			size: version.size(),
+			archive: config.get_path(&Paths::Archive),
 			destination,
 			hash_type,
 			hash_value,
@@ -790,9 +792,9 @@ pub async fn download_file(progress: Arc<Mutex<Progress>>, uri: Arc<Mutex<Uri>>)
 
 	loop {
 		// Break out of the loop if there are no URIs left
-		// TODO: Probably want to check a field here as this should error
-		// Or Return an error idk.
 		if uri.lock().await.uris.is_empty() {
+			// If the uris are empty something is wrong.
+			uri.lock().await.crash = true;
 			break;
 		}
 
@@ -815,11 +817,15 @@ pub async fn download_file(progress: Arc<Mutex<Progress>>, uri: Arc<Mutex<Uri>>)
 
 		let mut unwrapped = response.unwrap();
 
+		let file = fs::File::create(&uri.lock().await.destination).await?;
+		let mut writer = BufWriter::new(file);
+
 		// Iter over the response stream and update the hasher and progress bars
 		while let Some(chunk) = unwrapped.chunk().await? {
 			progress.lock().await.indicatif.inc(chunk.len() as u64);
 			uri.lock().await.progress.indicatif.inc(chunk.len() as u64);
 			hasher.update(&chunk);
+			writer.write(&chunk).await?;
 		}
 
 		let mut download_hash = String::new();
@@ -836,9 +842,18 @@ pub async fn download_file(progress: Arc<Mutex<Progress>>, uri: Arc<Mutex<Uri>>)
 				.errors
 				.push(format!("Checksum did not match for {filename}"));
 			uri.lock().await.uris.remove(0);
-			// TODO: We want to remove the bad file if the hash doesn't match.
+
+			// Remove the bad file so that it can't be used at all.
+			fs::remove_file(&uri.lock().await.destination).await?;
 			continue;
 		}
+
+		// Move the good file from partial to the archive dir.
+		let mut archive_dest = String::new();
+		archive_dest.push_str(&uri.lock().await.archive);
+		archive_dest.push_str(uri.lock().await.destination.split('/').last().unwrap());
+
+		fs::rename(&uri.lock().await.destination, &archive_dest).await?;
 
 		// Mark the uri as done downloading
 		uri.lock().await.is_finished = true;
