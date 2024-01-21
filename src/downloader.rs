@@ -28,7 +28,7 @@ use tokio::sync::{Mutex, MutexGuard};
 use tokio::task::JoinSet;
 use tokio::time::Duration;
 
-use crate::config::Config;
+use crate::config::{Config, Paths};
 
 pub struct MirrorRegex {
 	mirror: OnceCell<Regex>,
@@ -60,11 +60,28 @@ impl MirrorRegex {
 	}
 }
 
+/// Return the package name. Checks if epoch is needed.
+fn get_pkg_name(version: &Version) -> String {
+	let filename = version
+		.get_record(RecordField::Filename)
+		.expect("Record does not contain a filename!")
+		.split_terminator('/')
+		.last()
+		.expect("Filename is malformed!")
+		.to_string();
+
+	if let Some(index) = version.version().find(':') {
+		let epoch = format!("_{}%3a", &version.version()[..index]);
+		return filename.replacen("_", &epoch, 1);
+	}
+	return filename;
+}
+
 // #[derive(Clone, Debug)]
 pub struct Uri {
 	uris: Vec<String>,
 	size: u64,
-	path: String,
+	destination: String,
 	hash_type: String,
 	hash_value: String,
 	filename: String,
@@ -85,10 +102,12 @@ impl Uri {
 
 		let (hash_type, hash_value) = get_hash(config, version)?;
 
+		let destination = config.get_path(&Paths::Archive) + "partial/" + &get_pkg_name(version);
+
 		Ok(Arc::new(Mutex::new(Uri {
 			uris: downloader.filter_uris(version, cache, config).await?,
 			size: version.size(),
-			path: "/path/not/implemented/lol.deb".to_string(),
+			destination,
 			hash_type,
 			hash_value,
 			filename: version
@@ -566,7 +585,7 @@ pub async fn download(config: &Config) -> Result<()> {
 		println!(
 			"  {} was written to {}",
 			config.color.package(&unlocked.filename),
-			config.color.package(&unlocked.path),
+			config.color.package(&unlocked.destination),
 		)
 	}
 
@@ -812,9 +831,10 @@ pub async fn download_file(progress: Arc<Mutex<Progress>>, uri: Arc<Mutex<Uri>>)
 		if download_hash != uri.lock().await.hash_value {
 			let filename = &uri.lock().await.filename;
 
-			uri.lock().await.errors.push(
-				format!("Checksum did not match for {filename}")
-			);
+			uri.lock()
+				.await
+				.errors
+				.push(format!("Checksum did not match for {filename}"));
 			uri.lock().await.uris.remove(0);
 			// TODO: We want to remove the bad file if the hash doesn't match.
 			continue;
