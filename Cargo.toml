@@ -11,7 +11,7 @@ rust-apt = { git = "https://gitlab.com/volian/rust-apt" }
 # rust-apt = "*"
 clap = { version = "4", features = ["derive"] }
 lazy_static = "1.4"
-toml = "0.5"
+toml = "0.8"
 anyhow = "1.0"
 regex = "1.6"
 globset = "0.4.9"
