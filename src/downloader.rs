@@ -139,7 +139,7 @@ struct SubBar {
 
 impl SubBar {
 	/// Consume the Bar and render it to the terminal.
-	fn render<B: Backend>(self, f: &mut Frame<B>, chunk: Rc<[Rect]>) {
+	fn render(self, f: &mut Frame, chunk: Rc<[Rect]>) {
 		f.render_widget(
 			LineGauge::default()
 				.line_set(symbols::line::THICK)
@@ -657,8 +657,8 @@ async fn run_app<B: Backend>(
 	}
 }
 
-fn ui<B: Backend>(
-	f: &mut Frame<B>,
+fn ui(
+	f: &mut Frame,
 	align: BarAlignment,
 	sub_bars: Vec<SubBar>,
 	total_constraints: Vec<Constraint>,
@@ -706,7 +706,11 @@ fn ui<B: Backend>(
 }
 
 /// Splits a block horizontally with your contraints
-fn split_horizontal<T: Into<Vec<Constraint>>>(constraints: T, block: Rect) -> Rc<[Rect]> {
+fn split_horizontal<T>(constraints: T, block: Rect) -> Rc<[Rect]>
+where
+	T: IntoIterator,
+	T::Item: Into<Constraint>,
+{
 	Layout::default()
 		.direction(Direction::Horizontal)
 		.constraints(constraints)
@@ -714,7 +718,11 @@ fn split_horizontal<T: Into<Vec<Constraint>>>(constraints: T, block: Rect) -> Rc
 }
 
 /// Splits a block vertically with your contraints
-fn split_vertical<T: Into<Vec<Constraint>>>(constraints: T, block: Rect) -> Rc<[Rect]> {
+fn split_vertical<T>(constraints: T, block: Rect) -> Rc<[Rect]>
+where
+	T: IntoIterator,
+	T::Item: Into<Constraint>,
+{
 	Layout::default()
 		.direction(Direction::Vertical)
 		.constraints(constraints)
