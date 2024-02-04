@@ -109,10 +109,11 @@ impl Uri {
 		let (hash_type, hash_value) = get_hash(config, version)?;
 
 		let destination = config.get_path(&Paths::Archive) + "partial/" + &get_pkg_name(version);
+		let archive = config.get_path(&Paths::Archive) + &get_pkg_name(version);
 
 		Ok(Arc::new(Mutex::new(Uri {
 			uris: downloader.filter_uris(version, cache, config).await?,
-			archive: config.get_path(&Paths::Archive),
+			archive,
 			destination,
 			hash_type,
 			hash_value,
@@ -595,7 +596,7 @@ pub async fn download(config: &Config) -> Result<()> {
 		println!(
 			"  {} was written to {}",
 			config.color.package(&unlocked.filename),
-			config.color.package(&unlocked.destination),
+			config.color.package(&unlocked.archive),
 		)
 	}
 
@@ -890,9 +891,7 @@ async fn open_file(uri: Arc<Mutex<Uri>>, dest: &str) -> Result<File> {
 }
 
 async fn move_file(uri: Arc<Mutex<Uri>>, dest: &str) -> Result<()> {
-	let mut archive_dest = String::new();
-	archive_dest.push_str(&uri.lock().await.archive);
-	archive_dest.push_str(dest.split('/').last().unwrap());
+	let archive_dest = uri.lock().await.archive.to_string();
 
 	let file_res = fs::rename(dest, &archive_dest).await;
 
