@@ -14,6 +14,7 @@ use crossterm::terminal::{
 use digest::DynDigest;
 use indicatif::{FormattedDuration, ProgressBar};
 use once_cell::sync::OnceCell;
+use ratatui::layout::Flex;
 use ratatui::prelude::*;
 use ratatui::style::Stylize;
 use ratatui::widgets::block::Title;
@@ -725,6 +726,7 @@ where
 	T::Item: Into<Constraint>,
 {
 	Layout::default()
+		.flex(Flex::Legacy)
 		.direction(Direction::Vertical)
 		.constraints(constraints)
 		.split(block)
