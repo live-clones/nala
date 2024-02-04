@@ -499,8 +499,14 @@ pub async fn download(config: &Config) -> Result<()> {
 	let mut downloader = Downloader::new();
 
 	if let Some(pkg_names) = config.pkg_names() {
+		// Dedupe the pkg names. If the same pkg is given twice
+		// it will be downloaded twice, and then fail when moving the file
+		let mut deduped = pkg_names.clone();
+		deduped.sort();
+		deduped.dedup();
+
 		let cache = new_cache!()?;
-		for name in pkg_names {
+		for name in &deduped {
 			if let Some(pkg) = cache.get(name) {
 				let versions: Vec<Version> = pkg.versions().collect();
 				for version in &versions {
@@ -893,7 +899,7 @@ async fn move_file(uri: Arc<Mutex<Uri>>, dest: &str) -> Result<()> {
 	if file_res.is_err() {
 		uri.lock().await.crash = true;
 	}
-	file_res.with_context(|| format!("Could not move file to '{archive_dest}'"))
+	file_res.with_context(|| format!("Could not move '{dest}' to '{archive_dest}'"))
 }
 
 async fn get_chunk(response: &mut Response, uri: Arc<Mutex<Uri>>) -> Result<Option<Bytes>> {
