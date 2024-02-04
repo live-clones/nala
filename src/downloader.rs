@@ -4,7 +4,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
 
-use anyhow::{bail, Context, Error, Result};
+use anyhow::{bail, Context, Result};
 use bytes::Bytes;
 use crossterm::event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode};
 use crossterm::execute;
@@ -26,12 +26,12 @@ use rust_apt::package::Version;
 use rust_apt::records::RecordField;
 use rust_apt::util::{terminal_width, unit_str, NumSys};
 use sha2::{Digest, Sha256, Sha512};
+use tokio::fs;
 use tokio::fs::File;
-use tokio::io::{join, AsyncWriteExt, BufWriter};
+use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::sync::{Mutex, MutexGuard};
 use tokio::task::JoinSet;
 use tokio::time::Duration;
-use tokio::{fs, join};
 
 use crate::config::{Config, Paths};
 
@@ -77,9 +77,9 @@ fn get_pkg_name(version: &Version) -> String {
 
 	if let Some(index) = version.version().find(':') {
 		let epoch = format!("_{}%3a", &version.version()[..index]);
-		return filename.replacen("_", &epoch, 1);
+		return filename.replacen('_', &epoch, 1);
 	}
-	return filename;
+	filename
 }
 
 // #[derive(Clone, Debug)]
@@ -823,7 +823,7 @@ pub async fn download_file(progress: Arc<Mutex<Progress>>, uri: Arc<Mutex<Uri>>)
 			progress.lock().await.indicatif.inc(chunk.len() as u64);
 			uri.lock().await.progress.indicatif.inc(chunk.len() as u64);
 			hasher.update(&chunk);
-			writer.write(&chunk).await?;
+			writer.write_all(&chunk).await?;
 		}
 
 		let mut download_hash = String::new();
@@ -857,7 +857,7 @@ pub async fn download_file(progress: Arc<Mutex<Progress>>, uri: Arc<Mutex<Uri>>)
 async fn open_connection(client: &reqwest::Client, uri: Arc<Mutex<Uri>>) -> Result<Response> {
 	let response_res = client
 		// There should always be a uri in here
-		.get(uri.lock().await.uris.iter().next().unwrap())
+		.get(uri.lock().await.uris.first().unwrap())
 		.send()
 		.await;
 
