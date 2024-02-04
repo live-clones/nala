@@ -4,7 +4,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Context, Error, Result};
+use bytes::Bytes;
 use crossterm::event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode};
 use crossterm::execute;
 use crossterm::terminal::{
@@ -18,17 +19,19 @@ use ratatui::style::Stylize;
 use ratatui::widgets::block::Title;
 use ratatui::widgets::*;
 use regex::{Regex, RegexBuilder};
+use reqwest::Response;
 use rust_apt::cache::Cache;
 use rust_apt::new_cache;
 use rust_apt::package::Version;
 use rust_apt::records::RecordField;
 use rust_apt::util::{terminal_width, unit_str, NumSys};
 use sha2::{Digest, Sha256, Sha512};
-use tokio::fs;
-use tokio::io::{AsyncWriteExt, BufWriter};
+use tokio::fs::File;
+use tokio::io::{join, AsyncWriteExt, BufWriter};
 use tokio::sync::{Mutex, MutexGuard};
 use tokio::task::JoinSet;
 use tokio::time::Duration;
+use tokio::{fs, join};
 
 use crate::config::{Config, Paths};
 
@@ -559,10 +562,10 @@ pub async fn download(config: &Config) -> Result<()> {
 	// create app and run it
 	let tick_rate = Duration::from_millis(250);
 	let res = run_app(&mut terminal, &mut downloader, tick_rate).await;
+	disable_raw(&mut terminal)?;
 
 	// This is for closing out of the app.
 	if res.is_ok() {
-		disable_raw(&mut terminal)?;
 		set.abort_all();
 	}
 
@@ -570,8 +573,6 @@ pub async fn download(config: &Config) -> Result<()> {
 	while let Some(res) = set.join_next().await {
 		res??;
 	}
-
-	disable_raw(&mut terminal)?;
 
 	if res.is_err() {
 		res?
@@ -806,30 +807,19 @@ pub async fn download_file(progress: Arc<Mutex<Progress>>, uri: Arc<Mutex<Uri>>)
 			break;
 		}
 
-		let response = client
-			// There should always be a uri in here since we check if it's empty above
-			.get(uri.lock().await.uris.iter().next().unwrap())
-			.send()
-			.await;
-
-		if let Err(err) = response {
-			uri.lock().await.errors.push(err.to_string());
-			uri.lock().await.uris.remove(0);
-			continue;
-		}
+		let mut response = open_connection(&client, uri.clone()).await?;
 
 		let mut hasher: Box<dyn DynDigest + Send> = match uri.lock().await.hash_type.as_str() {
 			"sha256" => Box::new(Sha256::new()),
 			_ => Box::new(Sha512::new()),
 		};
 
-		let mut unwrapped = response.unwrap();
-
-		let file = fs::File::create(&uri.lock().await.destination).await?;
+		let dest = uri.lock().await.destination.to_string();
+		let file = open_file(uri.clone(), &dest).await?;
 		let mut writer = BufWriter::new(file);
 
 		// Iter over the response stream and update the hasher and progress bars
-		while let Some(chunk) = unwrapped.chunk().await? {
+		while let Some(chunk) = get_chunk(&mut response, uri.clone()).await? {
 			progress.lock().await.indicatif.inc(chunk.len() as u64);
 			uri.lock().await.progress.indicatif.inc(chunk.len() as u64);
 			hasher.update(&chunk);
@@ -843,29 +833,74 @@ pub async fn download_file(progress: Arc<Mutex<Progress>>, uri: Arc<Mutex<Uri>>)
 
 		// Handle if the hash doesn't check out.
 		if download_hash != uri.lock().await.hash_value {
-			let filename = &uri.lock().await.filename;
-
-			uri.lock()
-				.await
-				.errors
-				.push(format!("Checksum did not match for {filename}"));
+			uri.lock().await.errors.push(format!(
+				"Checksum did not match for {}",
+				&uri.lock().await.filename
+			));
 			uri.lock().await.uris.remove(0);
 
 			// Remove the bad file so that it can't be used at all.
-			fs::remove_file(&uri.lock().await.destination).await?;
+			fs::remove_file(&dest).await?;
 			continue;
 		}
 
 		// Move the good file from partial to the archive dir.
-		let mut archive_dest = String::new();
-		archive_dest.push_str(&uri.lock().await.archive);
-		archive_dest.push_str(uri.lock().await.destination.split('/').last().unwrap());
-
-		fs::rename(&uri.lock().await.destination, &archive_dest).await?;
+		move_file(uri.clone(), &dest).await?;
 
 		// Mark the uri as done downloading
 		uri.lock().await.is_finished = true;
 		break;
 	}
 	Ok(())
+}
+
+async fn open_connection(client: &reqwest::Client, uri: Arc<Mutex<Uri>>) -> Result<Response> {
+	let response_res = client
+		// There should always be a uri in here
+		.get(uri.lock().await.uris.iter().next().unwrap())
+		.send()
+		.await;
+
+	// If a URI is bad just log the error and try the next one.
+	if let Err(err) = &response_res {
+		uri.lock().await.errors.push(err.to_string());
+		uri.lock().await.uris.remove(0);
+	}
+
+	Ok(response_res?)
+}
+
+async fn open_file(uri: Arc<Mutex<Uri>>, dest: &str) -> Result<File> {
+	// Create the File to write the download into
+	let file_res = fs::File::create(dest).await;
+
+	// Handle error and crash if we can't write files
+	if file_res.is_err() {
+		uri.lock().await.crash = true;
+	}
+	file_res.with_context(|| format!("Could not create file '{dest}'"))
+}
+
+async fn move_file(uri: Arc<Mutex<Uri>>, dest: &str) -> Result<()> {
+	let mut archive_dest = String::new();
+	archive_dest.push_str(&uri.lock().await.archive);
+	archive_dest.push_str(dest.split('/').last().unwrap());
+
+	let file_res = fs::rename(dest, &archive_dest).await;
+
+	if file_res.is_err() {
+		uri.lock().await.crash = true;
+	}
+	file_res.with_context(|| format!("Could not move file to '{archive_dest}'"))
+}
+
+async fn get_chunk(response: &mut Response, uri: Arc<Mutex<Uri>>) -> Result<Option<Bytes>> {
+	let chunk = response.chunk().await;
+
+	if let Err(err) = &chunk {
+		uri.lock().await.errors.push(err.to_string());
+		uri.lock().await.uris.remove(0);
+	}
+
+	Ok(chunk?)
 }
