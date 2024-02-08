@@ -12,7 +12,7 @@ msgstr ""
 "Project-Id-Version:  Nala\n"
 "Report-Msgid-Bugs-To: https://gitlab.com/volian/nala/-/issues\n"
 "POT-Creation-Date: 2023-10-09 21:11-0500\n"
-"PO-Revision-Date: 2022-11-16 17:49-0300\n"
+"PO-Revision-Date: 2024-02-08 15:52-0300\n"
 "Last-Translator: marcelo cripe <marcelocripe@gmail.com>, 2022\n"
 "Language: pt_BR\n"
 "Language-Team: pt_BR antiX Linux Community Contributions\n"
@@ -276,7 +276,7 @@ msgstr "Aviso {notice}, o pacote {deb} tem prioridade sobre pacote {package} que
 msgid ""
 "{error} No content length in response from {url}\n"
 "  Ensure the URL points to a Debian Package"
-msgstr ""
+msgstr "  Certifique-se de que o URL aponta para um pacote Debian"
 
 #: nala/install.py:650
 #, fuzzy
@@ -289,15 +289,15 @@ msgstr "Você quer continuar?"
 
 #: nala/fetch.py:820 nala/fetch.py:827 nala/install.py:656 nala/install.py:1116
 msgid "Abort."
-msgstr "Abortando."
+msgstr "Abortar."
 
 #: nala/install.py:699
 msgid "{error} Hash does not match the '{hash_type}' Length"
-msgstr ""
+msgstr "{error} Hash não corresponde ao comprimento '{hash_type}'"
 
 #: nala/install.py:706
 msgid "{error} Hash Type '{hash_type}' specified with no hash"
-msgstr ""
+msgstr "{error} Tipo de hash '{hash_type}' especificado sem hash"
 
 #: nala/install.py:713
 #, fuzzy
@@ -342,15 +342,15 @@ msgstr "Todos os pacotes estão atualizados"
 
 #: nala/install.py:1131
 msgid "Nothing for Nala to do."
-msgstr "Não tem mais nada que o Nala pode fazer."
+msgstr "Não há mais nada que o Nala pode fazer."
 
 #: nala/install.py:1134
 msgid "Nothing for Nala to remove."
-msgstr "Não tem mais nada que o Nala pode remover"
+msgstr "Não há mais nada que o Nala pode remover"
 
 #: nala/install.py:1137
 msgid "Nothing for Nala to fix."
-msgstr "Não tem mais nada que o Nala pode corrigir."
+msgstr "Não há mais nada que o Nala pode corrigir."
 
 #: nala/rich.py:231
 msgid "Time Remaining:"
@@ -612,11 +612,11 @@ msgstr "Os Pacotes Sugeridos Não Serão Instalados"
 
 #: nala/summary.py:249 nala/summary.py:267
 msgid "Kept Back, Will Not Be Upgraded"
-msgstr ""
+msgstr "Mantido, Não será atualizado"
 
 #: nala/summary.py:249 nala/summary.py:267
 msgid "Kept Back"
-msgstr ""
+msgstr "Mantido"
 
 #: nala/summary.py:251
 msgid "Auto-Removable, Will Not Be Removed"
@@ -680,7 +680,7 @@ msgstr ""
 
 #: nala/fetch.py:345
 msgid "{error} Parser: {parser}"
-msgstr ""
+msgstr "{error} Analisador: {parser}"
 
 #: nala/fetch.py:376
 msgid "Fetching {distro} mirrors"
@@ -993,7 +993,7 @@ msgstr "Alternar para a opção de instalação dos pacotes sugeridos."
 
 #: nala/options.py:470
 msgid "Set the default release to install packages from."
-msgstr ""
+msgstr "Defina a versão padrão para instalar os pacotes."
 
 #: nala/options.py:477
 msgid "Toggle full-upgrade"
@@ -1005,7 +1005,7 @@ msgstr "Alternar para a opção de atualização da lista dos pacotes."
 
 #: nala/options.py:490
 msgid "Toggle a more condensed transaction summary."
-msgstr ""
+msgstr "Alterne para um resumo de transação mais condensado."
 
 #: nala/options.py:498
 msgid "Purge any packages that would be removed."
@@ -1257,6 +1257,8 @@ msgid ""
 "{error} Improper Hash Syntax\n"
 "  Try '{url}:sha256:510b0c4f8fc3e7bd7182b53c0b81c1a113bea9fd3c18219eac0e18e601dc8d17'"
 msgstr ""
+"{error} Sintaxe de Hash Inadequada\n"
+"  Tente '{url}:sha256:510b0c4f8fc3e7bd7182b53c0b81c1a113bea9fd3c18219eac0e18e601dc8d17'"
 
 #: nala/downloader.py:298
 msgid "Exiting due to {signal}"
@@ -1521,4 +1523,5 @@ msgstr "Pressionando as teclas Ctrl+C duas vezes sairá rapidamente"
 #~ "{error} It is not secure to download a package without a hashsum verification.\n"
 #~ "  If you are sure you do NOT want verification, use '-o APT::Get::AllowUnauthenticated=true'"
 #~ msgstr ""
-
+#~ "{error} Não é seguro baixar um pacote sem verificação de hashsum.\n"
+#~ "  Se você tiver certeza de que NÃO deseja verificação, use '-o APT::Get::AllowUnauthenticated=true'"
