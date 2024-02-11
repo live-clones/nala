@@ -23,7 +23,6 @@ test:
       sudo
       libapt-pkg-dev
       codespell
-      # These will probably need to be added to debian/control
       pkg-config
       libssl-dev
 
