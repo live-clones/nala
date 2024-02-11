@@ -34,7 +34,7 @@ use tokio::sync::{Mutex, MutexGuard};
 use tokio::task::JoinSet;
 use tokio::time::Duration;
 
-use crate::config::{Config, Paths};
+use crate::config::Config;
 
 pub struct MirrorRegex {
 	mirror: OnceCell<Regex>,
