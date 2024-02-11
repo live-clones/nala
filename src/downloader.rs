@@ -303,7 +303,7 @@ impl Downloader {
 		let unlocked = self.progress.lock().await;
 
 		vec![
-			Constraint::Length((unlocked.bar_length() - 2) as u16),
+			Constraint::Length(unlocked.bar_length() - 2),
 			Constraint::Length(unlocked.percentage().len() as u16 + 2),
 			Constraint::Length(unlocked.current_total().len() as u16 + 2),
 			Constraint::Length(unlocked.bytes_per_sec().len() as u16 + 2),
