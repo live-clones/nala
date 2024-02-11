@@ -103,18 +103,16 @@ impl Uri {
 		cache: &Cache,
 		config: &Config,
 		downloader: &mut Downloader,
+		archive: String,
 	) -> Result<Arc<Mutex<Uri>>> {
 		let progress = Progress::new(version.size());
 
 		let (hash_type, hash_value) = get_hash(config, version)?;
 
-		let destination = config.get_path(&Paths::Archive) + "partial/" + &get_pkg_name(version);
-		let archive = config.get_path(&Paths::Archive) + &get_pkg_name(version);
-
 		Ok(Arc::new(Mutex::new(Uri {
 			uris: downloader.filter_uris(version, cache, config).await?,
-			archive,
-			destination,
+			archive: archive.clone() + &get_pkg_name(version),
+			destination: archive + "partial/" + &get_pkg_name(version),
 			hash_type,
 			hash_value,
 			filename: version
@@ -518,6 +516,9 @@ pub async fn download(config: &Config) -> Result<()> {
 		deduped.sort();
 		deduped.dedup();
 
+		// Create the partial directory
+		fs::create_dir("./partial").await?;
+
 		let cache = new_cache!()?;
 		for name in &deduped {
 			if let Some(pkg) = cache.get(name) {
@@ -525,7 +526,8 @@ pub async fn download(config: &Config) -> Result<()> {
 				for version in &versions {
 					if version.is_downloadable() {
 						let uri =
-							Uri::from_version(version, &cache, config, &mut downloader).await?;
+							// Download command defaults to current directory
+							Uri::from_version(version, &cache, config, &mut downloader, "./".to_string()).await?;
 						downloader.uri_list.push(uri);
 						break;
 					}
@@ -622,6 +624,9 @@ pub async fn download(config: &Config) -> Result<()> {
 			}
 		}
 	}
+
+	// Finally remove the partial directory
+	fs::remove_dir("./partial").await?;
 
 	Ok(())
 }
