@@ -50,6 +50,9 @@ pub struct Config {
 	#[serde(rename(deserialize = "Theme"))]
 	color_data: HashMap<String, ThemeType>,
 
+	#[serde(skip)]
+	pub string_map: HashMap<String, String>,
+
 	// The following fields are not used with serde
 	#[serde(skip)]
 	pub color: Color,
@@ -58,7 +61,14 @@ pub struct Config {
 	pkg_names: Option<Vec<String>>,
 
 	#[serde(skip)]
+	countries: Option<Vec<String>>,
+
+	#[serde(skip)]
 	pub apt: AptConfig,
+
+	#[serde(skip)]
+	/// The command the is being run
+	pub command: String,
 }
 
 impl Default for Config {
@@ -66,10 +76,13 @@ impl Default for Config {
 	fn default() -> Config {
 		Config {
 			nala_map: HashMap::new(),
+			string_map: HashMap::new(),
 			color_data: HashMap::new(),
 			color: Color::default(),
 			pkg_names: None,
+			countries: None,
 			apt: AptConfig::new(),
+			command: "Command Not Given Yet".to_string(),
 		}
 	}
 }
@@ -111,6 +124,8 @@ impl Config {
 			"names",
 			"lists",
 			"fetch",
+			// Fetch Options
+			"non_free",
 		];
 
 		for opt in bool_opts {
@@ -139,13 +154,27 @@ impl Config {
 			}
 		}
 
-		// TODO: I bet this breaks on commands without pkgnames.
-		// See the first condition in this loop
-		if let Some(pkg_names) = args.get_many::<String>("pkg_names") {
+		if let Ok(Some(pkg_names)) = args.try_get_many::<String>("pkg_names") {
 			let pkgs: Vec<String> = pkg_names.cloned().collect();
 			self.pkg_names = if pkgs.is_empty() { None } else { Some(pkgs) };
 
 			dprint!(self, "Package Names = {:?}", self.pkg_names);
+		}
+
+		// TODO: It may be time to make these like bool opts above.
+		if let Ok(Some(countries)) = args.try_get_many::<String>("country") {
+			let country_vec: Vec<String> = countries.cloned().collect();
+			self.countries = if country_vec.is_empty() { None } else { Some(country_vec) };
+
+			dprint!(self, "Country = {:?}", self.countries);
+		}
+
+		let option_strings = ["debian", "ubuntu", "devuan"];
+
+		for opt in option_strings {
+			if let Ok(Some(value)) = args.try_get_one::<String>(opt) {
+				self.string_map.insert(opt.to_string(), value.to_string());
+			}
 		}
 
 		// If Debug is there we can print the whole thing.
@@ -182,6 +211,9 @@ impl Config {
 
 	/// Get the package names that were passed as arguments
 	pub fn pkg_names(&self) -> Option<&Vec<String>> { self.pkg_names.as_ref() }
+
+	/// Get the countries that were passed as arguments
+	pub fn countries(&self) -> Option<&Vec<String>> { self.countries.as_ref() }
 
 	/// Return true if debug is enabled
 	pub fn debug(&self) -> bool { self.get_bool("debug", false) }

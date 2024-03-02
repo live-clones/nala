@@ -206,6 +206,16 @@ extern "C" {
 	pub fn geteuid() -> u32;
 }
 
+/// Check for root. Errors if not root.
+/// Set up lock file if root.
+pub fn sudo_check(config: &Config) -> Result<()> {
+	if unsafe { geteuid() != 0 } {
+		bail!("Nala needs root to {}", config.command)
+	}
+	// TODO: Need to add lock file logic here maybe.
+	Ok(())
+}
+
 /// Get the username or return Unknown.
 pub fn get_user() -> String {
 	for key in ["LOGNAME", "USER", "LNAME", "USERNAME"] {
