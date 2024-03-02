@@ -13,11 +13,54 @@ use std::collections::HashSet;
 use anyhow::{bail, Result};
 pub use dprint;
 use globset::GlobBuilder;
+use once_cell::sync::OnceCell;
 use regex::{Regex, RegexBuilder};
 use rust_apt::cache::Cache;
 use rust_apt::package::{Package, Version};
 
 use crate::config::Config;
+
+pub struct NalaRegex {
+	mirror: OnceCell<Regex>,
+	mirror_file: OnceCell<Regex>,
+	ubuntu_url: OnceCell<Regex>,
+	ubuntu_country: OnceCell<Regex>,
+}
+
+impl NalaRegex {
+	pub fn new() -> Self {
+		NalaRegex {
+			mirror: OnceCell::new(),
+			mirror_file: OnceCell::new(),
+			ubuntu_url: OnceCell::new(),
+			ubuntu_country: OnceCell::new(),
+		}
+	}
+
+	fn build_regex(regex: &str) -> Result<Regex> {
+		Ok(RegexBuilder::new(regex).case_insensitive(true).build()?)
+	}
+
+	pub fn mirror(&self) -> Result<&Regex> {
+		self.mirror
+			.get_or_try_init(|| Self::build_regex(r"mirror://(.*?/.*?)/"))
+	}
+
+	pub fn mirror_file(&self) -> Result<&Regex> {
+		self.mirror_file
+			.get_or_try_init(|| Self::build_regex(r"mirror\+file:(/.*?)/pool"))
+	}
+
+	pub fn ubuntu_url(&self) -> Result<&Regex> {
+		self.mirror_file
+			.get_or_try_init(|| Self::build_regex(r"<link>(.*)</link>"))
+	}
+
+	pub fn ubuntu_country(&self) -> Result<&Regex> {
+		self.mirror_file
+			.get_or_try_init(|| Self::build_regex(r"<mirror:countrycode>(.*)</mirror:countrycode>"))
+	}
+}
 
 pub struct Matcher {
 	regexs: Vec<Regex>,

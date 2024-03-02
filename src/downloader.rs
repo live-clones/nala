@@ -13,13 +13,11 @@ use crossterm::terminal::{
 };
 use digest::DynDigest;
 use indicatif::{FormattedDuration, ProgressBar};
-use once_cell::sync::OnceCell;
 use ratatui::layout::Flex;
 use ratatui::prelude::*;
 use ratatui::style::Stylize;
 use ratatui::widgets::block::Title;
 use ratatui::widgets::*;
-use regex::{Regex, RegexBuilder};
 use reqwest::Response;
 use rust_apt::cache::Cache;
 use rust_apt::new_cache;
@@ -35,36 +33,7 @@ use tokio::task::JoinSet;
 use tokio::time::Duration;
 
 use crate::config::Config;
-
-pub struct MirrorRegex {
-	mirror: OnceCell<Regex>,
-	mirror_file: OnceCell<Regex>,
-}
-
-impl MirrorRegex {
-	fn new() -> Self {
-		MirrorRegex {
-			mirror: OnceCell::new(),
-			mirror_file: OnceCell::new(),
-		}
-	}
-
-	fn mirror(&self) -> Result<&Regex> {
-		self.mirror.get_or_try_init(|| {
-			Ok(RegexBuilder::new(r"mirror://(.*?/.*?)/")
-				.case_insensitive(true)
-				.build()?)
-		})
-	}
-
-	fn mirror_file(&self) -> Result<&Regex> {
-		self.mirror_file.get_or_try_init(|| {
-			Ok(RegexBuilder::new(r"mirror\+file:(/.*?)/pool")
-				.case_insensitive(true)
-				.build()?)
-		})
-	}
-}
+use crate::util::NalaRegex;
 
 /// Return the package name. Checks if epoch is needed.
 fn get_pkg_name(version: &Version) -> String {
@@ -272,7 +241,7 @@ pub struct Downloader {
 	untrusted: HashSet<String>,
 	not_found: Vec<String>,
 	mirrors: HashMap<String, String>,
-	mirror_regex: MirrorRegex,
+	mirror_regex: NalaRegex,
 	progress: Arc<Mutex<Progress>>,
 }
 
@@ -283,7 +252,7 @@ impl Downloader {
 			untrusted: HashSet::new(),
 			not_found: vec![],
 			mirrors: HashMap::new(),
-			mirror_regex: MirrorRegex::new(),
+			mirror_regex: NalaRegex::new(),
 			progress: Arc::new(Mutex::new(Progress::new(0))),
 		}
 	}

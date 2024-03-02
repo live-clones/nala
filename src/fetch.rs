@@ -1,14 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
 use anyhow::{bail, Result};
-use regex::{Regex, RegexBuilder};
 use rust_apt::new_cache;
 use rust_apt::package::Package;
 use rust_apt::tagfile::TagSection;
 
 use crate::config::Config;
 use crate::dprint;
-use crate::util::sudo_check;
+use crate::util::{sudo_check, NalaRegex};
 
 fn get_origin_codename(pkg: Option<Package>) -> Option<(String, String)> {
 	let pkg_file = pkg?.candidate()?.package_files().next()?;
@@ -101,19 +100,10 @@ pub fn fetch(config: &Config) -> Result<()> {
 		let response =
 			reqwest::blocking::get("https://launchpad.net/ubuntu/+archivemirrors-rss")?.text()?;
 
-		// TODO: Move these in with the MirrorRegex from Downloads
-		// Then move it to utils or something.
-		let url_regex = RegexBuilder::new(r"<link>(.*)</link>")
-			.case_insensitive(true)
-			.build()?;
-
-		let country_regex = RegexBuilder::new(r"<mirror:countrycode>(.*)</mirror:countrycode>")
-			.case_insensitive(true)
-			.build()?;
-
+		let regex = NalaRegex::new();
 		let mirrors = response.split("<item>");
 		for mirror in mirrors {
-			if let Some(url) = ubuntu_url(config, &countries, &url_regex, &country_regex, mirror) {
+			if let Some(url) = ubuntu_url(config, &countries, &regex, mirror) {
 				net_select.insert(url, 0);
 			}
 		}
@@ -162,8 +152,7 @@ fn debian_url(
 fn ubuntu_url(
 	config: &Config,
 	countries: &Option<HashSet<String>>,
-	url_regex: &Regex,
-	country_regex: &Regex,
+	regex: &NalaRegex,
 	mirror: &str,
 ) -> Option<String> {
 	if mirror.contains("<title>Ubuntu Archive Mirrors Status</title>") {
@@ -177,12 +166,24 @@ fn ubuntu_url(
 		.any(|arch| arch != "amd64" && arch != "i386");
 
 	if let Some(hash_set) = countries {
-		if !hash_set.contains(country_regex.captures(mirror)?.get(1)?.as_str()) {
+		if !hash_set.contains(
+			regex
+				.ubuntu_country()
+				.unwrap()
+				.captures(mirror)?
+				.get(1)?
+				.as_str(),
+		) {
 			return None;
 		}
 	}
 
-	let url = url_regex.captures(mirror)?.get(1)?.as_str();
+	let url = regex
+		.ubuntu_url()
+		.unwrap()
+		.captures(mirror)?
+		.get(1)?
+		.as_str();
 	let is_ports = url.contains("ubuntu-ports");
 
 	// Don't return non ports if we only want ports
