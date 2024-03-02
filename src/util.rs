@@ -52,12 +52,12 @@ impl NalaRegex {
 	}
 
 	pub fn ubuntu_url(&self) -> Result<&Regex> {
-		self.mirror_file
+		self.ubuntu_url
 			.get_or_try_init(|| Self::build_regex(r"<link>(.*)</link>"))
 	}
 
 	pub fn ubuntu_country(&self) -> Result<&Regex> {
-		self.mirror_file
+		self.ubuntu_country
 			.get_or_try_init(|| Self::build_regex(r"<mirror:countrycode>(.*)</mirror:countrycode>"))
 	}
 }

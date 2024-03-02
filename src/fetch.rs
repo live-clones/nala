@@ -125,7 +125,7 @@ pub fn fetch(config: &Config) -> Result<()> {
 fn debian_url(
 	countries: &Option<HashSet<String>>,
 	section: &TagSection,
-	arches: &Vec<String>,
+	arches: &[String],
 ) -> Option<String> {
 	// If there are countries provided
 	if let Some(hash_set) = countries {
