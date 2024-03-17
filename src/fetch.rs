@@ -15,6 +15,68 @@ use crate::config::Config;
 use crate::dprint;
 use crate::util::{sudo_check, NalaRegex};
 
+struct FetchScore {
+	client: Client,
+	pb: Arc<ProgressBar>,
+	debug: bool,
+	https_only: bool,
+	vec: Arc<Mutex<Vec<(String, u128)>>>,
+	semp: Arc<Semaphore>,
+}
+
+impl FetchScore {
+	fn new(config: &Config, mirror_strings: &HashSet<String>) -> Result<Arc<FetchScore>> {
+		let pb = Arc::new(ProgressBar::new(mirror_strings.len() as u64));
+		pb.set_style(
+			ProgressStyle::with_template(
+				"{prefix:.bold}[{bar:40.cyan/red}] {percent}% • {pos}/{len}",
+			)
+			.unwrap()
+			.progress_chars("━━"),
+		);
+		pb.set_prefix("Testing Mirrors: ");
+		Ok(Arc::new(FetchScore {
+			client: Client::builder().timeout(Duration::from_secs(5)).build()?,
+			pb,
+			debug: config.debug(),
+			https_only: config.get_bool("https_only", false),
+			vec: Arc::new(Mutex::new(Vec::new())),
+			semp: Arc::new(Semaphore::new(30)),
+		}))
+	}
+
+	/// Fetch the release file and handle errors
+	///
+	/// This will return Some(String) if its NOT successful
+	/// None is successful
+	async fn fetch_release(&self, url: &str) -> Option<String> {
+		let before = std::time::Instant::now();
+		// Return the error string on errors for debugging.
+		// Essentially ignores errors
+		match self.client.get(url).send().await {
+			Ok(response) => {
+				if let Err(e) = response.error_for_status() {
+					return Some(e.to_string());
+				}
+			},
+			Err(e) => return Some(e.to_string()),
+		};
+		let after = before.elapsed().as_millis();
+		self.vec.lock().await.push((url.to_string(), after));
+		None
+	}
+
+	fn final_vec(self) -> Vec<(String, u128)> {
+		let mut vec = Arc::into_inner(self.vec)
+			.expect("No Locks Held")
+			.into_inner();
+		// Sorts the internal mirrors by score in ms
+		vec.sort_by_key(|k| k.1);
+
+		vec
+	}
+}
+
 fn get_origin_codename(pkg: Option<Package>) -> Option<(String, String)> {
 	let pkg_file = pkg?.candidate()?.package_files().next()?;
 
@@ -138,69 +200,6 @@ pub fn fetch(config: &Config) -> Result<()> {
 	}
 
 	Ok(())
-}
-
-#[derive(Clone)]
-struct FetchScore {
-	client: Client,
-	pb: Arc<ProgressBar>,
-	debug: bool,
-	https_only: bool,
-	vec: Arc<Mutex<Vec<(String, u128)>>>,
-	semp: Arc<Semaphore>,
-}
-
-impl FetchScore {
-	fn new(config: &Config, mirror_strings: &HashSet<String>) -> Result<Arc<FetchScore>> {
-		let pb = Arc::new(ProgressBar::new(mirror_strings.len() as u64));
-		pb.set_style(
-			ProgressStyle::with_template(
-				"{prefix:.bold}[{bar:40.cyan/red}] {percent}% • {pos}/{len}",
-			)
-			.unwrap()
-			.progress_chars("━━"),
-		);
-		pb.set_prefix("Testing Mirrors: ");
-		Ok(Arc::new(FetchScore {
-			client: Client::builder().timeout(Duration::from_secs(5)).build()?,
-			pb,
-			debug: config.debug(),
-			https_only: config.get_bool("https_only", false),
-			vec: Arc::new(Mutex::new(Vec::new())),
-			semp: Arc::new(Semaphore::new(30)),
-		}))
-	}
-
-	/// Fetch the release file and handle errors
-	///
-	/// This will return Some(String) if its NOT successful
-	/// None is successful
-	async fn fetch_release(&self, url: &str) -> Option<String> {
-		let before = std::time::Instant::now();
-		// Return the error string on errors for debugging.
-		// Essentially ignores errors
-		match self.client.get(url).send().await {
-			Ok(response) => {
-				if let Err(e) = response.error_for_status() {
-					return Some(e.to_string());
-				}
-			},
-			Err(e) => return Some(e.to_string()),
-		};
-		let after = before.elapsed().as_millis();
-		self.vec.lock().await.push((url.to_string(), after));
-		None
-	}
-
-	fn final_vec(self) -> Vec<(String, u128)> {
-		let mut vec = Arc::into_inner(self.vec)
-			.expect("No Locks Held")
-			.into_inner();
-		// Sorts the internal mirrors by score in ms
-		vec.sort_by_key(|k| k.1);
-
-		vec
-	}
 }
 
 /// Score the mirrors and provide a progress bar.
