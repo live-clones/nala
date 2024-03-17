@@ -128,6 +128,9 @@ pub struct Fetch {
 	#[clap(long, action)]
 	pub non_free: bool,
 
+	#[clap(long, action)]
+	pub https_only: bool,
+
 	#[clap(short = 'c', long, action)]
 	pub country: Vec<String>,
 

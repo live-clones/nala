@@ -126,6 +126,7 @@ impl Config {
 			"fetch",
 			// Fetch Options
 			"non_free",
+			"https_only",
 		];
 
 		for opt in bool_opts {
