@@ -15,8 +15,6 @@ use crate::config::Config;
 use crate::dprint;
 use crate::util::{sudo_check, NalaRegex};
 
-type ScoreVec = Arc<Mutex<Vec<(String, u128)>>>;
-
 fn get_origin_codename(pkg: Option<Package>) -> Option<(String, String)> {
 	let pkg_file = pkg?.candidate()?.package_files().next()?;
 
@@ -126,10 +124,7 @@ pub fn fetch(config: &Config) -> Result<()> {
 		}
 	}
 
-	// Get the Vec out of Arc<Mutex<T>>
-	let scored = Arc::into_inner(score_handler(config, net_select, &release)?)
-		.expect("Nothing should be locked")
-		.into_inner();
+	let scored = score_handler(config, net_select, &release)?;
 
 	if scored.is_empty() {
 		bail!("Nala was unable to find any mirrors.")
@@ -145,34 +140,83 @@ pub fn fetch(config: &Config) -> Result<()> {
 	Ok(())
 }
 
+#[derive(Clone)]
+struct FetchScore {
+	client: Client,
+	pb: Arc<ProgressBar>,
+	debug: bool,
+	https_only: bool,
+	vec: Arc<Mutex<Vec<(String, u128)>>>,
+	semp: Arc<Semaphore>,
+}
 
+impl FetchScore {
+	fn new(config: &Config, mirror_strings: &HashSet<String>) -> Result<Arc<FetchScore>> {
+		let pb = Arc::new(ProgressBar::new(mirror_strings.len() as u64));
+		pb.set_style(
+			ProgressStyle::with_template(
+				"{prefix:.bold}[{bar:40.cyan/red}] {percent}% • {pos}/{len}",
+			)
+			.unwrap()
+			.progress_chars("━━"),
+		);
+		pb.set_prefix("Testing Mirrors: ");
+		Ok(Arc::new(FetchScore {
+			client: Client::builder().timeout(Duration::from_secs(5)).build()?,
+			pb,
+			debug: config.debug(),
+			https_only: config.get_bool("https_only", false),
+			vec: Arc::new(Mutex::new(Vec::new())),
+			semp: Arc::new(Semaphore::new(30)),
+		}))
+	}
+
+	/// Fetch the release file and handle errors
+	///
+	/// This will return Some(String) if its NOT successful
+	/// None is successful
+	async fn fetch_release(&self, url: &str) -> Option<String> {
+		let before = std::time::Instant::now();
+		// Return the error string on errors for debugging.
+		// Essentially ignores errors
+		match self.client.get(url).send().await {
+			Ok(response) => {
+				if let Err(e) = response.error_for_status() {
+					return Some(e.to_string());
+				}
+			},
+			Err(e) => return Some(e.to_string()),
+		};
+		let after = before.elapsed().as_millis();
+		self.vec.lock().await.push((url.to_string(), after));
+		None
+	}
+
+	fn final_vec(self) -> Vec<(String, u128)> {
+		let mut vec = Arc::into_inner(self.vec)
+			.expect("No Locks Held")
+			.into_inner();
+		// Sorts the internal mirrors by score in ms
+		vec.sort_by_key(|k| k.1);
+
+		vec
+	}
+}
+
+/// Score the mirrors and provide a progress bar.
 #[tokio::main]
 async fn score_handler(
 	config: &Config,
-	net_select: HashSet<String>,
+	mirror_strings: HashSet<String>,
 	release: &str,
-) -> Result<ScoreVec> {
-	let scored = Arc::new(Mutex::new(Vec::new()));
-	let semp = Arc::new(Semaphore::new(30));
+) -> Result<Vec<(String, u128)>> {
 	let mut set = JoinSet::new();
 
-	let pb = Arc::new(ProgressBar::new(net_select.len() as u64));
-	pb.set_style(
-		ProgressStyle::with_template("{prefix:.bold}[{bar:40.cyan/red}] {percent}% • {pos}/{len}")
-			.unwrap()
-			.progress_chars("━━"),
-	);
-	pb.set_prefix("Testing Mirrors: ");
+	let score = FetchScore::new(config, &mirror_strings)?;
 
-
-
-	for url in &net_select {
+	for url in &mirror_strings {
 		set.spawn(net_select_score(
-			pb.clone(),
-			config.debug(),
-			config.get_bool("https_only", false),
-			scored.clone(),
-			semp.clone(),
+			score.clone(),
 			format!(
 				"{}/dists/{release}/Release",
 				url.strip_suffix('/').unwrap_or(url)
@@ -185,58 +229,36 @@ async fn score_handler(
 		res??;
 	}
 
-	scored.lock().await.sort_by_key(|k| k.1);
-	Ok(scored)
+	// Move FetchScore out of its Arc and then return the final vec.
+	Ok(Arc::into_inner(score).expect("No Locks Held").final_vec())
 }
 
-async fn fetch_release(client: &Client, scored: &ScoreVec, url: &str, debug: bool) -> bool {
-	let before = std::time::Instant::now();
-	// Ignores errors and just doesn't add the url into the vec
-	// Debug print the error messages
-	match client.get(url).send().await {
-		Ok(response) => {
-			if let Err(e) = response.error_for_status() {
-				if debug {
-					eprintln!("DEBUG: {e}");
-				}
-				return false;
-			}
-		},
-		Err(e) => {
-			if debug {
-				eprintln!("DEBUG: {e}");
-			}
-			return false;
-		},
-	};
-	let after = before.elapsed().as_millis();
-	scored.lock().await.push((url.to_string(), after));
-	true
-}
-
-async fn net_select_score(
-	pb: Arc<ProgressBar>,
-	debug: bool,
-	https_only: bool,
-	scored: ScoreVec,
-	semp: Arc<Semaphore>,
-	url: String,
-) -> Result<()> {
-	let sem = semp.acquire_owned().await?;
-	let client = Client::builder().timeout(Duration::from_secs(5)).build()?;
-
+/// Score the url with https and http depending on config.
+async fn net_select_score(score: Arc<FetchScore>, url: String) -> Result<()> {
+	let sem = score.semp.clone().acquire_owned().await?;
 	let https = url.replace("http://", "https://");
 
-	if fetch_release(&client, &scored, &https, debug).await {
-		pb.inc(1);
-		return Ok(());
+	let mut debug_vec = vec![url.to_string()];
+
+	match score.fetch_release(&https).await {
+		Some(response) => debug_vec.push(response),
+		None => {
+			score.pb.inc(1);
+			return Ok(());
+		},
 	}
 
-	if !https_only {
-		fetch_release(&client, &scored, &url, debug).await;
+	if !score.https_only {
+		if let Some(response) = score.fetch_release(&url).await {
+			debug_vec.push(response)
+		}
 	}
+
 	drop(sem);
-	pb.inc(1);
+	score.pb.inc(1);
+	if score.debug {
+		dbg!(debug_vec);
+	}
 	Ok(())
 }
 
