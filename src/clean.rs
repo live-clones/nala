@@ -2,7 +2,7 @@ use std::fs::{read_dir, remove_file};
 
 use anyhow::{Context, Result};
 
-use crate::config::{Config, Paths};
+use crate::config::{config, Paths};
 
 fn remove_files(file_str: &str) -> Result<()> {
 	// If the path doesn't exist just ignore it
@@ -20,7 +20,8 @@ fn remove_files(file_str: &str) -> Result<()> {
 	Ok(())
 }
 
-pub fn clean(config: &Config) -> Result<()> {
+pub fn clean() -> Result<()> {
+	let config = config();
 	if config.get_bool("lists", false) {
 		let lists_dir = config.get_path(&Paths::Lists);
 		remove_files(&lists_dir)?;

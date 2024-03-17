@@ -34,7 +34,7 @@ use tokio::sync::{Mutex, MutexGuard};
 use tokio::task::JoinSet;
 use tokio::time::Duration;
 
-use crate::config::Config;
+use crate::config::config;
 
 pub struct MirrorRegex {
 	mirror: OnceCell<Regex>,
@@ -101,16 +101,15 @@ impl Uri {
 	async fn from_version<'a>(
 		version: &'a Version<'a>,
 		cache: &Cache,
-		config: &Config,
 		downloader: &mut Downloader,
 		archive: String,
 	) -> Result<Arc<Mutex<Uri>>> {
 		let progress = Progress::new(version.size());
 
-		let (hash_type, hash_value) = get_hash(config, version)?;
+		let (hash_type, hash_value) = get_hash(version)?;
 
 		Ok(Arc::new(Mutex::new(Uri {
-			uris: downloader.filter_uris(version, cache, config).await?,
+			uris: downloader.filter_uris(version, cache).await?,
 			archive: archive.clone() + &get_pkg_name(version),
 			destination: archive + "partial/" + &get_pkg_name(version),
 			hash_type,
@@ -420,7 +419,6 @@ impl Downloader {
 		&mut self,
 		version: &'a Version<'a>,
 		cache: &Cache,
-		config: &Config,
 	) -> Result<Vec<String>> {
 		let mut filtered = Vec::new();
 
@@ -435,7 +433,7 @@ impl Downloader {
 
 			if !uri_trusted(cache, version)? {
 				self.untrusted
-					.insert(config.color.red(version.parent().name()).to_string());
+					.insert(config().color.red(version.parent().name()).to_string());
 			}
 
 			// We should probably consolidate this. And maybe test if mirror: works.
@@ -481,8 +479,8 @@ pub fn uri_trusted<'a>(cache: &Cache, version: &'a Version<'a>) -> Result<bool> 
 	Ok(false)
 }
 
-pub fn untrusted_error(config: &Config, untrusted: &HashSet<String>) -> Result<()> {
-	config
+pub fn untrusted_error(untrusted: &HashSet<String>) -> Result<()> {
+	config()
 		.color
 		.warn("The Following packages cannot be authenticated!");
 
@@ -495,21 +493,21 @@ pub fn untrusted_error(config: &Config, untrusted: &HashSet<String>) -> Result<(
 			.join(", ")
 	);
 
-	if !config.apt.bool("APT::Get::AllowUnauthenticated", false) {
+	if !config().apt.bool("APT::Get::AllowUnauthenticated", false) {
 		bail!("Some packages were unable to be authenticated.")
 	}
 
-	config
+	config()
 		.color
 		.notice("Configuration is set to allow installation of unauthenticated packages.");
 	Ok(())
 }
 
 #[tokio::main]
-pub async fn download(config: &Config) -> Result<()> {
+pub async fn download() -> Result<()> {
 	let mut downloader = Downloader::new();
 
-	if let Some(pkg_names) = config.pkg_names() {
+	if let Some(pkg_names) = config().pkg_names() {
 		// Dedupe the pkg names. If the same pkg is given twice
 		// it will be downloaded twice, and then fail when moving the file
 		let mut deduped = pkg_names.clone();
@@ -527,12 +525,12 @@ pub async fn download(config: &Config) -> Result<()> {
 					if version.is_downloadable() {
 						let uri =
 							// Download command defaults to current directory
-							Uri::from_version(version, &cache, config, &mut downloader, "./".to_string()).await?;
+							Uri::from_version(version, &cache, &mut downloader, "./".to_string()).await?;
 						downloader.uri_list.push(uri);
 						break;
 					}
 					// Version wasn't downloadable
-					config.color.warn(&format!(
+					config().color.warn(&format!(
 						"Can't find a source to download version '{}' of '{}'",
 						version.version(),
 						pkg.fullname(false)
@@ -541,7 +539,7 @@ pub async fn download(config: &Config) -> Result<()> {
 			} else {
 				downloader
 					.not_found
-					.push(config.color.yellow(name).to_string());
+					.push(config().color.yellow(name).to_string());
 			}
 		}
 	} else {
@@ -550,13 +548,13 @@ pub async fn download(config: &Config) -> Result<()> {
 
 	if !downloader.not_found.is_empty() {
 		for pkg in &downloader.not_found {
-			config.color.error(&format!("{pkg} not found"))
+			config().color.error(&format!("{pkg} not found"))
 		}
 		bail!("Some packages were not found.");
 	}
 
 	if !downloader.untrusted.is_empty() {
-		untrusted_error(config, &downloader.untrusted)?
+		untrusted_error(&downloader.untrusted)?
 	}
 
 	// Must set the total from the Uris we just gathered.
@@ -609,8 +607,8 @@ pub async fn download(config: &Config) -> Result<()> {
 		}
 		println!(
 			"  {} was written to {}",
-			config.color.package(&unlocked.filename),
-			config.color.package(&unlocked.archive),
+			config().color.package(&unlocked.filename),
+			config().color.package(&unlocked.archive),
 		)
 	}
 
@@ -620,7 +618,7 @@ pub async fn download(config: &Config) -> Result<()> {
 
 		if !unlocked.is_finished {
 			for error in &unlocked.errors {
-				config.color.error(error);
+				config().color.error(error);
 			}
 		}
 	}
@@ -802,7 +800,7 @@ fn disable_raw<B: std::io::Write + Backend>(terminal: &mut Terminal<B>) -> Resul
 }
 
 /// Return the hash_type and the hash_value to be used.
-fn get_hash(config: &Config, version: &Version) -> Result<(String, String)> {
+fn get_hash(version: &Version) -> Result<(String, String)> {
 	// From Debian's requirements we are not to use these for security checking.
 	// https://wiki.debian.org/DebianRepository/Format#MD5Sum.2C_SHA1.2C_SHA256
 	// Clients may not use the MD5Sum and SHA1 fields for security purposes,
@@ -815,6 +813,7 @@ fn get_hash(config: &Config, version: &Version) -> Result<(String, String)> {
 		}
 	}
 
+	let config = config();
 	bail!(
 		"{} {} can't be checked for integrity.\nThere are no hashes available for this package.",
 		config.color.yellow(version.parent().name()),

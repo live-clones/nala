@@ -4,7 +4,7 @@ use rust_apt::new_cache;
 use rust_apt::package::Version;
 use serde::{Deserialize, Serialize};
 
-use crate::config::Config;
+use crate::config::config;
 use crate::util::{get_user, geteuid};
 
 #[derive(Serialize, Deserialize)]
@@ -62,10 +62,10 @@ enum Operation {
 	Downgrade,
 }
 
-pub fn history_test(config: &Config) -> Result<()> {
+pub fn history_test() -> Result<()> {
 	let cache = new_cache!().unwrap();
 
-	if let Some(pkg_names) = config.pkg_names() {
+	if let Some(pkg_names) = config().pkg_names() {
 		let date = Utc::now().to_rfc3339();
 
 		let mut packages = vec![];

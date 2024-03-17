@@ -5,45 +5,45 @@ use rust_apt::cache::PackageSort;
 use rust_apt::new_cache;
 use rust_apt::package::{Package, Version};
 
-use crate::config::Config;
+use crate::config::{config, Config};
 use crate::dprint;
 use crate::util::{glob_pkgs, Matcher};
 
 /// The search command
-pub fn search(config: &Config) -> Result<()> {
+pub fn search() -> Result<()> {
 	let mut out = std::io::stdout().lock();
 	let cache = new_cache!()?;
 
 	// Set up the matcher with the regexes
-	let matcher = match config.pkg_names() {
+	let matcher = match config().pkg_names() {
 		Some(pkg_names) => Matcher::from_regexs(pkg_names)?,
 		None => bail!("You must give at least one search Pattern"),
 	};
 
 	// Filter the packages by names if they were provided
-	let sort = get_sorter(config);
+	let sort = get_sorter();
 	let (packages, not_found) =
-		matcher.regex_pkgs(cache.packages(&sort)?, config.get_bool("names", false));
+		matcher.regex_pkgs(cache.packages(&sort)?, config().get_bool("names", false));
 
 	// List the packages that were found
-	list_packages(packages, config, &mut out)?;
+	list_packages(packages, &mut out)?;
 
 	// Alert the user of any patterns that were not found
 	for name in not_found {
-		config.color.warn(&format!("'{name}' was not found"));
+		config().color.warn(&format!("'{name}' was not found"));
 	}
 
 	Ok(())
 }
 
 /// The list command
-pub fn list(config: &Config) -> Result<()> {
+pub fn list() -> Result<()> {
 	let mut out = std::io::stdout().lock();
 	let cache = new_cache!()?;
 
-	let mut sort = get_sorter(config);
+	let mut sort = get_sorter();
 
-	let (packages, not_found) = match config.pkg_names() {
+	let (packages, not_found) = match config().pkg_names() {
 		Some(pkg_names) => {
 			// Stop rust-apt from sorting the package list as it's faster this way.
 			sort.names = false;
@@ -59,11 +59,11 @@ pub fn list(config: &Config) -> Result<()> {
 	};
 
 	// List the packages that were found
-	list_packages(packages, config, &mut out)?;
+	list_packages(packages, &mut out)?;
 
 	// Alert the user of any patterns that were not found
 	for name in not_found {
-		config.color.warn(&format!("'{name}' was not found"));
+		config().color.warn(&format!("'{name}' was not found"));
 	}
 
 	Ok(())
@@ -72,15 +72,13 @@ pub fn list(config: &Config) -> Result<()> {
 /// List packages in a vector
 ///
 /// Shared function between list and search
-fn list_packages(
-	packages: Vec<Package>,
-	config: &Config,
-	out: &mut impl std::io::Write,
-) -> Result<()> {
+fn list_packages(packages: Vec<Package>, out: &mut impl std::io::Write) -> Result<()> {
 	// If packages are empty then there is nothing to list.
 	if packages.is_empty() {
 		bail!("Nothing was found to list");
 	}
+
+	let config = config();
 
 	// We at least have one package so we can begin listing.
 	for pkg in packages {
@@ -256,19 +254,19 @@ fn list_virtual(out: &mut impl std::io::Write, config: &Config, pkg: &Package) -
 }
 
 /// Configure sorter for list and search
-fn get_sorter(config: &Config) -> PackageSort {
+fn get_sorter() -> PackageSort {
 	let mut sort = PackageSort::default().names();
 
 	// set up our sorting parameters
-	if config.get_bool("installed", false) {
+	if config().get_bool("installed", false) {
 		sort = sort.installed();
 	}
 
-	if config.get_bool("upgradable", false) {
+	if config().get_bool("upgradable", false) {
 		sort = sort.upgradable();
 	}
 
-	if config.get_bool("virtual", false) {
+	if config().get_bool("virtual", false) {
 		sort = sort.only_virtual();
 	}
 	sort

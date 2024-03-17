@@ -1,15 +1,48 @@
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use anyhow::{Context, Result};
 use clap::parser::ValueSource;
-use clap::ArgMatches;
+use clap::{ArgMatches, CommandFactory, FromArgMatches};
 use rust_apt::config::Config as AptConfig;
 use serde::Deserialize;
 
+use crate::cli::NalaParser;
 use crate::colors::{Color, ColorType, Style, Theme, COLOR_MAP};
 use crate::util::dprint;
+
+pub fn config() -> &'static Config {
+	static CONFIG: OnceLock<Config> = OnceLock::new();
+	CONFIG.get_or_init(|| {
+		let args = NalaParser::command().get_matches();
+		let derived = NalaParser::from_arg_matches(&args).expect("Always have args");
+		let color = Color::default();
+
+		let conf_file = match derived.config {
+			Some(path) => path,
+			None => PathBuf::from("/etc/nala/nala.conf"),
+		};
+
+		let mut config = match Config::new(&conf_file) {
+			Ok(config) => config,
+			Err(err) => {
+				// Warn the user of the error and assume defaults
+				// TODO: Decide how and when to error instead of warn
+				// At the moment this will always warn and then default
+				color.warn(&format!("{err:?}"));
+				Config::default()
+			},
+		};
+
+		if let Some((_name, cmd)) = args.subcommand() {
+			config.load_args(cmd);
+		}
+
+		config
+	})
+}
 
 /// Represents different file and directory paths
 pub enum Paths {

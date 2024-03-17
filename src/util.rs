@@ -17,7 +17,7 @@ use regex::{Regex, RegexBuilder};
 use rust_apt::cache::Cache;
 use rust_apt::package::{Package, Version};
 
-use crate::config::Config;
+use crate::config::config;
 
 pub struct Matcher {
 	regexs: Vec<Regex>,
@@ -129,7 +129,6 @@ pub fn glob_pkgs<'a, Container: IntoIterator<Item = Package<'a>>, T: AsRef<str>>
 pub fn virtual_filter<'a, Container: IntoIterator<Item = Package<'a>>>(
 	packages: Container,
 	cache: &'a Cache,
-	config: &Config,
 ) -> Result<HashSet<Package<'a>>> {
 	// clippy thinks that the package is mutable
 	// But it only hashes the ID and you can't really mutate a package
@@ -147,9 +146,9 @@ pub fn virtual_filter<'a, Container: IntoIterator<Item = Package<'a>>>(
 		// There is nothing that can satisfy it. Referenced only by name
 		// At time of commit `python3-libmapper` is purely virtual
 		if !pkg.has_provides() {
-			config.color.warn(&format!(
+			config().color.warn(&format!(
 				"{} has no providers and is purely virutal",
-				config.color.package(pkg.name())
+				config().color.package(pkg.name())
 			));
 			continue;
 		}
@@ -165,10 +164,10 @@ pub fn virtual_filter<'a, Container: IntoIterator<Item = Package<'a>>>(
 		if providers.len() == 1 {
 			// Unwrap should be fine here, we know that there is 1 in the Vector.
 			let target = providers.into_iter().next().unwrap();
-			config.color.notice(&format!(
+			config().color.notice(&format!(
 				"Selecting {} instead of virtual package {}",
-				config.color.package(&target.fullname(false)),
-				config.color.package(pkg.name())
+				config().color.package(&target.fullname(false)),
+				config().color.package(pkg.name())
 			));
 
 			// Unwrap should be fine here because we know the name.
@@ -183,15 +182,15 @@ pub fn virtual_filter<'a, Container: IntoIterator<Item = Package<'a>>>(
 		if providers.len() > 1 {
 			println!(
 				"{} is a virtual package provided by:",
-				config.color.package(pkg.name())
+				config().color.package(pkg.name())
 			);
 			for target in &providers {
 				// If the version doesn't have a candidate no sense in showing it
 				if let Some(cand) = target.candidate() {
 					println!(
 						"    {} {}",
-						config.color.package(&target.fullname(true)),
-						config.color.version(cand.version()),
+						config().color.package(&target.fullname(true)),
+						config().color.version(cand.version()),
 					);
 				}
 			}
