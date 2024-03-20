@@ -1,7 +1,8 @@
 use std::collections::HashSet;
+use std::fs;
 use std::sync::Arc;
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use indicatif::{ProgressBar, ProgressStyle};
 use ratatui::backend::Backend;
@@ -14,15 +15,16 @@ use ratatui::widgets::{
 	Widget,
 };
 use ratatui::Terminal;
+use regex::Regex;
 use reqwest::Client;
 use rust_apt::new_cache;
 use rust_apt::package::Package;
-use rust_apt::tagfile::TagSection;
+use rust_apt::tagfile::{parse_tagfile, TagSection};
 use tokio::sync::{Mutex, Semaphore};
 use tokio::task::JoinSet;
 use tokio::time::Duration;
 
-use crate::config::Config;
+use crate::config::{Config, Paths};
 use crate::dprint;
 use crate::util::{init_terminal, restore_terminal, sudo_check, NalaRegex};
 
@@ -63,7 +65,6 @@ impl FetchScore {
 	async fn fetch_release(&self, base_url: &str, release: &str) -> Option<String> {
 		// TODO: Should we verify the release file is proper?
 		let full_url = format!("{base_url}/dists/{release}/Release");
-
 		let before = std::time::Instant::now();
 		// Return the error string on errors for debugging.
 		// Essentially ignores errors
@@ -135,7 +136,7 @@ fn get_component(config: &Config, distro: &str) -> Result<String> {
 
 	if distro == "ubuntu" {
 		// It's Ubuntu, you probably don't care about foss
-		return Ok(component);
+		return Ok(component + " restricted universe multiverse");
 	}
 
 	bail!("{distro} is unsupported.")
@@ -257,7 +258,7 @@ impl FetchTui {
 				if key.kind == KeyEventKind::Press {
 					use KeyCode::*;
 					match key.code {
-						Char('q') | Esc => {
+						Char('q') | Enter => {
 							// Return only the selected Urls.
 							return Ok(self
 								.items
@@ -269,7 +270,7 @@ impl FetchTui {
 						},
 						Char('j') | Down => self.items.next(),
 						Char('k') | Up => self.items.previous(),
-						Char(' ') | Enter => self.change_status(),
+						Char(' ') => self.change_status(),
 						Char('g') | Home => self.go_top(),
 						Char('G') | End => self.go_bottom(),
 						_ => {},
@@ -341,7 +342,8 @@ impl Widget for &mut FetchTui {
 			.render(info_area, buf);
 
 		Paragraph::new(
-			"\nUse ↓↑ to move, Space to select/unselect, Home/End to go top/bottom, q/ESC to exit.",
+			"\nUse ↓↑ to move, Space to select/unselect, Home/End to go top/bottom, q/Enter to \
+			 exit.",
 		)
 		.centered()
 		.render(footer_area, buf);
@@ -384,9 +386,173 @@ pub fn fetch(config: &Config) -> Result<()> {
 		None => None,
 	};
 
-	let mut net_select = HashSet::new();
+	// Get the current sources on disk to not create duplicates
+	let sources = parse_sources(config)?;
 
-	// Fetch the mirrors
+	// Get the mirrors
+	let mut net_select = fetch_mirrors(config, &countries, &distro)?;
+
+	// Remove domains that are already defined on disk
+	let mut remove = HashSet::new();
+	for mirror in &net_select {
+		for source in &sources {
+			if mirror.contains(source) {
+				remove.insert(mirror.to_string());
+			}
+		}
+	}
+	net_select.retain(|n| !remove.contains(n));
+
+	// Score the mirrors
+	let scored = score_handler(config, net_select, &release)?;
+
+	if scored.is_empty() {
+		bail!("Nala was unable to find any mirrors.")
+	}
+
+	// Only run the TUI if --auto is not on
+	let chosen = if config.auto.is_some() {
+		scored.into_iter().map(|(s, _)| s).collect()
+	} else {
+		let terminal = init_terminal()?;
+		let chosen = FetchTui::new(scored).run(terminal)?;
+		restore_terminal()?;
+		chosen
+	};
+
+	if chosen.is_empty() {
+		bail!("No mirrors were selected.")
+	}
+
+	let mut nala_sources = "# Sources file built for nala\n\n".to_string();
+	// Types: deb deb-src
+	// URIs: https://deb.volian.org/volian/
+	// Suites: scar
+	// Components: main
+	// Signed-By: /usr/share/keyrings/volian-archive-scar-unstable.gpg
+	nala_sources += if config.get_bool("sources", false) {
+		"Types: deb\n"
+	} else {
+		"Types: deb deb-src\n"
+	};
+
+	nala_sources += "URIs: ";
+	for (i, mirror) in chosen.iter().enumerate() {
+		if config.auto.is_some_and(|auto| i + 1 > auto as usize) {
+			break;
+		}
+		if i > 0 {
+			nala_sources += "      ";
+		}
+		nala_sources += &format!("{mirror}\n");
+	}
+	nala_sources += &format!("Suites: {release}\n");
+	nala_sources += &format!(
+		"Components: {}\n",
+		check_non_free(config, &chosen, component, &release)?
+	);
+
+	// Hardcode for now
+	// let mut file = fs::File::open("/etc/apt/sources.list.d/nala.sources")?;
+	// fs::write("/etc/apt/sources.list.d/nala.sources", nala_sources)?;
+
+	println!("{nala_sources}");
+
+	Ok(())
+}
+
+fn domain_from_list(regex: &Regex, line: &str) -> Option<String> {
+	if line.starts_with('#') || line.is_empty() {
+		return None;
+	}
+	regex_string(regex, line)
+}
+
+fn regex_string(regex: &Regex, line: &str) -> Option<String> {
+	Some(regex.captures(line)?.get(1)?.as_str().to_string())
+}
+
+fn parse_sources(config: &Config) -> Result<HashSet<String>> {
+	let regex = crate::util::NalaRegex::new();
+
+	let mut sources = HashSet::new();
+
+	// Read and extract domains from the main sources.list file
+	let main = config.get_file(&Paths::SourceList);
+	for line in fs::read_to_string(&main)
+		.with_context(|| format!("Failed to read {main}"))?
+		.lines()
+	{
+		if let Some(domain) = domain_from_list(regex.domain()?, line) {
+			sources.insert(domain);
+		}
+	}
+
+	// Parts could be either .list or .sources
+	let parts = config.get_path(&Paths::SourceParts);
+	for file in fs::read_dir(&parts).with_context(|| format!("Failed to read '{parts}'"))? {
+		let path = file?.path();
+		if path.is_dir() {
+			continue;
+		}
+
+		let filename = path.to_string_lossy();
+
+		// Don't consider nala-sources as it'll be overwritten
+		if filename.contains("nala-sources") {
+			continue;
+		}
+
+		// Continue if the file isn't .sources or .list
+		if !filename.ends_with(".sources") && !filename.ends_with(".list") {
+			continue;
+		}
+
+		let data = fs::read_to_string(&path)
+			.with_context(|| format!("Failed to read '{}'", path.display()))?;
+
+		if filename.ends_with(".sources") {
+			for section in parse_tagfile(&data)? {
+				let enabled = section.get_default("Enabled", "yes").to_lowercase();
+
+				if ["no", "false", "0"].contains(&enabled.as_str()) {
+					continue;
+				}
+
+				let Some(uris) = section.get("URIs") else {
+					continue;
+				};
+
+				for uri in uris.split_whitespace() {
+					if uri.is_empty() {
+						continue;
+					}
+
+					if let Some(domain) = regex_string(regex.domain()?, uri) {
+						sources.insert(domain);
+					}
+				}
+			}
+			continue;
+		}
+
+		if filename.ends_with(".list") {
+			for line in data.as_str().lines() {
+				if let Some(domain) = domain_from_list(regex.domain()?, line) {
+					sources.insert(domain);
+				}
+			}
+		}
+	}
+	Ok(sources)
+}
+
+fn fetch_mirrors(
+	config: &Config,
+	countries: &Option<HashSet<String>>,
+	distro: &str,
+) -> Result<HashSet<String>> {
+	let mut net_select = HashSet::new();
 	if distro == "debian" {
 		let response =
 			reqwest::blocking::get("https://mirror-master.debian.org/status/Mirrors.masterlist")?
@@ -422,33 +588,46 @@ pub fn fetch(config: &Config) -> Result<()> {
 			}
 		}
 	}
-
-	let scored = score_handler(config, net_select, &release)?;
-
-	if scored.is_empty() {
-		bail!("Nala was unable to find any mirrors.")
-	}
-
-	let terminal = init_terminal()?;
-	let chosen = FetchTui::new(scored).run(terminal)?;
-	restore_terminal()?;
-
-	// Do we just error in this case or should we loop and
-	// Run the Selection TUI again?
-	if chosen.is_empty() {
-		bail!("No mirrors were selected.")
-	}
-
-	// For now just print them until the rest of the code is written
-	for mirror in chosen {
-		println!("{mirror} {component}")
-	}
-
-	Ok(())
+	Ok(net_select)
 }
 
-/// Score the mirrors and provide a progress bar.
 #[tokio::main]
+async fn check_non_free(
+	config: &Config,
+	chosen: &Vec<String>,
+	mut component: String,
+	release: &str,
+) -> Result<String> {
+	let mut set = JoinSet::new();
+
+	if !config.get_bool("non_free", false) {
+		return Ok(component);
+	}
+
+	let client = Client::builder().timeout(Duration::from_secs(30)).build()?;
+
+	for url in chosen.iter() {
+		set.spawn(client.get(format!(
+			"{url}/dists/{release}/non-free-firmware/"
+		)).send());
+	}
+
+	let mut values = Vec::with_capacity(set.len());
+	// Run all of the futures.
+	while let Some(res) = set.join_next().await {
+		values.push(res.is_ok_and(|r| r.is_ok_and(|r| r.error_for_status().is_ok())));
+	}
+
+	// Debatable that we should add separate entries if it exists or not
+	if values.iter().all(|b| *b) {
+		component += " non-free-firmware";
+		return Ok(component);
+	}
+	Ok(component)
+}
+
+#[tokio::main]
+/// Score the mirrors and provide a progress bar.
 async fn score_handler(
 	config: &Config,
 	mirror_strings: HashSet<String>,

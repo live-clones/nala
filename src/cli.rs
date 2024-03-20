@@ -131,6 +131,12 @@ pub struct Fetch {
 	#[clap(long, action)]
 	pub https_only: bool,
 
+	#[clap(long, action)]
+	pub sources: bool,
+
+	#[clap(long, num_args = 0..=1, default_missing_value="3")]
+	pub auto: Option<u8>,
+
 	#[clap(short = 'c', long, action)]
 	pub country: Vec<String>,
 

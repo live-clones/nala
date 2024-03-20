@@ -28,6 +28,7 @@ use crate::config::Config;
 
 pub struct NalaRegex {
 	mirror: OnceCell<Regex>,
+	domain: OnceCell<Regex>,
 	mirror_file: OnceCell<Regex>,
 	ubuntu_url: OnceCell<Regex>,
 	ubuntu_country: OnceCell<Regex>,
@@ -37,6 +38,7 @@ impl NalaRegex {
 	pub fn new() -> Self {
 		NalaRegex {
 			mirror: OnceCell::new(),
+			domain: OnceCell::new(),
 			mirror_file: OnceCell::new(),
 			ubuntu_url: OnceCell::new(),
 			ubuntu_country: OnceCell::new(),
@@ -50,6 +52,11 @@ impl NalaRegex {
 	pub fn mirror(&self) -> Result<&Regex> {
 		self.mirror
 			.get_or_try_init(|| Self::build_regex(r"mirror://(.*?/.*?)/"))
+	}
+
+	pub fn domain(&self) -> Result<&Regex> {
+		self.domain
+			.get_or_try_init(|| Self::build_regex(r"https?://([A-Za-z_0-9.-]+).*"))
 	}
 
 	pub fn mirror_file(&self) -> Result<&Regex> {

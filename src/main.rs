@@ -3,6 +3,7 @@ use std::process::ExitCode;
 
 use anyhow::{bail, Result};
 use clap::{CommandFactory, FromArgMatches};
+use cli::Commands;
 use downloader::download;
 use history::history_test;
 
@@ -61,7 +62,7 @@ fn main_nala(color: &Color) -> Result<()> {
 
 	if let Some((name, cmd)) = args.subcommand() {
 		config.command = name.to_string();
-		config.load_args(cmd);
+		config.load_args(cmd, derived.command);
 		match name {
 			"list" => list(&config)?,
 			"search" => search(&config)?,
