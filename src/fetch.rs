@@ -63,103 +63,7 @@ fn get_component(config: &Config, distro: &str) -> Result<String> {
 		// It's Ubuntu, you probably don't care about foss
 		return Ok(component + " restricted universe multiverse");
 	}
-
 	bail!("{distro} is unsupported.")
-}
-
-pub fn fetch(config: &Config) -> Result<()> {
-	sudo_check(config)?;
-
-	let (distro, release) = detect_release(config)?;
-
-	dprint!(config, "Detected {distro}:{release}");
-
-	let component = get_component(config, &distro)?;
-
-	let countries: Option<HashSet<String>> = match config.countries() {
-		Some(values) => {
-			let mut hash_set = HashSet::new();
-			for value in values {
-				hash_set.insert(value.to_uppercase());
-			}
-			Some(hash_set)
-		},
-		None => None,
-	};
-
-	// Get the current sources on disk to not create duplicates
-	let sources = parse_sources(config)?;
-
-	// Get the mirrors
-	let mut net_select = fetch_mirrors(config, &countries, &distro)?;
-
-	// Remove domains that are already defined on disk
-	let mut remove = HashSet::new();
-	for mirror in &net_select {
-		for source in &sources {
-			if mirror.contains(source) {
-				remove.insert(mirror.to_string());
-			}
-		}
-	}
-	net_select.retain(|n| !remove.contains(n));
-
-	// Score the mirrors
-	let scored = score_handler(config, net_select, &release)?;
-
-	if scored.is_empty() {
-		bail!("Nala was unable to find any mirrors.")
-	}
-
-	// Only run the TUI if --auto is not on
-	let chosen = if config.auto.is_some() {
-		scored.into_iter().map(|(s, _)| s).collect()
-	} else {
-		let terminal = init_terminal()?;
-		let chosen = tui::FetchTui::new(scored).run(terminal)?;
-		restore_terminal()?;
-		chosen
-	};
-
-	if chosen.is_empty() {
-		bail!("No mirrors were selected.")
-	}
-
-	let mut nala_sources = "# Sources file built for nala\n\n".to_string();
-	// Types: deb deb-src
-	// URIs: https://deb.volian.org/volian/
-	// Suites: scar
-	// Components: main
-	// Signed-By: /usr/share/keyrings/volian-archive-scar-unstable.gpg
-	nala_sources += if config.get_bool("sources", false) {
-		"Types: deb\n"
-	} else {
-		"Types: deb deb-src\n"
-	};
-
-	nala_sources += "URIs: ";
-	for (i, mirror) in chosen.iter().enumerate() {
-		if config.auto.is_some_and(|auto| i + 1 > auto as usize) {
-			break;
-		}
-		if i > 0 {
-			nala_sources += "      ";
-		}
-		nala_sources += &format!("{mirror}\n");
-	}
-	nala_sources += &format!("Suites: {release}\n");
-	nala_sources += &format!(
-		"Components: {}\n",
-		check_non_free(config, &chosen, component, &release)?
-	);
-
-	// Hardcode for now
-	// let mut file = fs::File::open("/etc/apt/sources.list.d/nala.sources")?;
-	// fs::write("/etc/apt/sources.list.d/nala.sources", nala_sources)?;
-
-	println!("{nala_sources}");
-
-	Ok(())
 }
 
 fn domain_from_list(regex: &Regex, line: &str) -> Option<String> {
@@ -199,8 +103,8 @@ fn parse_sources(config: &Config) -> Result<HashSet<String>> {
 
 		let filename = path.to_string_lossy();
 
-		// Don't consider nala-sources as it'll be overwritten
-		if filename.contains("nala-sources") {
+		// Don't consider nala sources as it'll be overwritten
+		if filename.ends_with("nala.sources") {
 			continue;
 		}
 
@@ -216,6 +120,7 @@ fn parse_sources(config: &Config) -> Result<HashSet<String>> {
 			for section in parse_tagfile(&data)? {
 				let enabled = section.get_default("Enabled", "yes").to_lowercase();
 
+				// These sources are disabled. So we can ignore them
 				if ["no", "false", "0"].contains(&enabled.as_str()) {
 					continue;
 				}
@@ -505,4 +410,111 @@ fn devuan_url(countries: &Option<HashSet<String>>, section: &TagSection) -> Opti
 	}
 
 	Some(format!("http://{}/devuan", section.get("BaseURL")?.trim()))
+}
+
+/// The entry point for the `fetch` command.
+pub fn fetch(config: &Config) -> Result<()> {
+	sudo_check(config)?;
+
+	let (distro, release) = detect_release(config)?;
+	dprint!(config, "Detected '{distro}:{release}'");
+
+	let component = get_component(config, &distro)?;
+	dprint!(config, "Initial component '{component}'");
+
+	let countries: Option<HashSet<String>> = match config.countries() {
+		Some(values) => {
+			let mut hash_set = HashSet::new();
+			for value in values {
+				hash_set.insert(value.to_uppercase());
+			}
+			Some(hash_set)
+		},
+		None => None,
+	};
+
+	// Get the current sources on disk to not create duplicates
+	let sources = parse_sources(config)?;
+	dprint!(config, "Sources on disk {sources:#?}");
+
+	// Get the mirrors
+	let mut net_select = fetch_mirrors(config, &countries, &distro)?;
+	dprint!(config, "NetSelect initial size '{}'", net_select.len());
+
+	// Remove domains that are already defined on disk
+	let mut remove = HashSet::new();
+	for mirror in &net_select {
+		for source in &sources {
+			if mirror.contains(source) {
+				remove.insert(mirror.to_string());
+			}
+		}
+	}
+	net_select.retain(|n| !remove.contains(n));
+	dprint!(
+		config,
+		"NetSelect size after deduplication '{}'",
+		net_select.len()
+	);
+
+	// Score the mirrors
+	let scored = score_handler(config, net_select, &release)?;
+	dprint!(config, "Scored Mirrors '{}'", scored.len());
+
+	if scored.is_empty() {
+		bail!("Nala was unable to find any mirrors.")
+	}
+
+	// Only run the TUI if --auto is not on
+	let chosen = if config.auto.is_some() {
+		dprint!(config, "Auto mode, not starting TUI");
+		scored.into_iter().map(|(s, _)| s).collect()
+	} else {
+		dprint!(config, "Interactive mode, starting TUI");
+		let terminal = init_terminal()?;
+		let chosen = tui::FetchTui::new(scored).run(terminal)?;
+		restore_terminal()?;
+		chosen
+	};
+
+	if chosen.is_empty() {
+		bail!("No mirrors were selected.")
+	}
+
+	dprint!(config, "Building Nala sources file");
+	let mut nala_sources = "# Sources file built for nala\n\n".to_string();
+	// Types: deb deb-src
+	// URIs: https://deb.volian.org/volian/
+	// Suites: scar
+	// Components: main
+	// Signed-By: /usr/share/keyrings/volian-archive-scar-unstable.gpg
+	nala_sources += if config.get_bool("sources", false) {
+		"Types: deb\n"
+	} else {
+		"Types: deb deb-src\n"
+	};
+
+	nala_sources += "URIs: ";
+	for (i, mirror) in chosen.iter().enumerate() {
+		if config.auto.is_some_and(|auto| i + 1 > auto as usize) {
+			break;
+		}
+		if i > 0 {
+			nala_sources += "      ";
+		}
+		nala_sources += &format!("{mirror}\n");
+	}
+	nala_sources += &format!("Suites: {release}\n");
+	nala_sources += &format!(
+		"Components: {}\n",
+		check_non_free(config, &chosen, component, &release)?
+	);
+
+	// Hardcode for now
+	// let mut file = fs::File::open("/etc/apt/sources.list.d/nala.sources")?;
+	// fs::write("/etc/apt/sources.list.d/nala.sources", nala_sources)?;
+
+	dprint!(config, "Writing the following to file:\n\n{nala_sources}");
+
+	Ok(())
 }
