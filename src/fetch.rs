@@ -26,11 +26,13 @@ fn get_origin_codename(pkg: Option<Package>) -> Option<(String, String)> {
 	None
 }
 
-fn detect_release(config: &Config) -> Result<(String, String)> {
+fn detect_release(config: &Config) -> Result<(String, String, String)> {
 	for distro in ["debian", "ubuntu", "devuan"] {
 		if let Some(value) = config.string_map.get(distro) {
 			dprint!(config, "Distro '{distro} {value}' passed on CLI");
-			return Ok((distro.to_string(), value.to_lowercase()));
+			let distro = distro.to_string();
+			let keyring = format!("/usr/share/keyrings/{distro}-archive-keyring.gpg");
+			return Ok((distro, value.to_lowercase(), keyring));
 		}
 	}
 
@@ -44,7 +46,12 @@ fn detect_release(config: &Config) -> Result<(String, String)> {
 	] {
 		if let Some((origin, codename)) = get_origin_codename(cache.get(keyring)) {
 			dprint!(config, "Distro/Release Found on '{keyring}'");
-			return Ok((origin.to_lowercase(), codename.to_lowercase()));
+			// devuan-archive-keyring.gpg
+			// ubuntu-archive-keyring.gpg
+			// debian-archive-keyring.gpg
+			let distro = origin.to_lowercase();
+			let keyring = format!("/usr/share/keyrings/{distro}-archive-keyring.gpg");
+			return Ok((distro, codename.to_lowercase(), keyring));
 		}
 	}
 	bail!("There was an issue detecting release.");
@@ -416,7 +423,7 @@ fn devuan_url(countries: &Option<HashSet<String>>, section: &TagSection) -> Opti
 pub fn fetch(config: &Config) -> Result<()> {
 	sudo_check(config)?;
 
-	let (distro, release) = detect_release(config)?;
+	let (distro, release, keyring) = detect_release(config)?;
 	dprint!(config, "Detected '{distro}:{release}'");
 
 	let component = get_component(config, &distro)?;
@@ -509,12 +516,15 @@ pub fn fetch(config: &Config) -> Result<()> {
 		"Components: {}\n",
 		check_non_free(config, &chosen, component, &release)?
 	);
+	nala_sources += &format!("Signed-By: {keyring}\n");
 
-	// Hardcode for now
-	// let mut file = fs::File::open("/etc/apt/sources.list.d/nala.sources")?;
-	// fs::write("/etc/apt/sources.list.d/nala.sources", nala_sources)?;
+	dprint!(
+		config,
+		"Writing the following to file:\n\n{}",
+		&nala_sources
+	);
 
-	dprint!(config, "Writing the following to file:\n\n{nala_sources}");
+	fs::write(config.get_file(&Paths::NalaSources), nala_sources)?;
 
 	Ok(())
 }

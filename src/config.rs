@@ -38,7 +38,7 @@ impl Paths {
 			Paths::Lists => "Dir::State::Lists",
 			Paths::SourceList => "Dir::Etc::sourcelist",
 			Paths::SourceParts => "Dir::Etc::sourceparts",
-			Paths::NalaSources => "/etc/apt/sources.list.d/nala-sources.list",
+			Paths::NalaSources => "/etc/apt/sources.list.d/nala.sources",
 		}
 	}
 
@@ -48,7 +48,7 @@ impl Paths {
 			Paths::Lists => "/var/lib/apt/lists/",
 			Paths::SourceList => "/etc/apt/sources.list",
 			Paths::SourceParts => "/etc/apt/sources.list.d/",
-			Paths::NalaSources => "/etc/apt/sources.list.d/nala-sources.list",
+			Paths::NalaSources => "/etc/apt/sources.list.d/nala.sources",
 		}
 	}
 }
