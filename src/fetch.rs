@@ -20,77 +20,13 @@ use reqwest::Client;
 use rust_apt::new_cache;
 use rust_apt::package::Package;
 use rust_apt::tagfile::{parse_tagfile, TagSection};
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 use tokio::time::Duration;
 
 use crate::config::{Config, Paths};
 use crate::dprint;
 use crate::util::{init_terminal, restore_terminal, sudo_check, NalaRegex};
-
-struct FetchScore {
-	client: Client,
-	pb: Arc<ProgressBar>,
-	debug: bool,
-	https_only: bool,
-	vec: Arc<Mutex<Vec<(String, u128)>>>,
-	semp: Arc<Semaphore>,
-}
-
-impl FetchScore {
-	fn new(config: &Config, mirror_strings: &HashSet<String>) -> Result<Arc<FetchScore>> {
-		let pb = Arc::new(ProgressBar::new(mirror_strings.len() as u64));
-		pb.set_style(
-			ProgressStyle::with_template(
-				"{prefix:.bold}[{bar:40.cyan/red}] {percent}% • {pos}/{len}",
-			)
-			.unwrap()
-			.progress_chars("━━"),
-		);
-		pb.set_prefix("Testing Mirrors: ");
-		Ok(Arc::new(FetchScore {
-			client: Client::builder().timeout(Duration::from_secs(5)).build()?,
-			pb,
-			debug: config.debug(),
-			https_only: config.get_bool("https_only", false),
-			vec: Arc::new(Mutex::new(Vec::new())),
-			semp: Arc::new(Semaphore::new(30)),
-		}))
-	}
-
-	/// Fetch the release file and handle errors
-	///
-	/// This will return Some(String) if its NOT successful
-	/// None is successful
-	async fn fetch_release(&self, base_url: &str, release: &str) -> Option<String> {
-		// TODO: Should we verify the release file is proper?
-		let full_url = format!("{base_url}/dists/{release}/Release");
-		let before = std::time::Instant::now();
-		// Return the error string on errors for debugging.
-		// Essentially ignores errors
-		match self.client.get(&full_url).send().await {
-			Ok(response) => {
-				if let Err(e) = response.error_for_status() {
-					return Some(e.to_string());
-				}
-			},
-			Err(e) => return Some(e.to_string()),
-		};
-		let after = before.elapsed().as_millis();
-		self.vec.lock().await.push((base_url.to_string(), after));
-		None
-	}
-
-	fn final_vec(self) -> Vec<(String, u128)> {
-		let mut vec = Arc::into_inner(self.vec)
-			.expect("No Locks Held")
-			.into_inner();
-		// Sorts the internal mirrors by score in ms
-		vec.sort_by_key(|k| k.1);
-
-		vec
-	}
-}
 
 fn get_origin_codename(pkg: Option<Package>) -> Option<(String, String)> {
 	let pkg_file = pkg?.candidate()?.package_files().next()?;
@@ -562,7 +498,7 @@ fn fetch_mirrors(
 		let arches = config.apt.get_architectures();
 
 		for section in tagfile {
-			if let Some(url) = debian_url(&countries, &section, &arches) {
+			if let Some(url) = debian_url(countries, &section, &arches) {
 				net_select.insert(url);
 			}
 		}
@@ -573,7 +509,7 @@ fn fetch_mirrors(
 		let regex = NalaRegex::new();
 		let mirrors = response.split("<item>");
 		for mirror in mirrors {
-			if let Some(url) = ubuntu_url(config, &countries, &regex, mirror) {
+			if let Some(url) = ubuntu_url(config, countries, &regex, mirror) {
 				net_select.insert(url);
 			}
 		}
@@ -583,7 +519,7 @@ fn fetch_mirrors(
 
 		let tagfile = rust_apt::tagfile::parse_tagfile(&response).unwrap();
 		for section in tagfile {
-			if let Some(url) = devuan_url(&countries, &section) {
+			if let Some(url) = devuan_url(countries, &section) {
 				net_select.insert(url);
 			}
 		}
@@ -594,7 +530,7 @@ fn fetch_mirrors(
 #[tokio::main]
 async fn check_non_free(
 	config: &Config,
-	chosen: &Vec<String>,
+	chosen: &[String],
 	mut component: String,
 	release: &str,
 ) -> Result<String> {
@@ -604,12 +540,14 @@ async fn check_non_free(
 		return Ok(component);
 	}
 
-	let client = Client::builder().timeout(Duration::from_secs(30)).build()?;
+	let client = Client::builder().timeout(Duration::from_secs(5)).build()?;
 
 	for url in chosen.iter() {
-		set.spawn(client.get(format!(
-			"{url}/dists/{release}/non-free-firmware/"
-		)).send());
+		set.spawn(
+			client
+				.get(format!("{url}/dists/{release}/non-free-firmware/"))
+				.send(),
+		);
 	}
 
 	let mut values = Vec::with_capacity(set.len());
@@ -635,11 +573,22 @@ async fn score_handler(
 ) -> Result<Vec<(String, u128)>> {
 	let mut set = JoinSet::new();
 
-	let score = FetchScore::new(config, &mirror_strings)?;
+	let semp = Arc::new(Semaphore::new(30));
+	let mut score = vec![];
+
+	// Setup Progress Bar
+	let pb = ProgressBar::new(mirror_strings.len() as u64);
+	pb.set_style(
+		ProgressStyle::with_template("{prefix:.bold}[{bar:40.cyan/red}] {percent}% • {pos}/{len}")
+			.unwrap()
+			.progress_chars("━━"),
+	);
+	pb.set_prefix("Testing Mirrors: ");
 
 	for url in &mirror_strings {
 		set.spawn(net_select_score(
-			score.clone(),
+			semp.clone(),
+			config.get_bool("https_only", false),
 			url.strip_suffix('/').unwrap_or(url).to_string(),
 			release.to_string(),
 		));
@@ -647,40 +596,57 @@ async fn score_handler(
 
 	// Run all of the futures.
 	while let Some(res) = set.join_next().await {
-		res??;
+		if let Ok(Ok(response)) = res {
+			score.push(response)
+		}
+		pb.inc(1);
 	}
 
 	// Move FetchScore out of its Arc and then return the final vec.
-	Ok(Arc::into_inner(score).expect("No Locks Held").final_vec())
+	score.sort_by_key(|k| k.1);
+	Ok(score)
 }
 
 /// Score the url with https and http depending on config.
-async fn net_select_score(score: Arc<FetchScore>, url: String, release: String) -> Result<()> {
-	let sem = score.semp.clone().acquire_owned().await?;
+async fn net_select_score(
+	semp: Arc<Semaphore>,
+	https_only: bool,
+	url: String,
+	release: String,
+) -> Result<(String, u128)> {
+	let sem = semp.acquire_owned().await?;
 	let https = url.replace("http://", "https://");
+	let client = Client::builder().timeout(Duration::from_secs(5)).build()?;
 
-	let mut debug_vec = vec![url.to_string()];
-
-	match score.fetch_release(&https, &release).await {
-		Some(response) => debug_vec.push(response),
-		None => {
-			score.pb.inc(1);
-			return Ok(());
-		},
+	if let Ok(response) = fetch_release(&client, &https, &release).await {
+		return Ok(response);
 	}
 
-	if !score.https_only {
-		if let Some(response) = score.fetch_release(&url, &release).await {
-			debug_vec.push(response)
+	// We don't need to check http if it's https-only or if its only https
+	if !https_only && !url.contains("https://") {
+		if let Ok(response) = fetch_release(&client, &url, &release).await {
+			return Ok(response);
 		}
 	}
 
 	drop(sem);
-	score.pb.inc(1);
-	if score.debug {
-		dbg!(debug_vec);
-	}
-	Ok(())
+	bail!("Could not get to '{url}'")
+}
+
+/// Fetch the release file and handle errors
+///
+/// This will return Some(String) if its NOT successful
+/// None is successful
+async fn fetch_release(client: &Client, base_url: &str, release: &str) -> Result<(String, u128)> {
+	// TODO: Should we verify the release file is proper?
+	let before = std::time::Instant::now();
+	client
+		.get(format!("{base_url}/dists/{release}/Release"))
+		.send()
+		.await?
+		.error_for_status()?;
+	let after = before.elapsed().as_millis();
+	Ok((base_url.to_string(), after))
 }
 
 fn debian_url(

@@ -3,7 +3,6 @@ use std::process::ExitCode;
 
 use anyhow::{bail, Result};
 use clap::{CommandFactory, FromArgMatches};
-use cli::Commands;
 use downloader::download;
 use history::history_test;
 
