@@ -15,6 +15,7 @@ mod fetch;
 mod history;
 mod list;
 mod show;
+mod tui;
 mod util;
 use crate::clean::clean;
 use crate::cli::NalaParser;
