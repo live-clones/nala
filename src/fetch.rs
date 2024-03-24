@@ -524,7 +524,8 @@ pub fn fetch(config: &Config) -> Result<()> {
 		&nala_sources
 	);
 
-	fs::write(config.get_file(&Paths::NalaSources), nala_sources)?;
-
+	let file = config.get_file(&Paths::NalaSources);
+	fs::write(&file, nala_sources)?;
+	println!("Sources have been written to {file}");
 	Ok(())
 }
