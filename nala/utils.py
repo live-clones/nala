@@ -50,6 +50,8 @@ from nala.constants import (
 	NALA_DIR,
 	NALA_LOCK_FILE,
 	NALA_LOGDIR,
+	NOTICE_PREFIX,
+	PARTIAL_DIR,
 )
 from nala.options import arguments
 from nala.rich import from_ansi
@@ -76,6 +78,9 @@ class Terminal:
 
 	# Control Codes
 	CURSER_UP = b"\x1b[1A"
+	CURSER_DOWN = b"\x1b[1B"
+	CURSER_FORWARD = b"\x1b[1C"
+	CURSER_BACK = b"\x1b[1D"
 	CLEAR_LINE = b"\x1b[2k"
 	CLEAR = b"\x1b[2J"
 	CLEAR_FROM_CURRENT_TO_END = b"\x1b[K"
@@ -213,6 +218,7 @@ class PackageHandler:  # pylint: disable=too-many-instance-attributes
 	autoremoved: set[str] = field(default_factory=set)
 	user_explicit: list[Package] = field(default_factory=list)
 	local_debs: list[NalaDebPackage] = field(default_factory=list)
+	# Packages that can be auto removed, but won't
 	not_needed: list[NalaPackage] = field(default_factory=list)
 	delete_pkgs: list[NalaPackage] = field(default_factory=list)
 	install_pkgs: list[NalaPackage] = field(default_factory=list)
@@ -225,6 +231,7 @@ class PackageHandler:  # pylint: disable=too-many-instance-attributes
 	suggest_pkgs: list[NalaPackage | list[NalaPackage]] = field(default_factory=list)
 	configure_pkgs: list[NalaPackage] = field(default_factory=list)
 	downgrade_pkgs: list[NalaPackage] = field(default_factory=list)
+	held_pkgs: list[NalaPackage] = field(default_factory=list)
 
 	def no_summary(
 		self, pkg_set: list[NalaPackage] | list[NalaPackage | list[NalaPackage]]
@@ -311,7 +318,7 @@ def command_help(wrong: str, correct: str, update: bool | None) -> None:
 			sys.exit(1)
 
 
-def ask(question: str, fetch: FetchLive | None = None) -> bool:
+def ask(question: str) -> bool:
 	"""Ask the user {question}.
 
 	resp = input(f'{question}? [Y/n]
@@ -324,15 +331,25 @@ def ask(question: str, fetch: FetchLive | None = None) -> bool:
 			return True
 		if arguments.assume_no:
 			return False
-	while True:
-		resp = input(f"{question} [{YES[0]}/{NO[1]}] ")
-		if resp in (YES[0], YES[1], ""):
-			return True
-		if resp in NO:
-			return False
-		if fetch:
-			fetch.errors += 1
-		print(_("Not a valid choice kiddo"))
+
+	resp = input(f"{question} [{YES[0]}/{NO[1]}] ").strip()
+	return len(resp) == 0 or resp[0] in (YES[0], YES[1], "Y", "y")
+
+
+def unauth_ask(question: str) -> bool:
+	"""Ask the user if they'd like to accept unauthenticated packages."""
+	if not arguments.config.apt.find_b("APT::Get::AllowUnauthenticated", False):
+		# If a user is piping something into Nala to bypass this prompt, error because this is unsafe.
+		# The option should be passed on the command line so it's explicit what is happening in scripts.
+		if arguments.assume_yes or not sys.stdin.isatty():
+			sys.exit(
+				_(
+					"{error} Some packages are unable to be authenticated. Use "
+					"'-o APT::Get::AllowUnauthenticated=true' with `--yes`"
+				).format(error=ERROR_PREFIX)
+			)
+		return ask(f"{NOTICE_PREFIX} {question}")
+	return True
 
 
 def compile_regex(regex: str) -> Pattern[str]:
@@ -364,9 +381,11 @@ def sudo_check(args: Iterable[str] | None = None) -> None:
 	# Make sure our directories exist
 	NALA_DIR.mkdir(exist_ok=True)
 	NALA_LOGDIR.mkdir(exist_ok=True)
+	PARTIAL_DIR.mkdir(parents=True, exist_ok=True)
 
 	NALA_LOCK_FILE.touch(exist_ok=True)
 	global LOCK_FILE  # pylint: disable=global-statement
+	# pylint: disable=consider-using-with
 	LOCK_FILE = NALA_LOCK_FILE.open("r+", encoding="ascii")
 	current_pid = os.getpid()
 	last_pid = LOCK_FILE.read()
@@ -507,7 +526,12 @@ def vprint(msg: object) -> None:
 
 
 def dprint(msg: object, from_verbose: bool = False) -> None:
-	"""Print message if debugging, write to log if root."""
+	"""Print message if debugging, write to log if root.
+
+	from_verbose as true will stop this from printing.
+
+	vprint sends it's messages here to be put in the log.
+	"""
 	if not arguments.debug:
 		return
 	if not from_verbose:
