@@ -60,8 +60,6 @@ REBOOT_REQUIRED = Path(f"{ROOT}/var/run/reboot-required")
 """/var/run/reboot-required"""
 REBOOT_PKGS = Path(f"{ROOT}/var/run/reboot-required.pkgs")
 """'/var/run/reboot-required.pkgs'"""
-NEED_RESTART = Path(f"{ROOT}/var/run/needrestart")
-"""/var/run/needrestart"""
 NALA_LOCK_FILE = Path(f"{ROOT}/var/lock/nala.lock")
 """/var/lock/nala.lock"""
 
@@ -85,6 +83,7 @@ SOURCEPARTS = Path(apt_pkg.config.find_dir("Dir::Etc::sourceparts"))
 DPKG_STATE = Path(apt_pkg.config.find_dir("Dir::State::status"))
 """/var/lib/dpkg/status"""
 
+# pylint: disable=invalid-name
 HANDLER = Union[Callable[[int, Optional[FrameType]], Any], int, Handlers, None]
 
 ERROR_PREFIX = color(_("Error:"), "RED")
@@ -128,23 +127,6 @@ class InstState(IntEnum):
 
 
 # dpkg constants
-CONF_MESSAGE = (
-	b"   What would you like to do about it ?  Your options are:\r\n"
-	b"    Y or I  : install the package maintainer's version\r\n"
-	b"    N or O  : keep your currently-installed version\r\n"
-	b"      D     : show the differences between the versions\r\n"
-	b"      Z     : start a shell to examine the situation\r\n"
-)
-CONF_ANSWERS = (
-	b"y",
-	b"Y",
-	b"i",
-	b"I",
-	b"n",
-	b"N",
-	b"o",
-	b"O",
-)
 NOTICES = (
 	b"The currently running kernel version is not the expected kernel version",
 	b"Please remove.",
