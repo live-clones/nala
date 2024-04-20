@@ -42,7 +42,7 @@ msgstr ""
 #: nala/utils.py:346
 #, fuzzy
 msgid "{error} Some packages are unable to be authenticated. Use '-o APT::Get::AllowUnauthenticated=true' with `--yes`"
-msgstr "{error} Alguns pacotes não puderam ser autenticados"
+msgstr "{error} Alguns pacotes não puderam ser autenticados. Use '-o APT::Get::AllowUnauthenticated=true' com `--yes`"
 
 #: nala/utils.py:361
 msgid "{error} failed regex compilation '{error_msg} at position {position}'"
@@ -50,11 +50,11 @@ msgstr "{error} falhou na compilação do 'regex', '{error_msg} na posição {po
 
 #: nala/utils.py:372
 msgid "{error} Nala needs root to fix broken packages"
-msgstr "{error} Nala requer as permissões de root para corrigir os pacotes quebrados"
+msgstr "{error} Nala requer root para corrigir os pacotes quebrados"
 
 #: nala/utils.py:377
 msgid "{error} Nala needs root to {command}"
-msgstr "{error} Nala requer as permissões de root para executar o comando {command}"
+msgstr "{error} Nala requer root para executar {command}"
 
 #: nala/utils.py:402
 msgid "{error} Nala is already running another instance {last_pid}"
@@ -273,7 +273,7 @@ msgid ""
 "{error} No content length in response from {url}\n"
 "  Ensure the URL points to a Debian Package"
 msgstr ""
-"{error} Nenhuma comprimento de conteúdo na resposta de {url}\n"
+"{error} Nenhum comprimento de conteúdo na resposta de {url}\n"
 "  Certifique-se de que o URL aponta para um pacote Debian"
 
 #: nala/install.py:741
@@ -328,7 +328,7 @@ msgstr "Avisos:"
 
 #: nala/install.py:1207
 msgid "{error} It can be dangerous to continue without a terminal. Use `--assume-yes`"
-msgstr "{error} Pode ser perigoso continuar sem um terminal. Utilize o comando `--assume-yes`"
+msgstr "{error} Pode ser perigoso continuar sem um terminal. Utilize `--assume-yes`"
 
 #: nala/install.py:1214
 msgid "{warning} Using {switch} can be very dangerous!"
@@ -384,11 +384,11 @@ msgstr "Protegendo {package} de ser atualizado"
 
 #: nala/cache.py:233
 msgid "Protecting {package} from auto-removal"
-msgstr "Protegendo {package} da remoção automática"
+msgstr "Protegendo {package} de remoções automáticas"
 
 #: nala/cache.py:263
 msgid "{total} packages can be upgraded. Run '{command}' to see them."
-msgstr "{total} pacotes podem ser atualizados. Execute o comando '{command}' para exibi-los."
+msgstr "{total} pacotes podem ser atualizados. Execute '{command}' para exibi-los."
 
 #: nala/cache.py:299
 msgid "{package} is a virtual package provided by:"
@@ -448,11 +448,11 @@ msgstr "{error} Instalação falhou."
 
 #: nala/error.py:139
 msgid "If you'd like to file a bug report please include '{debug_file}'"
-msgstr "Se você quiser enviar um relatório contendo erros ou falhas, por favor inclua '{debug_file}'."
+msgstr "Se você quiser enviar um relatório de erros, por favor inclua '{debug_file}'."
 
 #: nala/error.py:160
 msgid "Are you root?"
-msgstr "Você é o usuário root?"
+msgstr "Você é root?"
 
 #: nala/error.py:169
 msgid "{error} The following packages are essential!"
@@ -702,7 +702,7 @@ msgstr "A pontuação é de quantos milissegundos são necessários para baixar 
 
 #: nala/fetch.py:755
 msgid "{notice} Nala was unable to fetch {num} mirrors."
-msgstr "Aviso {notice}, o Nala não conseguiu obter os espelhos {num}."
+msgstr "{notice} Nala não conseguiu obter os espelhos {num}."
 
 #: nala/fetch.py:766
 msgid "Sources have been written to {file}"
@@ -945,7 +945,7 @@ msgstr "{error} A chave de configurações '{key}' deve ser do tipo bool (true/f
 
 #: nala/options.py:350
 msgid "{error} Option {option}: Configuration item must have a '='"
-msgstr "{error} Opção {option}: Item de configuração deve ter '='"
+msgstr "{error} Opção {option}: Item de configuração deve ter um '='"
 
 #: nala/options.py:393
 msgid ""
@@ -953,13 +953,13 @@ msgid ""
 "The full GPLv3 can be found at:\n"
 "https://www.gnu.org/licenses/gpl-3.0.txt"
 msgstr ""
-"Parece que o sistema não possui um arquivo de licença\n"
+"Parece que o sistema não possui o arquivo de licença\n"
 "A licença GPLv3 completa pode ser encontrada em:\n"
 "https://www.gnu.org/licenses/gpl-3.0.txt"
 
 #: nala/options.py:433
 msgid "Show program's version number and exit."
-msgstr "Exibe o número da versão deste programa e sai."
+msgstr "Exibe a versão deste programa e sai."
 
 #: nala/options.py:441
 msgid "Reads the GPLv3 which Nala is licensed under."
@@ -1023,7 +1023,7 @@ msgstr "Corrigir os pacotes quebrados."
 
 #: nala/options.py:555
 msgid "Assume 'yes' or 'no' to all prompts."
-msgstr "Responder 'sim' ou 'não' para todas as perguntas."
+msgstr "Assumir 'sim' ou 'não' para todas as perguntas."
 
 #: nala/options.py:564
 msgid "Set options like Dpkg::Options::=\"--force-confnew\"."
@@ -1087,7 +1087,7 @@ msgstr "Exibe esta mensagem e sai."
 
 #: nala/history.py:85
 msgid "{error} '{command}' for operations other than install or remove are not currently supported"
-msgstr "{error} '{command}' para outras operações além de instalar ou desinstalar não é suportado."
+msgstr "{error} '{command}' para outras operações além de instalar ou desinstalar não é atualmente suportado."
 
 #: nala/history.py:89
 msgid ""
@@ -1097,7 +1097,7 @@ msgid ""
 msgstr ""
 "Exibir o histórico de operações.\n"
 "\n"
-"Executar o comando `nala history` sem os subcomandos para exibir uma visão geral de todas as operações disponíveis."
+"Executar `nala history` sem subcomandos mostra uma visão geral de todas as operações."
 
 #: nala/history.py:104
 msgid "{error} History file seems corrupt. You should try removing {file}"
@@ -1105,7 +1105,7 @@ msgstr "{error} O arquivo do histórico parece estar corrompido. Você deveria t
 
 #: nala/history.py:123 nala/history.py:321 nala/history.py:342
 msgid "{error} No history exists."
-msgstr "{error} O histórico não existe."
+msgstr "{error} Não existe nenhum histórico."
 
 #: nala/history.py:127
 msgid "{error} Transaction {num} doesn't exist."
@@ -1125,15 +1125,15 @@ msgstr "Exibir as informações de uma operação específica."
 
 #: nala/history.py:400
 msgid "Nala needs root to clear history"
-msgstr "O Nala requer o usuário root para limpar o histórico"
+msgstr "O Nala requer root para limpar o histórico"
 
 #: nala/history.py:402
 msgid "Nala needs root to redo history"
-msgstr "O Nala requer o usuário root para refazer o histórico"
+msgstr "O Nala requer root para refazer o histórico"
 
 #: nala/history.py:403
 msgid "Nala needs root to undo history"
-msgstr "O Nala requer o usuário root para desfazer o histórico"
+msgstr "O Nala requer root para desfazer o histórico"
 
 #: nala/history.py:417
 msgid "History has been cleared"
