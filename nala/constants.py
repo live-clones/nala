@@ -70,7 +70,7 @@ ETC_DIR = Path(
 	apt_pkg.config.find_dir("Dir::Etc", "/etc/apt")
 )
 
-def apt_file(key: str, prepend: Path, sub_path: str) -> str:
+def apt_file(key: str, prepend: Path, sub_path: str) -> Path:
 	"""Get the apt directory. Build prepend/sub_path if None."""
 	if file := apt_pkg.config.find_file(key):
 		return Path(file)
