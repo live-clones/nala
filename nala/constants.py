@@ -63,18 +63,16 @@ REBOOT_PKGS = Path(f"{ROOT}/var/run/reboot-required.pkgs")
 NALA_LOCK_FILE = Path(f"{ROOT}/var/lock/nala.lock")
 """/var/lock/nala.lock"""
 
-CACHE_DIR = Path(
-	apt_pkg.config.find_dir("Dir::Cache", "/var/cache/apt")
-)
-ETC_DIR = Path(
-	apt_pkg.config.find_dir("Dir::Etc", "/etc/apt")
-)
+CACHE_DIR = Path(apt_pkg.config.find_dir("Dir::Cache", "/var/cache/apt"))
+ETC_DIR = Path(apt_pkg.config.find_dir("Dir::Etc", "/etc/apt"))
+
 
 def apt_file(key: str, prepend: Path, sub_path: str) -> Path:
 	"""Get the apt directory. Build prepend/sub_path if None."""
 	if file := apt_pkg.config.find_file(key):
 		return Path(file)
 	return prepend / sub_path
+
 
 # Apt Directories
 ARCHIVE_DIR = apt_file("Dir::Cache::Archives", CACHE_DIR, "/var/cache/apt/archives")
