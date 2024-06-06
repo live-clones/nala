@@ -358,7 +358,7 @@ impl<'a> DynAcquireProgress for NalaAcquireProgress<'a> {
 
 		self.max = string.len().max(self.max);
 
-		let filler = format!("{side}{}{side}", &" ".repeat(term_width - 2),);
+		let filler = format!("{side}{}{side}", &" ".repeat(term_width - 2));
 
 		while string.len() < self.max {
 			string.insert(0, filler.to_string())
