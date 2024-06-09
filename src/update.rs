@@ -312,11 +312,12 @@ impl<'a> DynAcquireProgress for NalaAcquireProgress<'a> {
 				continue;
 			};
 
-			if item.owner().status() != ItemState::StatFetching {
+			let owner = item.owner();
+			if owner.status() != ItemState::StatFetching {
 				continue;
 			}
 
-			let mut work_string = item.owner().active_subprocess();
+			let mut work_string = owner.active_subprocess();
 			if work_string.is_empty() {
 				work_string += "Downloading"
 			} else if work_string == "store" {
@@ -324,34 +325,28 @@ impl<'a> DynAcquireProgress for NalaAcquireProgress<'a> {
 			}
 			work_string += ": ";
 
-			let dest = item.owner().dest_file();
+			if let Some(dest_file) = owner.dest_file().split_terminator('/').last() {
+				// Decide on protocol.
+				let proto = if item.uri().starts_with("https") { "https://" } else { "http://" };
+				// Build the correct URI by destination file. item.uri() returns the /by-hash
+				// link.
+				let uri = dest_file.replace('_', "/");
+				// Calculate string padding. - 2 for border. - 2 for spaces.
+				let padding = term_width - work_string.len() - proto.len() - uri.len() - 4;
 
-			let Some(dest_file) = dest.split_terminator('/').last() else {
-				continue;
+				string.push(format!(
+					"{side} {} {proto}{uri}{}{side}",
+					self.config.color.bold(&work_string),
+					&" ".repeat(padding),
+				));
+				// Break only for slim progress
+				if !self.config.get_bool("verbose", false) {
+					break;
+				}
 			};
-
-			// Build the correct URI by destination file.
-			// item.uri() returns the by-hash link.
-			let mut uri = dest_file.replace('_', "/");
-			uri.insert_str(
-				0,
-				if item.uri().starts_with("https") { "https://" } else { "http://" },
-			);
-
-			// Calculate string padding.
-			let padding = term_width - work_string.len() - uri.len() - 4;
-			string.push(format!(
-				"{side} {} {uri}{}{side}",
-				self.config.color.bold(&work_string),
-				&" ".repeat(padding),
-			));
-			// Break only for slim progress
-			if !self.config.get_bool("verbose", false) {
-				break;
-			}
 		}
 
-		// Display at least something if there is no worker strings
+		// If there are no worker strings just return
 		if string.is_empty() {
 			return;
 		}
