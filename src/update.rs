@@ -4,10 +4,10 @@ use anyhow::Result;
 use crossterm::{cursor, execute};
 use indicatif::{ProgressBar, ProgressStyle};
 use rust_apt::error::{pending_error, AptErrors};
-use rust_apt::new_cache;
 use rust_apt::progress::{AcquireProgress, DynAcquireProgress};
 use rust_apt::raw::{AcqTextStatus, ItemDesc, ItemState, PkgAcquire};
 use rust_apt::util::{terminal_width, time_str, unit_str, NumSys};
+use rust_apt::{new_cache, PackageSort};
 
 use crate::config::Config;
 
@@ -21,6 +21,31 @@ pub fn update(config: &Config) -> Result<(), AptErrors> {
 	let res = cache.update(&mut AcquireProgress::new(NalaAcquireProgress::new(config)));
 
 	execute!(stdout, cursor::Show)?;
+
+	let cache = new_cache!()?;
+	let sort = PackageSort::default().upgradable();
+	let upgradable: Vec<_> = cache.packages(&sort).collect();
+
+	if upgradable.is_empty() {
+		return res;
+	}
+
+	println!(
+		"{} packages can be upgraded. Run '{}' to see them.",
+		config.color.yellow(&format!("{}", upgradable.len())),
+		config.color.package("nala list --upgradable")
+	);
+
+	// Not sure yet if I want to implement this directly
+	// But here is how one might do it.
+	//
+	// for pkg in upgradable {
+	// 	let (Some(inst), Some(cand)) = (pkg.installed(), pkg.candidate()) else {
+	// 		continue;
+	// 	};
+
+	// 	println!("{pkg} ({inst}) -> ({cand})");
+	// }
 
 	res
 }
@@ -256,12 +281,15 @@ impl<'a> DynAcquireProgress for NalaAcquireProgress<'a> {
 		}
 
 		let msg = if status.fetched_bytes() != 0 {
-			format!(
-				"Fetched {} in {} ({}/s)",
-				unit_str(status.fetched_bytes(), NumSys::Decimal),
-				time_str(status.elapsed_time()),
-				unit_str(status.current_cps(), NumSys::Decimal)
-			)
+			self.config
+				.color
+				.bold(&format!(
+					"Fetched {} in {} ({}/s)",
+					unit_str(status.fetched_bytes(), NumSys::Decimal),
+					time_str(status.elapsed_time()),
+					unit_str(status.current_cps(), NumSys::Decimal)
+				))
+				.to_string()
 		} else {
 			"Nothing to fetch.".to_string()
 		};
