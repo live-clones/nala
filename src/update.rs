@@ -22,19 +22,23 @@ pub fn update(config: &Config) -> Result<(), AptErrors> {
 
 	execute!(stdout, cursor::Show)?;
 
+	// Do not print how many packages are upgradable if update errored.
+	#[allow(clippy::question_mark)]
+	if res.is_err() {
+		return res;
+	}
+
 	let cache = new_cache!()?;
 	let sort = PackageSort::default().upgradable();
 	let upgradable: Vec<_> = cache.packages(&sort).collect();
 
-	if upgradable.is_empty() {
-		return res;
+	if !upgradable.is_empty() {
+		println!(
+			"{} packages can be upgraded. Run '{}' to see them.",
+			config.color.yellow(&format!("{}", upgradable.len())),
+			config.color.package("nala list --upgradable")
+		);
 	}
-
-	println!(
-		"{} packages can be upgraded. Run '{}' to see them.",
-		config.color.yellow(&format!("{}", upgradable.len())),
-		config.color.package("nala list --upgradable")
-	);
 
 	// Not sure yet if I want to implement this directly
 	// But here is how one might do it.
