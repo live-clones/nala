@@ -300,13 +300,15 @@ impl<'a> DynAcquireProgress for NalaAcquireProgress<'a> {
 	///
 	/// Print out the ErrorText for the Item.
 	fn fail(&mut self, item: &ItemDesc) {
-		let mut show_error = true;
+		let mut show_error = self
+			.config
+			.apt
+			.bool("Acquire::Progress::Ignore::ShowErrorText", true);
 		let error_text = item.owner().error_text();
 
 		let header = match item.owner().status() {
 			ItemState::StatIdle | ItemState::StatDone => {
-				let key = "Acquire::Progress::Ignore::ShowErrorText";
-				if error_text.is_empty() || self.config.apt.bool(key, false) {
+				if error_text.is_empty() {
 					show_error = false;
 				}
 				&self.ign
