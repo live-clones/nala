@@ -47,4 +47,5 @@ lto = true
 # Can't really tell if this changes anything
 # codegen-units = 1
 
-panic = "abort"
+# This causes it to not work on some machines?
+# panic = "abort"
