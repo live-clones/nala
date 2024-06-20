@@ -477,9 +477,9 @@ pub fn fetch(config: &Config) -> Result<()> {
 		scored.into_iter().map(|(s, _)| s).collect()
 	} else {
 		dprint!(config, "Interactive mode, starting TUI");
-		let terminal = init_terminal()?;
+		let terminal = init_terminal(false)?;
 		let chosen = tui::FetchTui::new(scored).run(terminal)?;
-		restore_terminal()?;
+		restore_terminal(false)?;
 		chosen
 	};
 

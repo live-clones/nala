@@ -528,12 +528,19 @@ pub async fn download(config: &Config) -> Result<()> {
 	}
 
 	// setup terminal
-	let mut terminal = init_terminal()?;
+	let mut terminal = init_terminal(true)?;
 
 	// create app and run it
 	let tick_rate = Duration::from_millis(250);
 	let res = run_app(&mut terminal, &mut downloader, tick_rate).await;
-	restore_terminal()?;
+	restore_terminal(true)?;
+	// Maybe this part goes into restore_terminal?
+	//
+	// Terminal clear is if we don't want the progress bar to stick around
+	// terminal.clear()?;
+	//
+	// The double new line is if we do want it to stick around
+	println!("\n\n");
 
 	// This is for closing out of the app.
 	if res.is_ok() {
@@ -728,7 +735,7 @@ fn get_paragraph(text: &str) -> Paragraph {
 fn build_block<'a, T: Into<Title<'a>>>(title: T) -> Block<'a> {
 	Block::new()
 		.borders(Borders::ALL)
-		.border_type(BorderType::Rounded)
+		.border_type(BorderType::Thick)
 		.title_alignment(Alignment::Center)
 		.title(title)
 		.style(

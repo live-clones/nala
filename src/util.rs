@@ -19,7 +19,7 @@ pub use dprint;
 use globset::GlobBuilder;
 use once_cell::sync::OnceCell;
 use ratatui::backend::{Backend, CrosstermBackend};
-use ratatui::Terminal;
+use ratatui::{Terminal, TerminalOptions, Viewport};
 use regex::{Regex, RegexBuilder};
 use rust_apt::{Cache, Package, Version};
 
@@ -261,18 +261,26 @@ pub fn virtual_filter<'a, Container: IntoIterator<Item = Package<'a>>>(
 	Ok(virtual_filtered)
 }
 
-pub fn init_terminal() -> Result<Terminal<impl Backend>> {
+pub fn init_terminal(viewport: bool) -> Result<Terminal<impl Backend>> {
 	enable_raw_mode()?;
-	let mut stdout = std::io::stdout();
-	stdout.execute(EnterAlternateScreen)?;
-	let backend = CrosstermBackend::new(stdout);
-	let terminal = Terminal::new(backend)?;
-	Ok(terminal)
+	let mut backend = CrosstermBackend::new(std::io::stdout());
+	if viewport {
+		return Ok(Terminal::with_options(
+			backend,
+			TerminalOptions {
+				viewport: Viewport::Inline(7),
+			},
+		)?);
+	}
+	backend.execute(EnterAlternateScreen)?;
+	Ok(Terminal::new(backend)?)
 }
 
-pub fn restore_terminal() -> Result<()> {
+pub fn restore_terminal(viewport: bool) -> Result<()> {
 	disable_raw_mode()?;
-	std::io::stdout().execute(LeaveAlternateScreen)?;
+	if !viewport {
+		std::io::stdout().execute(LeaveAlternateScreen)?;
+	}
 	Ok(())
 }
 
