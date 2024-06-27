@@ -688,7 +688,7 @@ fn ui(
 }
 
 /// Splits a block horizontally with your contraints
-fn split_horizontal<T>(constraints: T, block: Rect) -> Rc<[Rect]>
+pub fn split_horizontal<T>(constraints: T, block: Rect) -> Rc<[Rect]>
 where
 	T: IntoIterator,
 	T::Item: Into<Constraint>,
@@ -700,7 +700,7 @@ where
 }
 
 /// Splits a block vertically with your contraints
-fn split_vertical<T>(constraints: T, block: Rect) -> Rc<[Rect]>
+pub fn split_vertical<T>(constraints: T, block: Rect) -> Rc<[Rect]>
 where
 	T: IntoIterator,
 	T::Item: Into<Constraint>,
@@ -725,22 +725,22 @@ fn uri_constraints(num: usize) -> Vec<Constraint> {
 	constraints
 }
 
-fn get_paragraph(text: &str) -> Paragraph {
+pub(crate) fn get_paragraph(text: &str) -> Paragraph {
 	Paragraph::new(text)
 		.wrap(Wrap { trim: true })
 		.alignment(Alignment::Right)
 		.set_style(Style::default().fg(Color::White))
 }
 
-fn build_block<'a, T: Into<Title<'a>>>(title: T) -> Block<'a> {
+pub fn build_block<'a, T: Into<Title<'a>>>(title: T) -> Block<'a> {
 	Block::new()
 		.borders(Borders::ALL)
 		.border_type(BorderType::Thick)
-		.title_alignment(Alignment::Center)
+		.title_alignment(Alignment::Left)
 		.title(title)
 		.style(
 			Style::default()
-				.fg(Color::Cyan)
+				.fg(Color::Green)
 				.add_modifier(Modifier::BOLD),
 		)
 }
