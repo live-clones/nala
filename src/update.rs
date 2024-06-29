@@ -3,104 +3,21 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use crossterm::event;
 use crossterm::event::{Event, KeyCode};
-use indicatif::ProgressBar;
 use ratatui::backend::Backend;
-use ratatui::layout::{Alignment, Constraint};
+use ratatui::layout::Alignment;
 use ratatui::style::{Color, Style, Styled, Stylize};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{LineGauge, Paragraph, Widget, Wrap};
-use ratatui::{symbols, Frame, Terminal};
+use ratatui::text::Span;
+use ratatui::widgets::{Paragraph, Widget, Wrap};
+use ratatui::Terminal;
 use rust_apt::error::pending_error;
 use rust_apt::progress::{AcquireProgress, DynAcquireProgress};
 use rust_apt::raw::{AcqTextStatus, ItemDesc, ItemState, PkgAcquire};
-use rust_apt::util::{time_str, unit_str, NumSys};
+use rust_apt::util::time_str;
 use rust_apt::{new_cache, PackageSort};
 
 use crate::config::Config;
+use crate::tui::progress::NalaProgressBar;
 use crate::util::{init_terminal, restore_terminal};
-
-struct NalaProgressBar {
-	indicatif: ProgressBar,
-	spinner: Vec<&'static str>,
-	pos: usize,
-	header: String,
-}
-
-impl NalaProgressBar {
-	fn new(header: String) -> Self {
-		Self {
-			indicatif: ProgressBar::hidden(),
-			spinner: vec!["... [", " .. [", "  . [", "    ["],
-			pos: 0,
-			header,
-		}
-	}
-
-	fn ratio(&self) -> f64 {
-		self.indicatif.position() as f64 / self.indicatif.length().unwrap() as f64
-	}
-
-	fn render(&mut self, f: &mut Frame, msg: Vec<Span>, update_spinner: bool) {
-		let block = crate::downloader::build_block(self.header.to_string().reset().bold());
-		let inner = crate::downloader::split_vertical(
-			[Constraint::Length(1), Constraint::Length(1)],
-			block.inner(f.size()),
-		);
-		f.render_widget(block, f.size());
-
-		f.render_widget(Paragraph::new(Line::from(msg)), inner[0]);
-
-		let percentage = format!("{:.1}% ]", self.ratio() * 100.0);
-		let current_total = format!(
-			"{}/{}",
-			unit_str(self.indicatif.position(), NumSys::Binary, 0),
-			unit_str(self.indicatif.length().unwrap(), NumSys::Binary, 0)
-		);
-		let per_sec = format!(
-			"{}/s ",
-			unit_str(self.indicatif.per_sec() as u64, NumSys::Binary, 0)
-		);
-
-		let bar_block = crate::downloader::split_horizontal(
-			[
-				Constraint::Fill(100),
-				Constraint::Length(percentage.len() as u16 + 2),
-				Constraint::Length(current_total.len() as u16 + 2),
-				Constraint::Length(per_sec.len() as u16 + 2),
-			],
-			inner[1],
-		);
-
-		if update_spinner {
-			if self.pos == 12 {
-				self.pos = 0;
-			} else {
-				self.pos += 1;
-			}
-		}
-
-		let spinner = self.spinner[(self.pos as f64 / 4.0).ceil() as usize];
-
-		f.render_widget(
-			LineGauge::default()
-				.line_set(symbols::line::THICK)
-				.ratio(self.ratio())
-				.label(spinner)
-				.style(Style::default().fg(Color::White))
-				.gauge_style(Style::default().fg(Color::LightGreen).bg(Color::Red)),
-			bar_block[0],
-		);
-		f.render_widget(crate::downloader::get_paragraph(&percentage), bar_block[1]);
-		f.render_widget(
-			crate::downloader::get_paragraph(&current_total),
-			bar_block[2],
-		);
-		f.render_widget(
-			Paragraph::new(per_sec).right_aligned().white().bold(),
-			bar_block[3],
-		);
-	}
-}
 
 fn should_quit() -> Result<bool> {
 	if event::poll(Duration::from_millis(250)).context("event poll failed")? {
@@ -258,7 +175,7 @@ impl<'a, B: Backend> DynAcquireProgress for NalaAcquireProgress<'a, B> {
 
 		let file_size = item.owner().file_size();
 		if file_size != 0 {
-			msg += &format!(" [{}]", unit_str(file_size, NumSys::Binary, 0))
+			msg += &format!(" [{}]", self.progress.unit.str(file_size))
 		}
 
 		self.print(msg);
@@ -291,9 +208,9 @@ impl<'a, B: Backend> DynAcquireProgress for NalaAcquireProgress<'a, B> {
 				.color
 				.bold(&format!(
 					"Fetched {} in {} ({}/s)",
-					unit_str(status.fetched_bytes(), NumSys::Binary, 0),
+					self.progress.unit.str(status.fetched_bytes()),
 					time_str(status.elapsed_time()),
-					unit_str(status.current_cps(), NumSys::Binary, 0)
+					self.progress.unit.str(status.current_cps()),
 				))
 				.to_string()
 		} else {

@@ -10,10 +10,8 @@ use bytes::Bytes;
 use crossterm::event::{self, Event, KeyCode};
 use digest::DynDigest;
 use indicatif::{FormattedDuration, ProgressBar};
-use ratatui::layout::Flex;
 use ratatui::prelude::*;
 use ratatui::style::Stylize;
-use ratatui::widgets::block::Title;
 use ratatui::widgets::*;
 use reqwest::Response;
 use rust_apt::records::RecordField;
@@ -28,6 +26,7 @@ use tokio::task::JoinSet;
 use tokio::time::Duration;
 
 use crate::config::Config;
+use crate::tui::progress::{build_block, get_paragraph, split_horizontal, split_vertical};
 use crate::util::{init_terminal, restore_terminal, NalaRegex};
 
 /// Return the package name. Checks if epoch is needed.
@@ -666,13 +665,11 @@ fn ui(
 
 	// Render the bars
 	f.render_widget(
-		Paragraph::new(format!(
+		get_paragraph(&format!(
 			"Packages: {pkgs_finished}/{}",
 			downloader.uri_list.len()
 		))
-		.wrap(Wrap { trim: true })
-		.alignment(Alignment::Left)
-		.set_style(Style::default().fg(Color::White)),
+		.right_aligned(),
 		total_inner_block[0],
 	);
 
@@ -687,31 +684,6 @@ fn ui(
 	}
 }
 
-/// Splits a block horizontally with your contraints
-pub fn split_horizontal<T>(constraints: T, block: Rect) -> Rc<[Rect]>
-where
-	T: IntoIterator,
-	T::Item: Into<Constraint>,
-{
-	Layout::default()
-		.direction(Direction::Horizontal)
-		.constraints(constraints)
-		.split(block)
-}
-
-/// Splits a block vertically with your contraints
-pub fn split_vertical<T>(constraints: T, block: Rect) -> Rc<[Rect]>
-where
-	T: IntoIterator,
-	T::Item: Into<Constraint>,
-{
-	Layout::default()
-		.flex(Flex::Legacy)
-		.direction(Direction::Vertical)
-		.constraints(constraints)
-		.split(block)
-}
-
 /// Build constraints based on how many downloads
 fn uri_constraints(num: usize) -> Vec<Constraint> {
 	let mut constraints = vec![
@@ -723,26 +695,6 @@ fn uri_constraints(num: usize) -> Vec<Constraint> {
 		constraints.insert(0, Constraint::Max(1));
 	}
 	constraints
-}
-
-pub(crate) fn get_paragraph(text: &str) -> Paragraph {
-	Paragraph::new(text)
-		.wrap(Wrap { trim: true })
-		.alignment(Alignment::Right)
-		.set_style(Style::default().fg(Color::White))
-}
-
-pub fn build_block<'a, T: Into<Title<'a>>>(title: T) -> Block<'a> {
-	Block::new()
-		.borders(Borders::ALL)
-		.border_type(BorderType::Rounded)
-		.title_alignment(Alignment::Left)
-		.title(title)
-		.style(
-			Style::default()
-				.fg(Color::LightGreen)
-				.add_modifier(Modifier::BOLD),
-		)
 }
 
 /// Return the hash_type and the hash_value to be used.

@@ -478,7 +478,7 @@ pub fn fetch(config: &Config) -> Result<()> {
 	} else {
 		dprint!(config, "Interactive mode, starting TUI");
 		let terminal = init_terminal(false)?;
-		let chosen = tui::FetchTui::new(scored).run(terminal)?;
+		let chosen = tui::fetch::App::new(scored).run(terminal)?;
 		restore_terminal(false)?;
 		chosen
 	};
