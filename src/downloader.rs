@@ -15,7 +15,7 @@ use ratatui::style::Stylize;
 use ratatui::widgets::*;
 use reqwest::Response;
 use rust_apt::records::RecordField;
-use rust_apt::util::{terminal_width, unit_str, NumSys};
+use rust_apt::util::{terminal_width, NumSys};
 use rust_apt::{new_cache, Version};
 use sha2::{Digest, Sha256, Sha512};
 use tokio::fs;
@@ -26,7 +26,7 @@ use tokio::task::JoinSet;
 use tokio::time::Duration;
 
 use crate::config::Config;
-use crate::tui::progress::{build_block, get_paragraph, split_horizontal, split_vertical};
+use crate::tui::progress::{build_block, get_paragraph, split_horizontal, split_vertical, UnitStr};
 use crate::util::{init_terminal, restore_terminal, NalaRegex};
 
 /// Return the package name. Checks if epoch is needed.
@@ -178,6 +178,7 @@ impl BarAlignment {
 
 pub struct Progress {
 	indicatif: ProgressBar,
+	unit: UnitStr,
 	bytes_per_sec: String,
 	current_total: String,
 	percentage: String,
@@ -190,6 +191,7 @@ impl Progress {
 
 		Progress {
 			indicatif,
+			unit: UnitStr::new(0, NumSys::Binary),
 			bytes_per_sec: String::new(),
 			current_total: String::new(),
 			percentage: String::new(),
@@ -201,14 +203,11 @@ impl Progress {
 	}
 
 	fn update_strings(&mut self) {
-		self.bytes_per_sec = format!(
-			"{}/s",
-			unit_str(self.indicatif.per_sec() as u64, NumSys::Binary, 0)
-		);
+		self.bytes_per_sec = format!("{}/s", self.unit.str(self.indicatif.per_sec() as u64));
 		self.current_total = format!(
 			"{}/{}",
-			unit_str(self.indicatif.position(), NumSys::Binary, 0),
-			unit_str(self.indicatif.length().unwrap(), NumSys::Binary, 0)
+			self.unit.str(self.indicatif.position()),
+			self.unit.str(self.indicatif.length().unwrap()),
 		);
 		self.percentage = format!("{:.1} %", self.ratio() * 100.0);
 	}
