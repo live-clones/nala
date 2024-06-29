@@ -268,7 +268,7 @@ pub fn init_terminal(viewport: bool) -> Result<Terminal<impl Backend>> {
 		return Ok(Terminal::with_options(
 			backend,
 			TerminalOptions {
-				viewport: Viewport::Inline(7),
+				viewport: Viewport::Inline(4),
 			},
 		)?);
 	}

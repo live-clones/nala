@@ -122,9 +122,9 @@ pub fn show_version<'a>(
 		("Source", ver.source_name().to_string()),
 		(
 			"Installed-Size",
-			unit_str(ver.installed_size(), NumSys::Binary),
+			unit_str(ver.installed_size(), NumSys::Binary, 0),
 		),
-		("Download-Size", unit_str(ver.size(), NumSys::Binary)),
+		("Download-Size", unit_str(ver.size(), NumSys::Binary, 0)),
 		(
 			"Maintainer",
 			ver.get_record(RecordField::Maintainer)

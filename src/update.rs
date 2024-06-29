@@ -1,29 +1,28 @@
-use std::io::Stdout;
-use std::rc::Rc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use crossterm::event;
 use crossterm::event::{Event, KeyCode};
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
-use crossterm::{cursor, event, execute, ExecutableCommand};
-use indicatif::{ProgressBar, ProgressStyle};
-use ratatui::backend::{Backend, CrosstermBackend};
-use ratatui::layout::{Alignment, Constraint, Rect};
-use ratatui::style::{Color, Modifier, Style, Styled, Stylize};
+use indicatif::ProgressBar;
+use ratatui::backend::Backend;
+use ratatui::layout::{Alignment, Constraint};
+use ratatui::style::{Color, Style, Styled, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{LineGauge, Paragraph, Widget, Wrap};
-use ratatui::{symbols, Frame, Terminal, TerminalOptions, Viewport};
-use rust_apt::error::{pending_error, AptErrors};
+use ratatui::{symbols, Frame, Terminal};
+use rust_apt::error::pending_error;
 use rust_apt::progress::{AcquireProgress, DynAcquireProgress};
 use rust_apt::raw::{AcqTextStatus, ItemDesc, ItemState, PkgAcquire};
-use rust_apt::util::{terminal_width, time_str, unit_str, NumSys};
-use rust_apt::{new_cache, Cache, PackageSort};
-use tokio::task::JoinSet;
+use rust_apt::util::{time_str, unit_str, NumSys};
+use rust_apt::{new_cache, PackageSort};
 
 use crate::config::Config;
+use crate::util::{init_terminal, restore_terminal};
 
 struct NalaProgressBar {
 	indicatif: ProgressBar,
+	spinner: Vec<&'static str>,
+	pos: usize,
 	header: String,
 }
 
@@ -31,6 +30,8 @@ impl NalaProgressBar {
 	fn new(header: String) -> Self {
 		Self {
 			indicatif: ProgressBar::hidden(),
+			spinner: vec!["... [", " .. [", "  . [", "    ["],
+			pos: 0,
 			header,
 		}
 	}
@@ -39,7 +40,7 @@ impl NalaProgressBar {
 		self.indicatif.position() as f64 / self.indicatif.length().unwrap() as f64
 	}
 
-	fn render(&mut self, f: &mut Frame, msg: Vec<Span>) {
+	fn render(&mut self, f: &mut Frame, msg: Vec<Span>, update_spinner: bool) {
 		let block = crate::downloader::build_block(self.header.to_string().reset().bold());
 		let inner = crate::downloader::split_vertical(
 			[Constraint::Length(1), Constraint::Length(1)],
@@ -49,43 +50,53 @@ impl NalaProgressBar {
 
 		f.render_widget(Paragraph::new(Line::from(msg)), inner[0]);
 
+		let percentage = format!("{:.1}% ]", self.ratio() * 100.0);
+		let current_total = format!(
+			"{}/{}",
+			unit_str(self.indicatif.position(), NumSys::Binary, 0),
+			unit_str(self.indicatif.length().unwrap(), NumSys::Binary, 0)
+		);
+		let per_sec = format!(
+			"{}/s ",
+			unit_str(self.indicatif.per_sec() as u64, NumSys::Binary, 0)
+		);
+
 		let bar_block = crate::downloader::split_horizontal(
 			[
 				Constraint::Fill(100),
-				Constraint::Fill(5),
-				Constraint::Fill(5),
-				Constraint::Fill(5),
-				Constraint::Min(0),
+				Constraint::Length(percentage.len() as u16 + 2),
+				Constraint::Length(current_total.len() as u16 + 2),
+				Constraint::Length(per_sec.len() as u16 + 2),
 			],
 			inner[1],
 		);
+
+		if update_spinner {
+			if self.pos == 12 {
+				self.pos = 0;
+			} else {
+				self.pos += 1;
+			}
+		}
+
+		let spinner = self.spinner[(self.pos as f64 / 4.0).ceil() as usize];
 
 		f.render_widget(
 			LineGauge::default()
 				.line_set(symbols::line::THICK)
 				.ratio(self.ratio())
-				.label("Downloading...")
+				.label(spinner)
 				.style(Style::default().fg(Color::White))
 				.gauge_style(Style::default().fg(Color::LightGreen).bg(Color::Red)),
 			bar_block[0],
 		);
+		f.render_widget(crate::downloader::get_paragraph(&percentage), bar_block[1]);
 		f.render_widget(
-			crate::downloader::get_paragraph(&format!("{:.1} %", self.ratio() * 100.0)),
-			bar_block[1],
-		);
-		f.render_widget(
-			crate::downloader::get_paragraph(&format!(
-				"{}/{}",
-				unit_str(self.indicatif.position(), NumSys::Binary),
-				unit_str(self.indicatif.length().unwrap(), NumSys::Binary)
-			)),
+			crate::downloader::get_paragraph(&current_total),
 			bar_block[2],
 		);
 		f.render_widget(
-			crate::downloader::get_paragraph(&format!(
-				"{}/s",
-				unit_str(self.indicatif.per_sec() as u64, NumSys::Binary)
-			)),
+			Paragraph::new(per_sec).right_aligned().white().bold(),
 			bar_block[3],
 		);
 	}
@@ -100,55 +111,35 @@ fn should_quit() -> Result<bool> {
 	Ok(false)
 }
 
-pub fn update(config: &Config) -> Result<(), AptErrors> {
+pub fn update(config: &Config) -> Result<()> {
 	let cache = new_cache!()?;
-	enable_raw_mode()?;
-	let mut terminal = Terminal::with_options(
-		CrosstermBackend::new(std::io::stdout()),
-		TerminalOptions {
-			viewport: Viewport::Inline(4),
-		},
-	)?;
+	let mut terminal = init_terminal(true)?;
 
 	// TODO: Handle CtrlC here so that we can unhide the cursor
-
-	// I think NalaAcquireProgress will have to store terminal
-	// And then we will need a defined ui function, maybe self.ui? It depends.
-	// It doesn't need to be async I think
-	// But it needs to be able to draw the terminal from the callbacks.
-	// This might be weird, but idk that we can give everything send that needs it.
-	//
-	// terminal.draw(|f| ui(f, align, bars, constraints, pkgs_finished,
-	// downloader))?;
-
-	// run(&mut terminal)?;
-
-	// disable_raw_mode()?;
-	// terminal.clear()?;
-
 	let res = cache.update(&mut AcquireProgress::new(NalaAcquireProgress::new(
-		config, terminal,
+		config,
+		&mut terminal,
 	)));
 
-	disable_raw_mode()?;
+	restore_terminal(true)?;
 	terminal.clear()?;
 	// Do not print how many packages are upgradable if update errored.
 	#[allow(clippy::question_mark)]
 	if res.is_err() {
-		return res;
+		return Ok(res?);
 	}
 
-	// let cache = new_cache!()?;
-	// let sort = PackageSort::default().upgradable();
-	// let upgradable: Vec<_> = cache.packages(&sort).collect();
+	let cache = new_cache!()?;
+	let sort = PackageSort::default().upgradable();
+	let upgradable: Vec<_> = cache.packages(&sort).collect();
 
-	// if !upgradable.is_empty() {
-	// 	println!(
-	// 		"{} packages can be upgraded. Run '{}' to see them.",
-	// 		config.color.yellow(&format!("{}", upgradable.len())),
-	// 		config.color.package("nala list --upgradable")
-	// 	);
-	// }
+	if !upgradable.is_empty() {
+		println!(
+			"{} packages can be upgraded. Run '{}' to see them.",
+			config.color.yellow(&format!("{}", upgradable.len())),
+			config.color.package("nala list --upgradable")
+		);
+	}
 
 	// Not sure yet if I want to implement this directly
 	// But here is how one might do it.
@@ -161,89 +152,7 @@ pub fn update(config: &Config) -> Result<(), AptErrors> {
 	// 	println!("{pkg} ({inst}) -> ({cand})");
 	// }
 
-	res
-}
-
-// "┏━┳┓\n"
-// "┃ ┃┃\n"
-// "┣━╋┫\n"
-// "┃ ┃┃\n"
-// "┣━╋┫\n"
-// "┣━╋┫\n"
-// "┃ ┃┃\n"
-// "┗━┻┛\n"
-
-// "╭─┬╮\n"
-// "│ ││\n"
-// "├─┼┤\n"
-// "│ ││\n"
-// "├─┼┤\n"
-// "├─┼┤\n"
-// "│ ││\n"
-// "╰─┴╯\n"
-
-const HEAVY: [&str; 6] = ["━", "┃", "┏", "┓", "┗", "┛"];
-#[allow(dead_code)]
-const ROUNDED: [&str; 6] = ["─", "│", "╭", "╮", "╰", "╯"];
-#[allow(dead_code)]
-const ASCII: [&str; 6] = ["-", "|", "x", "x", "x", "x"];
-
-pub struct Border {
-	chars: [&'static str; 6],
-	width: usize,
-	top: String,
-	bot: String,
-}
-
-impl Border {
-	pub fn new(chars: [&'static str; 6]) -> Border {
-		Self {
-			chars,
-			width: 0,
-			top: String::new(),
-			bot: String::new(),
-		}
-	}
-
-	pub fn horizontal(&self) -> &str { self.chars[0] }
-
-	pub fn vertical(&self) -> &str { self.chars[1] }
-
-	pub fn width_changed(&mut self) -> bool {
-		let width = terminal_width();
-		if self.width != width {
-			self.width = width;
-			return true;
-		}
-		false
-	}
-
-	pub fn top_border(&mut self) -> &str {
-		if self.width_changed() || self.top.is_empty() {
-			let header = "Update";
-
-			self.top = format!(
-				"{}{} {header} {}{}",
-				self.chars[2],
-				self.horizontal(),
-				self.horizontal().repeat(self.width - header.len() - 5),
-				self.chars[3],
-			);
-		}
-		&self.top
-	}
-
-	pub fn bottom_border(&mut self) -> &str {
-		if self.width_changed() || self.bot.is_empty() {
-			self.bot = format!(
-				"{}{}{}",
-				self.chars[4],
-				self.horizontal().repeat(self.width - 2),
-				self.chars[5],
-			)
-		}
-		&self.bot
-	}
+	Ok(res?)
 }
 
 /// AptAcquireProgress is the default struct for the update method on the cache.
@@ -251,11 +160,10 @@ impl Border {
 /// This struct mimics the output of `apt update`.
 pub struct NalaAcquireProgress<'a, B: Backend> {
 	config: &'a Config,
-	terminal: Terminal<B>,
+	terminal: &'a mut Terminal<B>,
+	message: Vec<String>,
 	pulse_interval: usize,
-	max: usize,
 	progress: NalaProgressBar,
-	border: Border,
 	ign: String,
 	hit: String,
 	get: String,
@@ -264,29 +172,49 @@ pub struct NalaAcquireProgress<'a, B: Backend> {
 
 impl<'a, B: Backend> NalaAcquireProgress<'a, B> {
 	/// Returns a new default progress instance.
-	pub fn new(config: &'a Config, terminal: Terminal<B>) -> Self {
-		let progress = Self {
+	pub fn new(config: &'a Config, terminal: &'a mut Terminal<B>) -> Self {
+		let mut progress = Self {
 			config,
 			terminal,
+			message: vec![],
 			pulse_interval: 0,
-			max: 0,
 			progress: NalaProgressBar::new("  Update  ".to_string()),
 			// TODO: Maybe we should make it configurable.
-			border: Border::new(HEAVY),
 			ign: config.color.yellow("Ignored").into(),
 			hit: config.color.package("No Change").into(),
 			get: config.color.blue("Updated").into(),
 			err: config.color.red("Error").into(),
 		};
-		// progress.progress = ProgressBar::new(0)
-		// 	.with_style(progress.get_style("".to_string()))
-		// 	.with_prefix("%");
-
-		// progress.progress.enable_steady_tick(Duration::from_secs(1));
+		// Set Length 1 so ratio cannot panic.
+		progress.progress.indicatif.set_length(1);
+		// Draw a blank window so it doesn't look weird
+		progress.draw(false);
 		progress
 	}
 
-	pub fn print(&mut self, msg: &str) {
+	pub fn draw(&mut self, update_spinner: bool) {
+		let mut message = vec![];
+
+		if self.message.is_empty() {
+			message.push(Span::from("Working...").white().bold())
+		} else {
+			let mut first = true;
+			for string in self.message.iter() {
+				if first {
+					message.push(Span::from(string).white().bold());
+					first = false;
+					continue;
+				}
+				message.push(Span::from(string).reset().white());
+			}
+		}
+
+		self.terminal
+			.draw(|f| self.progress.render(f, message, update_spinner))
+			.unwrap();
+	}
+
+	pub fn print(&mut self, msg: String) {
 		self.terminal
 			.insert_before(1, |buf| {
 				Paragraph::new(msg)
@@ -296,57 +224,8 @@ impl<'a, B: Backend> NalaAcquireProgress<'a, B> {
 					.render(buf.area, buf);
 			})
 			.unwrap();
-	}
-
-	pub fn get_style(&mut self, msg: String) -> ProgressStyle {
-		// "┏━┳┓\n"
-		// "┃ ┃┃\n"
-		// "┣━╋┫\n"
-		// "┃ ┃┃\n"
-		// "┣━╋┫\n"
-		// "┣━╋┫\n"
-		// "┃ ┃┃\n"
-		// "┗━┻┛\n"
-
-		// "╭─┬╮\n"
-		// "│ ││\n"
-		// "├─┼┤\n"
-		// "│ ││\n"
-		// "├─┼┤\n"
-		// "├─┼┤\n"
-		// "│ ││\n"
-		// "╰─┴╯\n"
-
-		// TODO: This will need to be methods on the struct
-		// And we will have to shift it around to be ASCII safe maybe.
-		let mut template = self
-			.config
-			.color
-			.package(self.border.top_border())
-			.to_string();
-
-		template += "\n";
-		if !msg.is_empty() {
-			template += &msg;
-			template += "\n";
-		}
-
-		let side = self
-			.config
-			.color
-			.package(self.border.vertical())
-			.to_string();
-
-		template += &format!(
-			"{side} {{spinner:.bold}} {{percent:.bold}}{{prefix:.bold}} [{{wide_bar:.cyan/red}}] \
-			 {{bytes}}/{{total_bytes}} ({{eta}}) {side}\n{}",
-			self.config.color.package(self.border.bottom_border())
-		);
-
-		ProgressStyle::with_template(&template)
-			.unwrap()
-			.tick_strings(&[".  ", ".. ", "...", "   "])
-			.progress_chars("━━")
+		// Must redraw the terminal after printing
+		self.draw(false);
 	}
 }
 
@@ -368,23 +247,21 @@ impl<'a, B: Backend> DynAcquireProgress for NalaAcquireProgress<'a, B> {
 	///
 	/// Prints out the short description and the expected size.
 	fn hit(&mut self, item: &ItemDesc) {
-		self.print(&format!("{}: {}", self.hit, item.description()))
-		// self.progress
-		// 	.println(format!("{}: {}", self.hit, item.description()));
+		self.print(format!("{}: {}", self.hit, item.description()))
 	}
 
 	/// Called when an Item has started to download
 	///
 	/// Prints out the short description and the expected size.
 	fn fetch(&mut self, item: &ItemDesc) {
-		// let mut msg = format!("{}:   {}", self.get, item.description());
+		let mut msg = format!("{}:   {}", self.get, item.description());
 
-		// let file_size = item.owner().file_size();
-		// if file_size != 0 {
-		// 	msg += &format!(" [{}]", unit_str(file_size, NumSys::Decimal))
-		// }
+		let file_size = item.owner().file_size();
+		if file_size != 0 {
+			msg += &format!(" [{}]", unit_str(file_size, NumSys::Binary, 0))
+		}
 
-		// self.progress.println(msg);
+		self.print(msg);
 	}
 
 	/// Called when an item is successfully and completely fetched.
@@ -405,52 +282,51 @@ impl<'a, B: Backend> DynAcquireProgress for NalaAcquireProgress<'a, B> {
 	///
 	/// prints out the bytes downloaded and the overall average line speed.
 	fn stop(&mut self, status: &AcqTextStatus) {
-		// if pending_error() {
-		// 	return;
-		// }
+		if pending_error() {
+			return;
+		}
 
-		// let msg = if status.fetched_bytes() != 0 {
-		// 	self.config
-		// 		.color
-		// 		.bold(&format!(
-		// 			"Fetched {} in {} ({}/s)",
-		// 			unit_str(status.fetched_bytes(), NumSys::Decimal),
-		// 			time_str(status.elapsed_time()),
-		// 			unit_str(status.current_cps(), NumSys::Decimal)
-		// 		))
-		// 		.to_string()
-		// } else {
-		// 	"Nothing to fetch.".to_string()
-		// };
-		// self.progress.println(msg);
+		let msg = if status.fetched_bytes() != 0 {
+			self.config
+				.color
+				.bold(&format!(
+					"Fetched {} in {} ({}/s)",
+					unit_str(status.fetched_bytes(), NumSys::Binary, 0),
+					time_str(status.elapsed_time()),
+					unit_str(status.current_cps(), NumSys::Binary, 0)
+				))
+				.to_string()
+		} else {
+			"Nothing to fetch.".to_string()
+		};
+		self.print(msg);
 	}
 
 	/// Called when an Item fails to download.
 	///
 	/// Print out the ErrorText for the Item.
 	fn fail(&mut self, item: &ItemDesc) {
-		// let mut show_error = self
-		// 	.config
-		// 	.apt
-		// 	.bool("Acquire::Progress::Ignore::ShowErrorText", true);
-		// let error_text = item.owner().error_text();
+		let mut show_error = self
+			.config
+			.apt
+			.bool("Acquire::Progress::Ignore::ShowErrorText", true);
+		let error_text = item.owner().error_text();
 
-		// let header = match item.owner().status() {
-		// 	ItemState::StatIdle | ItemState::StatDone => {
-		// 		if error_text.is_empty() {
-		// 			show_error = false;
-		// 		}
-		// 		&self.ign
-		// 	},
-		// 	_ => &self.err,
-		// };
+		let header = match item.owner().status() {
+			ItemState::StatIdle | ItemState::StatDone => {
+				if error_text.is_empty() {
+					show_error = false;
+				}
+				&self.ign
+			},
+			_ => &self.err,
+		};
 
-		// self.progress
-		// 	.println(format!("{header}: {}", item.description()));
+		self.print(format!("{header}: {}", item.description()));
 
-		// if show_error {
-		// 	self.progress.println(error_text);
-		// }
+		if show_error {
+			self.print(error_text);
+		}
 	}
 
 	/// Called periodically to provide the overall progress information
@@ -466,7 +342,7 @@ impl<'a, B: Backend> DynAcquireProgress for NalaAcquireProgress<'a, B> {
 			panic!("Find a better way to exit!")
 		}
 
-		let mut string: Vec<Span> = vec![];
+		let mut string: Vec<String> = vec![];
 
 		for worker in owner.workers().iter() {
 			let Ok(item) = worker.item() else {
@@ -494,9 +370,9 @@ impl<'a, B: Backend> DynAcquireProgress for NalaAcquireProgress<'a, B> {
 				let mut uri = dest_file.replace('_', "/");
 				uri.insert_str(0, proto);
 
-				string.push(Span::from(work_string).white().bold());
+				string.push(work_string);
 
-				string.push(Span::from(uri).reset().white());
+				string.push(uri);
 
 				// Break only for slim progress
 				if !self.config.get_bool("verbose", false) {
@@ -505,22 +381,7 @@ impl<'a, B: Backend> DynAcquireProgress for NalaAcquireProgress<'a, B> {
 			};
 		}
 
-		if string.is_empty() {
-			string.push(Span::from("Working...").white().bold())
-		}
-		self.terminal
-			.draw(|f| self.progress.render(f, string))
-			.unwrap();
-
-		// self.max = string.len().max(self.max);
-
-		// let filler = format!("{side}{}{side}", &" ".repeat(term_width - 2));
-
-		// while string.len() < self.max {
-		// 	string.insert(0, filler.to_string())
-		// }
-
-		// let style = self.get_style(string.join("\n"));
-		// self.progress.set_style(style);
+		self.message = string;
+		self.draw(true);
 	}
 }

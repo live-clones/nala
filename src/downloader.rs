@@ -204,12 +204,12 @@ impl Progress {
 	fn update_strings(&mut self) {
 		self.bytes_per_sec = format!(
 			"{}/s",
-			unit_str(self.indicatif.per_sec() as u64, NumSys::Binary)
+			unit_str(self.indicatif.per_sec() as u64, NumSys::Binary, 0)
 		);
 		self.current_total = format!(
 			"{}/{}",
-			unit_str(self.indicatif.position(), NumSys::Binary),
-			unit_str(self.indicatif.length().unwrap(), NumSys::Binary)
+			unit_str(self.indicatif.position(), NumSys::Binary, 0),
+			unit_str(self.indicatif.length().unwrap(), NumSys::Binary, 0)
 		);
 		self.percentage = format!("{:.1} %", self.ratio() * 100.0);
 	}
@@ -735,12 +735,12 @@ pub(crate) fn get_paragraph(text: &str) -> Paragraph {
 pub fn build_block<'a, T: Into<Title<'a>>>(title: T) -> Block<'a> {
 	Block::new()
 		.borders(Borders::ALL)
-		.border_type(BorderType::Thick)
+		.border_type(BorderType::Rounded)
 		.title_alignment(Alignment::Left)
 		.title(title)
 		.style(
 			Style::default()
-				.fg(Color::Green)
+				.fg(Color::LightGreen)
 				.add_modifier(Modifier::BOLD),
 		)
 }
