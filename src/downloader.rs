@@ -416,20 +416,6 @@ impl Downloader {
 						continue;
 					}
 				}
-
-				if let Some(file_match) = self.mirror_regex.mirror_file()?.captures(&uri) {
-					let filename = file_match.get(1).unwrap().as_str();
-					if !self.mirrors.contains_key(filename) {
-						self.add_to_mirrors(&uri, filename).await?;
-					};
-
-					if self
-						.get_from_mirrors(version, &mut filtered, filename)
-						.is_some()
-					{
-						continue;
-					}
-				}
 			}
 			// If none of the conditions meet then we just add it to the uris
 			filtered.push(uri);

@@ -2,9 +2,8 @@ use std::rc::Rc;
 
 use indicatif::ProgressBar;
 use ratatui::layout::{Alignment, Constraint, Direction, Flex, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style, Styled, Stylize};
+use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::block::Title;
 use ratatui::widgets::{Block, BorderType, Borders, LineGauge, Paragraph, Wrap};
 use ratatui::{symbols, Frame};
 use rust_apt::util::NumSys;
@@ -42,21 +41,19 @@ impl UnitStr {
 
 pub struct NalaProgressBar {
 	pub indicatif: ProgressBar,
-	spinner: Vec<&'static str>,
 	pub unit: UnitStr,
-	pos: usize,
-	header: String,
+	remaining: bool,
 }
 
 impl NalaProgressBar {
-	pub fn new(header: String) -> Self {
+	pub fn new(remaining: bool) -> Self {
+		let indicatif = ProgressBar::hidden();
+		indicatif.set_length(0);
+
 		Self {
-			indicatif: ProgressBar::hidden(),
-			// TODO: Maybe the following two should be configurable
-			spinner: vec!["...", " ..", "  .", "   "],
-			unit: UnitStr::new(0, NumSys::Binary),
-			pos: 0,
-			header,
+			indicatif,
+			unit: UnitStr::new(1, NumSys::Binary),
+			remaining,
 		}
 	}
 
@@ -64,8 +61,8 @@ impl NalaProgressBar {
 		self.indicatif.position() as f64 / self.indicatif.length().unwrap() as f64
 	}
 
-	pub fn render(&mut self, f: &mut Frame, msg: Vec<Span>, update_spinner: bool) {
-		let block = build_block(self.header.to_string().reset().bold());
+	pub fn render(&mut self, f: &mut Frame, msg: Vec<Span>) {
+		let block = build_block();
 		let inner = split_vertical(
 			[Constraint::Length(1), Constraint::Length(1)],
 			block.inner(f.size()),
@@ -82,38 +79,56 @@ impl NalaProgressBar {
 		);
 		let per_sec = format!("{}/s ", self.unit.str(self.indicatif.per_sec() as u64));
 
-		let bar_block = split_horizontal(
-			[
-				Constraint::Fill(100),
-				Constraint::Length(percentage.len() as u16 + 2),
-				Constraint::Length(current_total.len() as u16 + 2),
-				Constraint::Length(per_sec.len() as u16 + 2),
-			],
-			inner[1],
-		);
+		let (label, constraints) = if self.remaining {
+			(
+				Line::from(vec![
+					Span::from("Time Remaining:").light_green(),
+					Span::from(format!(
+						" {}",
+						rust_apt::util::time_str(self.indicatif.eta().as_secs())
+					)),
+				]),
+				[
+					Constraint::Fill(100),
+					Constraint::Length(percentage.len() as u16 + 2),
+					Constraint::Length(current_total.len() as u16 + 2),
+					Constraint::Length(per_sec.len() as u16 + 2),
+				],
+			)
+		} else {
+			(
+				Line::from(Span::from("")),
+				[
+					Constraint::Length(percentage.len() as u16 + 2),
+					Constraint::Fill(100),
+					Constraint::Length(current_total.len() as u16 + 2),
+					Constraint::Length(per_sec.len() as u16 + 2),
+				],
+			)
+		};
 
-		if update_spinner {
-			if self.pos == 12 {
-				self.pos = 0;
-			} else {
-				self.pos += 1;
-			}
+		let bar_block = split_horizontal(constraints, inner[1]);
+
+		let bar = LineGauge::default()
+			.line_set(symbols::line::THICK)
+			.ratio(self.ratio())
+			.label(label)
+			.style(Style::default().fg(Color::White))
+			.gauge_style(Style::default().fg(Color::LightGreen).bg(Color::Red));
+
+		if self.remaining {
+			f.render_widget(bar, bar_block[0]);
+			f.render_widget(get_paragraph(&percentage).blue(), bar_block[1]);
+		} else {
+			f.render_widget(
+				get_paragraph(&percentage).left_aligned().white(),
+				bar_block[0],
+			);
+			f.render_widget(bar, bar_block[1]);
 		}
 
-		let spinner = self.spinner[(self.pos as f64 / 4.0).ceil() as usize];
-
-		f.render_widget(
-			LineGauge::default()
-				.line_set(symbols::line::THICK)
-				.ratio(self.ratio())
-				.label(spinner)
-				.style(Style::default().fg(Color::White))
-				.gauge_style(Style::default().fg(Color::LightGreen).bg(Color::Red)),
-			bar_block[0],
-		);
-		f.render_widget(get_paragraph(&percentage), bar_block[1]);
-		f.render_widget(get_paragraph(&current_total), bar_block[2]);
-		f.render_widget(get_paragraph(&per_sec).bold(), bar_block[3]);
+		f.render_widget(get_paragraph(&current_total).light_green(), bar_block[2]);
+		f.render_widget(get_paragraph(&per_sec).blue(), bar_block[3]);
 	}
 }
 
@@ -121,15 +136,13 @@ pub fn get_paragraph(text: &str) -> Paragraph {
 	Paragraph::new(text)
 		.wrap(Wrap { trim: true })
 		.right_aligned()
-		.set_style(Style::default().fg(Color::White))
 }
 
-pub fn build_block<'a, T: Into<Title<'a>>>(title: T) -> Block<'a> {
+pub fn build_block<'a>() -> Block<'a> {
 	Block::new()
 		.borders(Borders::ALL)
 		.border_type(BorderType::Rounded)
 		.title_alignment(Alignment::Left)
-		.title(title)
 		.style(
 			Style::default()
 				.fg(Color::LightGreen)
@@ -144,6 +157,7 @@ where
 	T::Item: Into<Constraint>,
 {
 	Layout::default()
+		.flex(Flex::SpaceBetween)
 		.direction(Direction::Horizontal)
 		.constraints(constraints)
 		.split(block)

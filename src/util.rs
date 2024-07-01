@@ -18,7 +18,7 @@ use crossterm::ExecutableCommand;
 pub use dprint;
 use globset::GlobBuilder;
 use once_cell::sync::OnceCell;
-use ratatui::backend::{Backend, CrosstermBackend};
+use ratatui::backend::CrosstermBackend;
 use ratatui::{Terminal, TerminalOptions, Viewport};
 use regex::{Regex, RegexBuilder};
 use rust_apt::{Cache, Package, Version};
@@ -28,7 +28,6 @@ use crate::config::Config;
 pub struct NalaRegex {
 	mirror: OnceCell<Regex>,
 	domain: OnceCell<Regex>,
-	mirror_file: OnceCell<Regex>,
 	ubuntu_url: OnceCell<Regex>,
 	ubuntu_country: OnceCell<Regex>,
 }
@@ -38,7 +37,6 @@ impl NalaRegex {
 		NalaRegex {
 			mirror: OnceCell::new(),
 			domain: OnceCell::new(),
-			mirror_file: OnceCell::new(),
 			ubuntu_url: OnceCell::new(),
 			ubuntu_country: OnceCell::new(),
 		}
@@ -49,18 +47,14 @@ impl NalaRegex {
 	}
 
 	pub fn mirror(&self) -> Result<&Regex> {
-		self.mirror
-			.get_or_try_init(|| Self::build_regex(r"mirror://(.*?/.*?)/"))
+		self.mirror.get_or_try_init(|| {
+			Self::build_regex(r"(mirror://(.*?)/pool|mirror\+file:(/.*?)/pool)")
+		})
 	}
 
 	pub fn domain(&self) -> Result<&Regex> {
 		self.domain
 			.get_or_try_init(|| Self::build_regex(r"https?://([A-Za-z_0-9.-]+).*"))
-	}
-
-	pub fn mirror_file(&self) -> Result<&Regex> {
-		self.mirror_file
-			.get_or_try_init(|| Self::build_regex(r"mirror\+file:(/.*?)/pool"))
 	}
 
 	pub fn ubuntu_url(&self) -> Result<&Regex> {
@@ -261,7 +255,7 @@ pub fn virtual_filter<'a, Container: IntoIterator<Item = Package<'a>>>(
 	Ok(virtual_filtered)
 }
 
-pub fn init_terminal(viewport: bool) -> Result<Terminal<impl Backend>> {
+pub fn init_terminal(viewport: bool) -> Result<Terminal<CrosstermBackend<std::io::Stdout>>> {
 	enable_raw_mode()?;
 	let mut backend = CrosstermBackend::new(std::io::stdout());
 	if viewport {

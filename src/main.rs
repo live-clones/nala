@@ -3,7 +3,6 @@ use std::process::ExitCode;
 
 use anyhow::{bail, Result};
 use clap::{ArgMatches, CommandFactory, FromArgMatches};
-use downloader::download;
 use history::history_test;
 use rust_apt::error::AptErrors;
 
@@ -17,7 +16,7 @@ mod update;
 mod clean;
 mod colors;
 mod config;
-mod downloader;
+mod newdownload;
 mod tui;
 mod util;
 
@@ -27,6 +26,7 @@ use crate::colors::Color;
 use crate::config::Config;
 use crate::fetch::fetch;
 use crate::list::{list, search};
+use crate::newdownload::download;
 use crate::show::show;
 use crate::update::update;
 

@@ -95,7 +95,7 @@ impl<'a, B: Backend> NalaAcquireProgress<'a, B> {
 			terminal,
 			message: vec![],
 			pulse_interval: 0,
-			progress: NalaProgressBar::new("  Update  ".to_string()),
+			progress: NalaProgressBar::new(false),
 			// TODO: Maybe we should make it configurable.
 			ign: config.color.yellow("Ignored").into(),
 			hit: config.color.package("No Change").into(),
@@ -105,20 +105,20 @@ impl<'a, B: Backend> NalaAcquireProgress<'a, B> {
 		// Set Length 1 so ratio cannot panic.
 		progress.progress.indicatif.set_length(1);
 		// Draw a blank window so it doesn't look weird
-		progress.draw(false);
+		progress.draw();
 		progress
 	}
 
-	pub fn draw(&mut self, update_spinner: bool) {
+	pub fn draw(&mut self) {
 		let mut message = vec![];
 
 		if self.message.is_empty() {
-			message.push(Span::from("Working...").white().bold())
+			message.push(Span::from("Working...").light_green())
 		} else {
 			let mut first = true;
 			for string in self.message.iter() {
 				if first {
-					message.push(Span::from(string).white().bold());
+					message.push(Span::from(string).light_green());
 					first = false;
 					continue;
 				}
@@ -127,7 +127,7 @@ impl<'a, B: Backend> NalaAcquireProgress<'a, B> {
 		}
 
 		self.terminal
-			.draw(|f| self.progress.render(f, message, update_spinner))
+			.draw(|f| self.progress.render(f, message))
 			.unwrap();
 	}
 
@@ -142,7 +142,7 @@ impl<'a, B: Backend> NalaAcquireProgress<'a, B> {
 			})
 			.unwrap();
 		// Must redraw the terminal after printing
-		self.draw(false);
+		self.draw();
 	}
 }
 
@@ -299,6 +299,6 @@ impl<'a, B: Backend> DynAcquireProgress for NalaAcquireProgress<'a, B> {
 		}
 
 		self.message = string;
-		self.draw(true);
+		self.draw();
 	}
 }
