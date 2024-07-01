@@ -16,7 +16,7 @@ mod update;
 mod clean;
 mod colors;
 mod config;
-mod newdownload;
+mod downloader;
 mod tui;
 mod util;
 
@@ -24,9 +24,9 @@ use crate::clean::clean;
 use crate::cli::NalaParser;
 use crate::colors::Color;
 use crate::config::Config;
+use crate::downloader::download;
 use crate::fetch::fetch;
 use crate::list::{list, search};
-use crate::newdownload::download;
 use crate::show::show;
 use crate::update::update;
 
