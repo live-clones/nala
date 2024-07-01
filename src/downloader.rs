@@ -327,7 +327,7 @@ impl Downloader {
 		Ok(Downloader {
 			terminal: init_terminal(true)?,
 			progress: NalaProgressBar::new(true),
-			tick_rate: Duration::from_millis(500),
+			tick_rate: Duration::from_millis(250),
 			current: 0,
 			total,
 			rx,
