@@ -95,13 +95,13 @@ impl StatefulList {
 }
 
 /// The Struct that drives the Fetch TUI
-pub struct FetchTui {
+pub struct App {
 	items: StatefulList,
 }
 
-impl FetchTui {
+impl App {
 	pub fn new(scored: Vec<(String, u128)>) -> Self {
-		FetchTui {
+		App {
 			items: StatefulList::new(scored),
 		}
 	}
@@ -198,7 +198,7 @@ impl FetchTui {
 	}
 }
 
-impl Widget for &mut FetchTui {
+impl Widget for &mut App {
 	fn render(self, area: Rect, buf: &mut Buffer) {
 		// Create a space for header, todo list and the footer.
 		let [list_area, info_area, footer_area] = Layout::vertical([
