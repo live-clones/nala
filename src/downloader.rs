@@ -186,12 +186,11 @@ impl Uri {
 		archive: String,
 		tx: mpsc::UnboundedSender<Message>,
 	) -> Result<Uri> {
-		let (hash_type, hash_value) = get_hash(config, version)?;
-
 		let filename = get_pkg_name(version);
 		let destination = format!("{archive}/partial/{filename}");
 		let archive = format!("{archive}{filename}");
 
+		let (hash_type, hash_value) = get_hash(config, version)?;
 		Ok(Uri {
 			uris: filter.uris(version, config)?,
 			size: version.size(),
@@ -229,20 +228,37 @@ impl Uri {
 			})
 	}
 
+	fn get_hasher(&self) -> Box<dyn DynDigest + Send> {
+		match self.hash_type.as_str() {
+			"sha256" => Box::new(Sha256::new()),
+			_ => Box::new(Sha512::new()),
+		}
+	}
+
 	async fn check_hash(&self, other: &str) -> Result<()> {
 		if other == self.hash_value {
 			return Ok(());
 		}
 		self.remove_file().await?;
+
+		self.tx.send(Message::Error)?;
 		bail!("Checksum did not match for {}", &self.filename);
 	}
 
-	pub async fn init_download(self) -> Result<Uri> {
+	async fn download(self) -> Result<()> {
+		// This will be the string URL passed to the http client
 		for url in &self.uris {
 			match self.download_file(url).await {
-				Ok(()) => {
-					self.tx.send(Message::Finished)?;
-					return Ok(self);
+				Ok(hash) => {
+					// Compare the hash from downloaded file against a known good hash.
+					// Removes the file on disk if it doesn't match.
+					self.check_hash(&hash).await?;
+
+					// Move the good file from partial to the archive dir.
+					self.move_to_archive().await?;
+
+					self.tx.send(Message::UriFinished)?;
+					return Ok(());
 				},
 				_ => continue,
 				// TODO: Eventually we should make it so that errors
@@ -258,7 +274,8 @@ impl Uri {
 		bail!("No URIs could be downloaded for {}", self.filename)
 	}
 
-	pub async fn download_file(&self, url: &str) -> Result<()> {
+	/// Downloads the file and returns the hash
+	pub async fn download_file(&self, url: &str) -> Result<String> {
 		// Initiate http(s) connection
 		let mut response = self
 			.client
@@ -267,14 +284,9 @@ impl Uri {
 			.send()
 			.await?;
 
-		// Setup the haser for verifying files
-		let mut hasher: Box<dyn DynDigest + Send> = match self.hash_type.as_str() {
-			"sha256" => Box::new(Sha256::new()),
-			_ => Box::new(Sha512::new()),
-		};
-
 		// Get a mutable writer for our outfile.
 		let mut writer = BufWriter::new(self.open_file().await?);
+		let mut hasher = self.get_hasher();
 
 		// Iter over the response stream and update the hasher and progress bars
 		while let Some(chunk) = response.chunk().await? {
@@ -291,16 +303,7 @@ impl Uri {
 		for byte in hasher.finalize().as_ref() {
 			write!(&mut download_hash, "{:02x}", byte).expect("Unable to write hash to string");
 		}
-
-		// Compare the hash from downloaded file against a known good hash.
-		// Removes the file on disk if it doesn't match.
-		self.check_hash(&download_hash).await?;
-
-		// Move the good file from partial to the archive dir.
-		self.move_to_archive().await?;
-
-		// The check passed so we return the successful URI
-		Ok(())
+		Ok(download_hash)
 	}
 }
 
@@ -309,33 +312,28 @@ impl Uri {
 #[derive(Debug)]
 pub enum Message {
 	Finished,
+	UriFinished,
 	Error,
 	Update(u64),
 }
 
-pub struct Downloader {
-	client: reqwest::Client,
-	uris: Vec<Uri>,
-	filter: UriFilter,
+pub struct App {
 	terminal: Terminal<CrosstermBackend<std::io::Stdout>>,
-	progress: NalaProgressBar,
 	tick_rate: Duration,
-	current: usize,
+	progress: NalaProgressBar,
+	total: usize,
 	tx: mpsc::UnboundedSender<Message>,
 	rx: mpsc::UnboundedReceiver<Message>,
 }
 
-impl Downloader {
-	pub fn new() -> Result<Downloader> {
+impl App {
+	pub fn new() -> Result<App> {
 		let (tx, rx) = mpsc::unbounded_channel();
-		Ok(Downloader {
-			client: reqwest::Client::new(),
-			uris: vec![],
-			filter: UriFilter::new(),
+		Ok(App {
 			terminal: init_terminal(true)?,
-			progress: NalaProgressBar::new(true),
 			tick_rate: Duration::from_millis(250),
-			current: 0,
+			progress: NalaProgressBar::new(true),
+			total: 0,
 			tx,
 			rx,
 		})
@@ -346,36 +344,28 @@ impl Downloader {
 		Ok(self.terminal.clear()?)
 	}
 
-	fn add_version<'a>(&mut self, version: &'a Version<'a>, config: &Config) -> Result<()> {
-		let uri = Uri::from_version(
-			version,
-			config,
-			self.client.clone(),
-			&mut self.filter,
-			// Download command defaults to current directory
-			// TODO: Make this configurable?
-			"./".to_string(),
-			self.tx.clone(),
-		)?;
-
-		self.progress.indicatif.inc_length(uri.size);
-		self.uris.push(uri);
-		Ok(())
+	pub fn load(&mut self, downloader: &Downloader) {
+		for uri in &downloader.uris {
+			self.total += 1;
+			self.progress.indicatif.inc_length(uri.size)
+		}
 	}
 
-	pub async fn run(mut self) -> Result<()> {
+	pub fn run(mut self) -> Result<()> {
 		let mut tick = Instant::now();
+		let mut current = 0;
+
 		loop {
 			while let Ok(message) = self.rx.try_recv() {
 				match message {
 					Message::Update(bytes_downloaded) => {
 						self.progress.indicatif.inc(bytes_downloaded)
 					},
+					Message::UriFinished => {
+						current += 1;
+					},
 					Message::Finished => {
-						self.current += 1;
-						if self.current == self.uris.len() {
-							return self.clean_up();
-						}
+						return self.clean_up();
 					},
 					Message::Error => {
 						return self.clean_up();
@@ -394,7 +384,7 @@ impl Downloader {
 			if tick.elapsed() >= self.tick_rate {
 				let msg = vec![
 					Span::from("Total Packages:").light_green(),
-					Span::from(format!(" {}/{}", self.current, self.uris.len())).white(),
+					Span::from(format!(" {current}/{}", self.total)).white(),
 				];
 				self.terminal.draw(|f| self.progress.render(f, msg))?;
 				tick = Instant::now();
@@ -403,11 +393,60 @@ impl Downloader {
 	}
 }
 
+pub struct Downloader {
+	client: reqwest::Client,
+	uris: Vec<Uri>,
+	filter: UriFilter,
+	tx: mpsc::UnboundedSender<Message>,
+}
+
+impl Downloader {
+	pub fn new(tx: mpsc::UnboundedSender<Message>) -> Result<Downloader> {
+		Ok(Downloader {
+			client: reqwest::Client::new(),
+			uris: vec![],
+			filter: UriFilter::new(),
+			tx,
+		})
+	}
+
+	fn add_version<'a>(&mut self, version: &'a Version<'a>, config: &Config) -> Result<()> {
+		let uri = Uri::from_version(
+			version,
+			config,
+			self.client.clone(),
+			&mut self.filter,
+			// Download command defaults to current directory
+			// TODO: Make this configurable?
+			"./".to_string(),
+			self.tx.clone(),
+		)?;
+		self.uris.push(uri);
+		Ok(())
+	}
+
+	pub async fn download(self) -> JoinSet<Result<()>> {
+		let mut set = JoinSet::new();
+
+		for uri in self.uris {
+			set.spawn(uri.download());
+		}
+
+		return set;
+
+		// while let Some(res) = set.join_next().await {
+		// 	let _ = res??;
+		// }
+
+		// Ok(())
+	}
+}
+
 #[tokio::main]
 pub async fn download(config: &Config) -> Result<()> {
 	let mut not_found = vec![];
-
-	let mut downloader = Downloader::new()?;
+	let mut app = App::new()?;
+	let mut downloader = Downloader::new(app.tx.clone())?;
 
 	if let Some(pkg_names) = config.pkg_names() {
 		// Dedupe the pkg names. If the same pkg is given twice
@@ -453,32 +492,26 @@ pub async fn download(config: &Config) -> Result<()> {
 	// Error if there are any untrusted URIs.
 	downloader.filter.maybe_untrusted_error(config)?;
 
-	// Set up the futures
-	let mut set = JoinSet::new();
+	app.load(&downloader);
 
-	for uri in downloader.uris.clone() {
-		// Spawn download task
-		set.spawn(uri.init_download());
-	}
+	// Start downloads
+	let mut set = downloader.download().await;
 
-	// Spawn the downloader in another thread to not block The download tasks
-	tokio::task::spawn_blocking(|| downloader.run())
-		.await?
-		.await?;
+	// Spawn UI App in thread that allows blocking
+	tokio::task::spawn_blocking(|| app.run()).await??;
 
-	let mut finished = vec![];
 	while let Some(res) = set.join_next().await {
-		finished.push(res??)
+		let _ = res??;
 	}
 
-	println!("Downloads Complete:");
-	for uri in finished {
-		println!(
-			"  {} was written to {}",
-			config.color.package(&uri.filename),
-			config.color.package(&uri.archive),
-		)
-	}
+	// println!("Downloads Complete:");
+	// for uri in finished {
+	// 	println!(
+	// 		"  {} was written to {}",
+	// 		config.color.package(&uri.filename),
+	// 		config.color.package(&uri.archive),
+	// 	)
+	// }
 
 	// Finally remove the partial directory
 	rmdir("./partial").await?;
