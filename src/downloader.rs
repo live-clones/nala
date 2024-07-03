@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as FmtWrite;
 use std::path::Path;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
@@ -16,7 +15,7 @@ use rust_apt::{new_cache, Version};
 use sha2::{Digest, Sha256, Sha512};
 use tokio::fs::{self, File};
 use tokio::io::{AsyncWriteExt, BufWriter};
-use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 
 use crate::config::Config;
@@ -165,7 +164,7 @@ impl UriFilter {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Uri {
 	uris: Vec<String>,
 	size: u64,
@@ -175,16 +174,17 @@ pub struct Uri {
 	hash_value: String,
 	filename: String,
 	client: reqwest::Client,
-	tx: Arc<Sender<Message>>,
+	tx: mpsc::UnboundedSender<Message>,
 }
 
 impl Uri {
 	fn from_version<'a>(
 		version: &'a Version<'a>,
 		config: &Config,
+		client: reqwest::Client,
 		filter: &mut UriFilter,
 		archive: String,
-		tx: Arc<Sender<Message>>,
+		tx: mpsc::UnboundedSender<Message>,
 	) -> Result<Uri> {
 		let (hash_type, hash_value) = get_hash(config, version)?;
 
@@ -200,7 +200,7 @@ impl Uri {
 			hash_type,
 			hash_value,
 			filename,
-			client: reqwest::Client::new(),
+			client,
 			tx,
 		})
 	}
@@ -241,7 +241,7 @@ impl Uri {
 		for url in &self.uris {
 			match self.download_file(url).await {
 				Ok(()) => {
-					self.tx.send(Message::Finished).await?;
+					self.tx.send(Message::Finished)?;
 					return Ok(self);
 				},
 				_ => continue,
@@ -254,7 +254,7 @@ impl Uri {
 				// },
 			}
 		}
-		self.tx.send(Message::Error).await?;
+		self.tx.send(Message::Error)?;
 		bail!("No URIs could be downloaded for {}", self.filename)
 	}
 
@@ -279,7 +279,7 @@ impl Uri {
 		// Iter over the response stream and update the hasher and progress bars
 		while let Some(chunk) = response.chunk().await? {
 			// Send message to add to total progress bar.
-			self.tx.send(Message::Update(chunk.len() as u64)).await?;
+			self.tx.send(Message::Update(chunk.len() as u64))?;
 			hasher.update(&chunk);
 
 			// Write the data to file
@@ -314,22 +314,29 @@ pub enum Message {
 }
 
 pub struct Downloader {
+	client: reqwest::Client,
+	uris: Vec<Uri>,
+	filter: UriFilter,
 	terminal: Terminal<CrosstermBackend<std::io::Stdout>>,
 	progress: NalaProgressBar,
 	tick_rate: Duration,
 	current: usize,
-	total: usize,
-	rx: Receiver<Message>,
+	tx: mpsc::UnboundedSender<Message>,
+	rx: mpsc::UnboundedReceiver<Message>,
 }
 
 impl Downloader {
-	pub fn new(rx: Receiver<Message>, total: usize) -> Result<Downloader> {
+	pub fn new() -> Result<Downloader> {
+		let (tx, rx) = mpsc::unbounded_channel();
 		Ok(Downloader {
+			client: reqwest::Client::new(),
+			uris: vec![],
+			filter: UriFilter::new(),
 			terminal: init_terminal(true)?,
 			progress: NalaProgressBar::new(true),
 			tick_rate: Duration::from_millis(250),
 			current: 0,
-			total,
+			tx,
 			rx,
 		})
 	}
@@ -337,6 +344,23 @@ impl Downloader {
 	fn clean_up(&mut self) -> Result<()> {
 		restore_terminal(true)?;
 		Ok(self.terminal.clear()?)
+	}
+
+	fn add_version<'a>(&mut self, version: &'a Version<'a>, config: &Config) -> Result<()> {
+		let uri = Uri::from_version(
+			version,
+			config,
+			self.client.clone(),
+			&mut self.filter,
+			// Download command defaults to current directory
+			// TODO: Make this configurable?
+			"./".to_string(),
+			self.tx.clone(),
+		)?;
+
+		self.progress.indicatif.inc_length(uri.size);
+		self.uris.push(uri);
+		Ok(())
 	}
 
 	pub async fn run(mut self) -> Result<()> {
@@ -349,7 +373,7 @@ impl Downloader {
 					},
 					Message::Finished => {
 						self.current += 1;
-						if self.current == self.total {
+						if self.current == self.uris.len() {
 							return self.clean_up();
 						}
 					},
@@ -370,7 +394,7 @@ impl Downloader {
 			if tick.elapsed() >= self.tick_rate {
 				let msg = vec![
 					Span::from("Total Packages:").light_green(),
-					Span::from(format!(" {}/{}", self.current, self.total)).white(),
+					Span::from(format!(" {}/{}", self.current, self.uris.len())).white(),
 				];
 				self.terminal.draw(|f| self.progress.render(f, msg))?;
 				tick = Instant::now();
@@ -381,14 +405,9 @@ impl Downloader {
 
 #[tokio::main]
 pub async fn download(config: &Config) -> Result<()> {
-	let mut uris = vec![];
-	let mut filter = UriFilter::new();
 	let mut not_found = vec![];
 
-	// Setup Channel to communicate with different tasks.
-	let (tx, rx): (Sender<Message>, Receiver<Message>) = mpsc::channel(32);
-	// Make transmit an Arc to use it in multiple tasks.
-	let atx = Arc::new(tx);
+	let mut downloader = Downloader::new()?;
 
 	if let Some(pkg_names) = config.pkg_names() {
 		// Dedupe the pkg names. If the same pkg is given twice
@@ -406,14 +425,7 @@ pub async fn download(config: &Config) -> Result<()> {
 				let versions: Vec<Version> = pkg.versions().collect();
 				for version in &versions {
 					if version.is_downloadable() {
-						// Download command defaults to current directory
-						uris.push(Uri::from_version(
-							version,
-							config,
-							&mut filter,
-							"./".to_string(),
-							atx.clone(),
-						)?);
+						downloader.add_version(version, config)?;
 						break;
 					}
 					// Version wasn't downloadable
@@ -439,16 +451,12 @@ pub async fn download(config: &Config) -> Result<()> {
 	}
 
 	// Error if there are any untrusted URIs.
-	filter.maybe_untrusted_error(config)?;
-
-	let downloader = Downloader::new(rx, uris.len())?;
+	downloader.filter.maybe_untrusted_error(config)?;
 
 	// Set up the futures
 	let mut set = JoinSet::new();
 
-	for uri in uris {
-		// Add uri size to the progress total.
-		downloader.progress.indicatif.inc_length(uri.size);
+	for uri in downloader.uris.clone() {
 		// Spawn download task
 		set.spawn(uri.init_download());
 	}
