@@ -259,7 +259,7 @@ impl Uri {
 					self.move_to_archive().await?;
 
 					self.tx.send(Message::Debug(format!("Finished: {url}")))?;
-					self.tx.send(Message::UriFinished)?;
+					self.tx.send(Message::Finished)?;
 					return Ok(self);
 				},
 				Err(err) => {
@@ -308,7 +308,6 @@ pub enum Message {
 	Exit,
 	UserExit,
 	Finished,
-	UriFinished,
 	Debug(String),
 	NonFatal(Error),
 	Update(u64),
@@ -364,14 +363,12 @@ impl App {
 	}
 
 	pub fn print(&mut self, msg: String) -> Result<()> {
-		self.terminal
-			.insert_before(1, |buf| {
-				Paragraph::new(msg)
-					.left_aligned()
-					.white()
-					.render(buf.area, buf);
-			})
-			.unwrap();
+		self.terminal.insert_before(1, |buf| {
+			Paragraph::new(msg)
+				.left_aligned()
+				.white()
+				.render(buf.area, buf);
+		})?;
 		// Must redraw the terminal after printing
 		self.draw()
 	}
@@ -379,18 +376,23 @@ impl App {
 	pub fn run(mut self) -> Result<Message> {
 		let mut tick = Instant::now();
 		loop {
+			// Exit if the downloads are finished
+			if self.current == self.total {
+				return self.clean_up();
+			}
+
 			while let Ok(message) = self.rx.try_recv() {
 				match message {
 					Message::Update(bytes_downloaded) => {
 						self.progress.indicatif.inc(bytes_downloaded)
 					},
-					Message::UriFinished => {
+					Message::Finished => {
 						self.current += 1;
 						if self.current == self.total {
 							return self.clean_up();
 						}
 					},
-					Message::Finished | Message::Exit => {
+					Message::Exit => {
 						return self.clean_up();
 					},
 					Message::Debug(msg) => {
