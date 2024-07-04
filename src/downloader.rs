@@ -248,6 +248,7 @@ impl Uri {
 	async fn download(self) -> Result<Uri> {
 		// This will be the string URL passed to the http client
 		for url in &self.uris {
+			self.tx.send(Message::Debug(format!("Starting: {url}")))?;
 			match self.download_file(url).await {
 				Ok(hash) => {
 					// Compare the hash from downloaded file against a known good hash.
@@ -257,6 +258,7 @@ impl Uri {
 					// Move the good file from partial to the archive dir.
 					self.move_to_archive().await?;
 
+					self.tx.send(Message::Debug(format!("Finished: {url}")))?;
 					self.tx.send(Message::UriFinished)?;
 					return Ok(self);
 				},
@@ -307,6 +309,7 @@ pub enum Message {
 	UserExit,
 	Finished,
 	UriFinished,
+	Debug(String),
 	NonFatal(Error),
 	Update(u64),
 }
@@ -384,6 +387,9 @@ impl App {
 					Message::Finished | Message::Exit => {
 						return self.clean_up();
 					},
+					Message::Debug(msg) => {
+						self.print(msg)?;
+					},
 					Message::NonFatal(err) => {
 						self.print(format!("{err}"))?;
 					},
@@ -412,6 +418,7 @@ pub struct Downloader {
 	client: reqwest::Client,
 	uris: Vec<Uri>,
 	filter: UriFilter,
+	set: JoinSet<Result<Uri>>,
 	tx: mpsc::UnboundedSender<Message>,
 }
 
@@ -421,6 +428,7 @@ impl Downloader {
 			client: reqwest::Client::new(),
 			uris: vec![],
 			filter: UriFilter::new(),
+			set: JoinSet::new(),
 			tx,
 		})
 	}
@@ -440,14 +448,18 @@ impl Downloader {
 		Ok(())
 	}
 
-	pub async fn download(self) -> JoinSet<Result<Uri>> {
-		let mut set = JoinSet::new();
-
-		for uri in self.uris {
-			set.spawn(uri.download());
+	pub async fn download(&mut self) {
+		while let Some(uri) = self.uris.pop() {
+			self.set.spawn(uri.download());
 		}
+	}
 
-		set
+	pub async fn finish(mut self) -> Result<Vec<Uri>> {
+		let mut finished = vec![];
+		while let Some(res) = self.set.join_next().await {
+			finished.push(res??);
+		}
+		Ok(finished)
 	}
 }
 
@@ -505,19 +517,16 @@ pub async fn download(config: &Config) -> Result<()> {
 	mkdir("./partial").await?;
 
 	// Start downloads
-	let mut set = downloader.download().await;
+	downloader.download().await;
 
 	// Spawn UI App in thread that allows blocking
 	if let Message::UserExit = tokio::task::spawn_blocking(|| app.run()).await?? {
-		set.shutdown().await;
+		downloader.set.shutdown().await;
 		config.color.notice("Exiting at user request");
 		return Ok(());
 	}
 
-	let mut finished = vec![];
-	while let Some(res) = set.join_next().await {
-		finished.push(res??);
-	}
+	let finished = downloader.finish().await?;
 
 	println!("Downloads Complete:");
 	for uri in finished {
