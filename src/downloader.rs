@@ -340,11 +340,17 @@ impl App {
 		Ok(Message::Finished)
 	}
 
-	pub fn load(&mut self, downloader: &Downloader) {
+	pub async fn download(&mut self, downloader: &mut Downloader, config: &Config) -> Result<()> {
+		// Error if there are any untrusted URIs.
+		downloader.filter.maybe_untrusted_error(config)?;
+
 		for uri in &downloader.uris {
 			self.total += 1;
 			self.progress.indicatif.inc_length(uri.size)
 		}
+
+		downloader.download().await?;
+		Ok(())
 	}
 
 	pub fn draw(&mut self) -> Result<()> {
@@ -448,13 +454,21 @@ impl Downloader {
 		Ok(())
 	}
 
-	pub async fn download(&mut self) {
+	pub async fn download(&mut self) -> Result<()> {
+		// Create the partial directory
+		mkdir("./partial").await?;
+
 		while let Some(uri) = self.uris.pop() {
 			self.set.spawn(uri.download());
 		}
+
+		Ok(())
 	}
 
 	pub async fn finish(mut self) -> Result<Vec<Uri>> {
+		// Finally remove the partial directory
+		rmdir("./partial").await?;
+
 		let mut finished = vec![];
 		while let Some(res) = self.set.join_next().await {
 			finished.push(res??);
@@ -508,16 +522,8 @@ pub async fn download(config: &Config) -> Result<()> {
 		bail!("Some packages were not found.");
 	}
 
-	// Error if there are any untrusted URIs.
-	downloader.filter.maybe_untrusted_error(config)?;
-
-	app.load(&downloader);
-
-	// Create the partial directory
-	mkdir("./partial").await?;
-
-	// Start downloads
-	downloader.download().await;
+	// Start the downloads
+	app.download(&mut downloader, config).await?;
 
 	// Spawn UI App in thread that allows blocking
 	if let Message::UserExit = tokio::task::spawn_blocking(|| app.run()).await?? {
@@ -536,9 +542,6 @@ pub async fn download(config: &Config) -> Result<()> {
 			config.color.package(&uri.archive),
 		)
 	}
-
-	// Finally remove the partial directory
-	rmdir("./partial").await?;
 
 	Ok(())
 }
