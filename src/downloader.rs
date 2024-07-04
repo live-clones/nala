@@ -3,12 +3,13 @@ use std::fmt::Write as FmtWrite;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Context, Error, Result};
 use crossterm::event::{self, Event, KeyCode};
 use digest::DynDigest;
 use ratatui::backend::CrosstermBackend;
 use ratatui::style::Stylize;
 use ratatui::text::Span;
+use ratatui::widgets::{Paragraph, Widget};
 use ratatui::Terminal;
 use rust_apt::records::RecordField;
 use rust_apt::{new_cache, Version};
@@ -38,7 +39,6 @@ fn get_pkg_name(version: &Version) -> String {
 	}
 	filename
 }
-
 pub struct UriFilter {
 	mirrors: HashMap<String, String>,
 	regex: NalaRegex,
@@ -241,11 +241,11 @@ impl Uri {
 		}
 		self.remove_file().await?;
 
-		self.tx.send(Message::Error)?;
+		self.tx.send(Message::Exit)?;
 		bail!("Checksum did not match for {}", &self.filename);
 	}
 
-	async fn download(self) -> Result<()> {
+	async fn download(self) -> Result<Uri> {
 		// This will be the string URL passed to the http client
 		for url in &self.uris {
 			match self.download_file(url).await {
@@ -258,31 +258,23 @@ impl Uri {
 					self.move_to_archive().await?;
 
 					self.tx.send(Message::UriFinished)?;
-					return Ok(());
+					return Ok(self);
 				},
-				_ => continue,
-				// TODO: Eventually we should make it so that errors
-				// Are printed out before it rolls to the next URI
-				//
-				// Err(err) => {
-				// 	self.tx.send(Message::Error).await?;
-				// 	return Err(err);
-				// },
+				Err(err) => {
+					// Non fatal errors can continue operation.
+					self.tx.send(Message::NonFatal(err))?;
+					continue;
+				},
 			}
 		}
-		self.tx.send(Message::Error)?;
+		self.tx.send(Message::Exit)?;
 		bail!("No URIs could be downloaded for {}", self.filename)
 	}
 
 	/// Downloads the file and returns the hash
 	pub async fn download_file(&self, url: &str) -> Result<String> {
 		// Initiate http(s) connection
-		let mut response = self
-			.client
-			// There should always be a uri in here
-			.get(url)
-			.send()
-			.await?;
+		let mut response = self.client.get(url).send().await?;
 
 		// Get a mutable writer for our outfile.
 		let mut writer = BufWriter::new(self.open_file().await?);
@@ -311,37 +303,38 @@ impl Uri {
 // There may be one other thing or something.
 #[derive(Debug)]
 pub enum Message {
+	Exit,
+	UserExit,
 	Finished,
 	UriFinished,
-	Error,
+	NonFatal(Error),
 	Update(u64),
 }
-
 pub struct App {
 	terminal: Terminal<CrosstermBackend<std::io::Stdout>>,
 	tick_rate: Duration,
 	progress: NalaProgressBar,
+	current: usize,
 	total: usize,
-	tx: mpsc::UnboundedSender<Message>,
 	rx: mpsc::UnboundedReceiver<Message>,
 }
 
 impl App {
-	pub fn new() -> Result<App> {
-		let (tx, rx) = mpsc::unbounded_channel();
+	pub fn new(rx: mpsc::UnboundedReceiver<Message>) -> Result<App> {
 		Ok(App {
 			terminal: init_terminal(true)?,
 			tick_rate: Duration::from_millis(250),
 			progress: NalaProgressBar::new(true),
+			current: 0,
 			total: 0,
-			tx,
 			rx,
 		})
 	}
 
-	fn clean_up(&mut self) -> Result<()> {
+	fn clean_up(&mut self) -> Result<Message> {
 		restore_terminal(true)?;
-		Ok(self.terminal.clear()?)
+		self.terminal.clear()?;
+		Ok(Message::Finished)
 	}
 
 	pub fn load(&mut self, downloader: &Downloader) {
@@ -351,10 +344,31 @@ impl App {
 		}
 	}
 
-	pub fn run(mut self) -> Result<()> {
-		let mut tick = Instant::now();
-		let mut current = 0;
+	pub fn draw(&mut self) -> Result<()> {
+		let msg = vec![
+			Span::from("Total Packages:").light_green(),
+			Span::from(format!(" {}/{}", self.current, self.total)).white(),
+		];
 
+		self.terminal.draw(|f| self.progress.render(f, msg))?;
+		Ok(())
+	}
+
+	pub fn print(&mut self, msg: String) -> Result<()> {
+		self.terminal
+			.insert_before(1, |buf| {
+				Paragraph::new(msg)
+					.left_aligned()
+					.white()
+					.render(buf.area, buf);
+			})
+			.unwrap();
+		// Must redraw the terminal after printing
+		self.draw()
+	}
+
+	pub fn run(mut self) -> Result<Message> {
+		let mut tick = Instant::now();
 		loop {
 			while let Ok(message) = self.rx.try_recv() {
 				match message {
@@ -362,31 +376,32 @@ impl App {
 						self.progress.indicatif.inc(bytes_downloaded)
 					},
 					Message::UriFinished => {
-						current += 1;
+						self.current += 1;
+						if self.current == self.total {
+							return self.clean_up();
+						}
 					},
-					Message::Finished => {
+					Message::Finished | Message::Exit => {
 						return self.clean_up();
 					},
-					Message::Error => {
-						return self.clean_up();
+					Message::NonFatal(err) => {
+						self.print(format!("{err}"))?;
 					},
+					Message::UserExit => {},
 				}
 			}
 
 			if crossterm::event::poll(Duration::from_millis(0))? {
 				if let Event::Key(key) = event::read()? {
 					if let KeyCode::Char('q') = key.code {
-						return self.clean_up();
+						self.clean_up()?;
+						return Ok(Message::UserExit);
 					}
 				}
 			}
 
 			if tick.elapsed() >= self.tick_rate {
-				let msg = vec![
-					Span::from("Total Packages:").light_green(),
-					Span::from(format!(" {current}/{}", self.total)).white(),
-				];
-				self.terminal.draw(|f| self.progress.render(f, msg))?;
+				self.draw()?;
 				tick = Instant::now();
 			}
 		}
@@ -425,38 +440,30 @@ impl Downloader {
 		Ok(())
 	}
 
-	pub async fn download(self) -> JoinSet<Result<()>> {
+	pub async fn download(self) -> JoinSet<Result<Uri>> {
 		let mut set = JoinSet::new();
 
 		for uri in self.uris {
 			set.spawn(uri.download());
 		}
 
-		return set;
-
-		// while let Some(res) = set.join_next().await {
-		// 	let _ = res??;
-		// }
-
-		// Ok(())
+		set
 	}
 }
 
 #[tokio::main]
 pub async fn download(config: &Config) -> Result<()> {
-	let mut not_found = vec![];
-	let mut app = App::new()?;
-	let mut downloader = Downloader::new(app.tx.clone())?;
+	let (tx, rx) = mpsc::unbounded_channel();
+	let mut app = App::new(rx)?;
+	let mut downloader = Downloader::new(tx.clone())?;
 
+	let mut not_found = vec![];
 	if let Some(pkg_names) = config.pkg_names() {
 		// Dedupe the pkg names. If the same pkg is given twice
 		// it will be downloaded twice, and then fail when moving the file
 		let mut deduped = pkg_names.clone();
 		deduped.sort();
 		deduped.dedup();
-
-		// Create the partial directory
-		mkdir("./partial").await?;
 
 		let cache = new_cache!()?;
 		for name in &deduped {
@@ -494,24 +501,32 @@ pub async fn download(config: &Config) -> Result<()> {
 
 	app.load(&downloader);
 
+	// Create the partial directory
+	mkdir("./partial").await?;
+
 	// Start downloads
 	let mut set = downloader.download().await;
 
 	// Spawn UI App in thread that allows blocking
-	tokio::task::spawn_blocking(|| app.run()).await??;
-
-	while let Some(res) = set.join_next().await {
-		let _ = res??;
+	if let Message::UserExit = tokio::task::spawn_blocking(|| app.run()).await?? {
+		set.shutdown().await;
+		config.color.notice("Exiting at user request");
+		return Ok(());
 	}
 
-	// println!("Downloads Complete:");
-	// for uri in finished {
-	// 	println!(
-	// 		"  {} was written to {}",
-	// 		config.color.package(&uri.filename),
-	// 		config.color.package(&uri.archive),
-	// 	)
-	// }
+	let mut finished = vec![];
+	while let Some(res) = set.join_next().await {
+		finished.push(res??);
+	}
+
+	println!("Downloads Complete:");
+	for uri in finished {
+		println!(
+			"  {} was written to {}",
+			config.color.package(&uri.filename),
+			config.color.package(&uri.archive),
+		)
+	}
 
 	// Finally remove the partial directory
 	rmdir("./partial").await?;
