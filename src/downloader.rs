@@ -422,6 +422,7 @@ impl App {
 	}
 }
 
+// TODO: Need to make the proxy at some point
 pub struct Downloader {
 	client: reqwest::Client,
 	uris: Vec<Uri>,
