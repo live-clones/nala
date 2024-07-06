@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use crossterm::event;
 use crossterm::event::{Event, KeyCode};
 use ratatui::backend::Backend;
@@ -14,33 +14,50 @@ use rust_apt::progress::{AcquireProgress, DynAcquireProgress};
 use rust_apt::raw::{AcqTextStatus, ItemDesc, ItemState, PkgAcquire};
 use rust_apt::util::time_str;
 use rust_apt::{new_cache, PackageSort};
+use tokio::task::JoinHandle;
 
 use crate::config::Config;
 use crate::tui::progress::NalaProgressBar;
 use crate::util::{init_terminal, restore_terminal};
 
-fn should_quit() -> Result<bool> {
-	if event::poll(Duration::from_millis(250)).context("event poll failed")? {
-		if let Event::Key(key) = event::read().context("event read failed")? {
-			return Ok(KeyCode::Char('q') == key.code);
+pub fn poll_exit_event_loop() -> Result<()> {
+	loop {
+		if crossterm::event::poll(Duration::from_millis(250))? {
+			if let Event::Key(key) = event::read()? {
+				if let KeyCode::Char('q') = key.code {
+					return Ok(());
+				}
+			}
+		}
+	}
+}
+
+pub fn poll_exit_event() -> Result<bool> {
+	if crossterm::event::poll(Duration::from_millis(250))? {
+		if let Event::Key(key) = event::read()? {
+			if let KeyCode::Char('q') = key.code {
+				return Ok(true);
+			}
 		}
 	}
 	Ok(false)
 }
 
-pub fn update(config: &Config) -> Result<()> {
+#[tokio::main]
+pub async fn update(config: &Config) -> Result<()> {
 	let cache = new_cache!()?;
+
 	let mut terminal = init_terminal(true)?;
 
-	// TODO: Handle CtrlC here so that we can unhide the cursor
+	let poll = tokio::task::spawn_blocking(poll_exit_event_loop);
+
 	let res = cache.update(&mut AcquireProgress::new(NalaAcquireProgress::new(
 		config,
 		&mut terminal,
+		&poll,
 	)));
 
-	restore_terminal(true)?;
-	terminal.clear()?;
-	// Do not print how many packages are upgradable if update errored.
+	// // Do not print how many packages are upgradable if update errored.
 	#[allow(clippy::question_mark)]
 	if res.is_err() {
 		return Ok(res?);
@@ -85,11 +102,21 @@ pub struct NalaAcquireProgress<'a, B: Backend> {
 	hit: String,
 	get: String,
 	err: String,
+	task: &'a JoinHandle<Result<()>>,
+	stop: bool,
 }
 
 impl<'a, B: Backend> NalaAcquireProgress<'a, B> {
 	/// Returns a new default progress instance.
-	pub fn new(config: &'a Config, terminal: &'a mut Terminal<B>) -> Self {
+	pub fn new(
+		config: &'a Config,
+		terminal: &'a mut Terminal<B>,
+		stop: &'a JoinHandle<Result<()>>,
+	) -> Self {
+		// Try to run a thread here for polling keys.
+		// Pulse can then check if it's finished and if it is we quick
+		// have it looop and return when there is a key pressed
+
 		let mut progress = Self {
 			config,
 			terminal,
@@ -101,6 +128,8 @@ impl<'a, B: Backend> NalaAcquireProgress<'a, B> {
 			hit: config.color.package("No Change").into(),
 			get: config.color.blue("Updated").into(),
 			err: config.color.red("Error").into(),
+			task: stop,
+			stop: false,
 		};
 		// Set Length 1 so ratio cannot panic.
 		progress.progress.indicatif.set_length(1);
@@ -110,6 +139,10 @@ impl<'a, B: Backend> NalaAcquireProgress<'a, B> {
 	}
 
 	pub fn draw(&mut self) {
+		if self.stop {
+			return;
+		}
+
 		let mut message = vec![];
 
 		if self.message.is_empty() {
@@ -132,6 +165,9 @@ impl<'a, B: Backend> NalaAcquireProgress<'a, B> {
 	}
 
 	pub fn print(&mut self, msg: String) {
+		if self.stop {
+			return;
+		}
 		self.terminal
 			.insert_before(1, |buf| {
 				Paragraph::new(msg)
@@ -255,9 +291,23 @@ impl<'a, B: Backend> DynAcquireProgress for NalaAcquireProgress<'a, B> {
 		self.progress.indicatif.set_length(status.total_bytes());
 		self.progress.indicatif.set_position(status.current_bytes());
 
-		if should_quit().unwrap() {
-			panic!("Find a better way to exit!")
+		if self.task.is_finished() {
+			self.terminal.clear().unwrap();
+			restore_terminal(true).unwrap();
+			self.terminal.show_cursor().unwrap();
+			self.stop = true;
+			owner.shutdown();
+			return;
 		}
+
+		// if poll_exit_event().is_ok_and(|poll| poll) {
+		// 	self.terminal.clear().unwrap();
+		// 	restore_terminal(true).unwrap();
+		// 	self.terminal.show_cursor().unwrap();
+		// 	self.stop = true;
+		// 	owner.shutdown();
+		// 	return;
+		// }
 
 		let mut string: Vec<String> = vec![];
 

@@ -33,7 +33,7 @@ lazy_static! {
 }
 
 #[repr(u8)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// Ansi Color Styles
 pub enum Style {
 	/// Text is Normal
@@ -143,7 +143,7 @@ impl fmt::Display for Style {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ColorType {
 	Standard(u8),
 	Rgb(String),
@@ -188,7 +188,7 @@ impl fmt::Display for ColorType {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Theme {
 	style: Style,
 	color: ColorType,
@@ -206,7 +206,7 @@ impl Theme {
 }
 
 /// Color text based on Style and `ColorCodes`
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Color {
 	can_color: bool,
 	pub color_map: HashMap<&'static str, Theme>,

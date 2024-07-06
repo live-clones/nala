@@ -53,7 +53,7 @@ impl Paths {
 	}
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 /// Configuration struct
 pub struct Config {
 	#[serde(rename(deserialize = "Nala"), default)]
@@ -282,13 +282,13 @@ impl Config {
 // ATM they are separated due to additional type checking that seems complicated
 // with serde
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 struct ThemeType {
 	style: SerdeStyle,
 	color: SerdeColor,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(untagged)]
 enum SerdeStyle {
 	Text(String),
@@ -296,7 +296,7 @@ enum SerdeStyle {
 	Array(Vec<String>),
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(untagged)]
 enum SerdeColor {
 	Text(String),
