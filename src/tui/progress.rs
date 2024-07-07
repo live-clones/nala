@@ -4,10 +4,10 @@ use anyhow::Result;
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use indicatif::ProgressBar;
 use ratatui::backend::CrosstermBackend;
-use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, LineGauge, Padding, Paragraph, Widget, Wrap};
+use ratatui::widgets::{Block, BorderType, LineGauge, Padding, Paragraph, Widget};
 use ratatui::{symbols, Frame, Terminal, TerminalOptions, Viewport};
 use rust_apt::util::{time_str, NumSys};
 
@@ -215,14 +215,12 @@ pub fn render(
 
 pub fn get_paragraph(text: &str) -> Paragraph {
 	Paragraph::new(text)
-		.wrap(Wrap { trim: true })
 		.right_aligned()
 }
 
 pub fn build_block<'a>() -> Block<'a> {
 	Block::bordered()
 		.border_type(BorderType::Rounded)
-		.title_alignment(Alignment::Left)
 		.padding(Padding::horizontal(1))
 		.style(
 			Style::default()
