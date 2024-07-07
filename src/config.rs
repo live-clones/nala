@@ -10,7 +10,7 @@ use serde::Deserialize;
 
 use crate::cli::Commands;
 use crate::colors::{Color, ColorType, Style, Theme, COLOR_MAP};
-use crate::util::dprint;
+use crate::dprint;
 
 /// Represents different file and directory paths
 pub enum Paths {

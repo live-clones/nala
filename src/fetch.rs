@@ -12,7 +12,7 @@ use tokio::task::JoinSet;
 use tokio::time::Duration;
 
 use crate::config::{Config, Paths};
-use crate::util::{init_terminal, restore_terminal, sudo_check, NalaRegex};
+use crate::util::{sudo_check, NalaRegex};
 use crate::{dprint, tui};
 
 fn get_origin_codename(pkg: Option<Package>) -> Option<(String, String)> {
@@ -481,9 +481,9 @@ pub fn fetch(config: &Config) -> Result<()> {
 		scored.into_iter().map(|(s, _)| s).collect()
 	} else {
 		dprint!(config, "Interactive mode, starting TUI");
-		let terminal = init_terminal(false)?;
+		let terminal = tui::init_terminal()?;
 		let chosen = tui::fetch::App::new(scored).run(terminal)?;
-		restore_terminal(false)?;
+		tui::restore_terminal()?;
 		chosen
 	};
 

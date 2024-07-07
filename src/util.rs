@@ -11,15 +11,8 @@ macro_rules! dprint {
 use std::collections::HashSet;
 
 use anyhow::{bail, Result};
-use crossterm::terminal::{
-	disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
-};
-use crossterm::ExecutableCommand;
-pub use dprint;
 use globset::GlobBuilder;
 use once_cell::sync::OnceCell;
-use ratatui::backend::CrosstermBackend;
-use ratatui::{Terminal, TerminalOptions, Viewport};
 use regex::{Regex, RegexBuilder};
 use rust_apt::{Cache, Package, Version};
 
@@ -253,29 +246,6 @@ pub fn virtual_filter<'a, Container: IntoIterator<Item = Package<'a>>>(
 		}
 	}
 	Ok(virtual_filtered)
-}
-
-pub fn init_terminal(viewport: bool) -> Result<Terminal<CrosstermBackend<std::io::Stdout>>> {
-	enable_raw_mode()?;
-	let mut backend = CrosstermBackend::new(std::io::stdout());
-	if viewport {
-		return Ok(Terminal::with_options(
-			backend,
-			TerminalOptions {
-				viewport: Viewport::Inline(4),
-			},
-		)?);
-	}
-	backend.execute(EnterAlternateScreen)?;
-	Ok(Terminal::new(backend)?)
-}
-
-pub fn restore_terminal(viewport: bool) -> Result<()> {
-	disable_raw_mode()?;
-	if !viewport {
-		std::io::stdout().execute(LeaveAlternateScreen)?;
-	}
-	Ok(())
 }
 
 #[link(name = "c")]
