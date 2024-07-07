@@ -3,12 +3,13 @@ use std::rc::Rc;
 use anyhow::Result;
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use indicatif::ProgressBar;
-use ratatui::backend::CrosstermBackend;
+use ratatui::backend::{Backend, CrosstermBackend};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, LineGauge, Padding, Paragraph, Widget};
+use ratatui::widgets::{Block, BorderType, LineGauge, Padding, Paragraph, Widget, Wrap};
 use ratatui::{symbols, Frame, Terminal, TerminalOptions, Viewport};
+use regex::Regex;
 use rust_apt::util::{time_str, NumSys};
 
 pub struct UnitStr {
@@ -47,6 +48,7 @@ pub struct NalaProgressBar {
 	pub indicatif: ProgressBar,
 	pub unit: UnitStr,
 	pub msg: Vec<String>,
+	ansi: Regex,
 }
 
 impl NalaProgressBar {
@@ -67,6 +69,7 @@ impl NalaProgressBar {
 			indicatif,
 			unit: UnitStr::new(1, NumSys::Binary),
 			msg: vec![],
+			ansi: Regex::new(r"\x1b\[([\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e])")?,
 		})
 	}
 
@@ -84,35 +87,20 @@ impl NalaProgressBar {
 		Ok(())
 	}
 
-	pub fn draw(&mut self) -> Result<()> {
-		let mut spans = vec![];
-
-		if self.msg.is_empty() {
-			spans.push(Span::from("Working...").light_green())
-		} else {
-			let mut first = true;
-			for string in self.msg.iter() {
-				if first {
-					spans.push(Span::from(string).light_green());
-					first = false;
-					continue;
-				}
-				spans.push(Span::from(string).reset().white());
-			}
-		}
-		self.render()?;
-		Ok(())
-	}
-
 	pub fn print(&mut self, msg: String) -> Result<()> {
-		self.terminal.insert_before(1, |buf| {
+		// Strip ansi escape codes to get the correct size of the message
+		let height = self.ansi.replace_all(&msg, "").len() as f32
+			/ self.terminal.backend().size()?.width as f32;
+
+		self.terminal.insert_before(height.ceil() as u16, |buf| {
 			Paragraph::new(msg)
 				.left_aligned()
+				.wrap(Wrap::default())
 				.white()
 				.render(buf.area, buf);
 		})?;
 		// Must redraw the terminal after printing
-		self.draw()
+		self.render()
 	}
 
 	pub fn finished_string(&self) -> String {
@@ -135,14 +123,15 @@ impl NalaProgressBar {
 		if self.msg.is_empty() {
 			spans.push(Span::from("Working...").light_green())
 		} else {
-			let mut first = true;
+			let mut header = true;
 			for string in self.msg.iter() {
-				if first {
+				if header {
 					spans.push(Span::from(string).light_green());
-					first = false;
+					header = false;
 					continue;
 				}
 				spans.push(Span::from(string).reset().white());
+				header = true;
 			}
 		}
 

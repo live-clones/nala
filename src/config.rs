@@ -248,6 +248,9 @@ impl Config {
 	/// Return true if debug is enabled
 	pub fn debug(&self) -> bool { self.get_bool("debug", false) }
 
+	/// Return true if verbose or debug is enabled
+	pub fn verbose(&self) -> bool { self.debug() || self.get_bool("verbose", false) }
+
 	fn update_color(&mut self) -> Result<()> {
 		let default_map = &*COLOR_MAP;
 		// Key will be the name of the format, example: "error"

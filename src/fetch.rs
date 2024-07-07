@@ -274,7 +274,7 @@ async fn score_handler(
 			score.push(response)
 		}
 		pb.indicatif.inc(1);
-		pb.draw()?;
+		pb.render()?;
 		if tui::poll_exit_event()? {
 			pb.clean_up()?;
 			std::process::exit(1);

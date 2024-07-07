@@ -50,7 +50,7 @@ pub async fn update(config: &Config) -> Result<()> {
 			},
 			Message::Messages(msg) => {
 				progress.msg = msg;
-				progress.draw()?;
+				progress.render()?;
 			},
 		}
 

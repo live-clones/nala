@@ -257,15 +257,25 @@ impl Uri {
 				continue;
 			};
 
+			self.tx.send(Message::Debug(format!(
+				"Selecting {domain} for {}",
+				self.filename
+			)))?;
+
 			// Lock the map so other threads can't mutate the data while this one does
 			if !add_domain(domain.to_string(), &mut domains).await {
+				self.tx.send(Message::Debug(format!(
+					"Adding '{domain}' back to queue for {}. Connections full",
+					self.filename
+				)))?;
+
 				// Too many connections to this domain.
 				// Add the URL back to the queue and move to the next.
 				self.uris.push_back(url);
 				continue;
 			}
 
-			self.tx.send(Message::Debug(format!("Starting: {url}")))?;
+			self.tx.send(Message::Verbose(format!("Starting: {url}")))?;
 			match self.download_file(&url).await {
 				Ok(hash) => {
 					// Compare the hash from downloaded file against a known good hash.
@@ -275,10 +285,10 @@ impl Uri {
 					// Move the good file from partial to the archive dir.
 					self.move_to_archive().await?;
 
-					self.tx.send(Message::Debug(format!("Finished: {url}")))?;
+					self.tx.send(Message::Verbose(format!("Finished: {url}")))?;
 
 					remove_domain(domain, &mut domains).await;
-					self.tx.send(Message::Finished)?;
+					self.tx.send(Message::Finished(self.filename.to_string()))?;
 					return Ok(self);
 				},
 				Err(err) => {
@@ -326,8 +336,9 @@ impl Uri {
 #[derive(Debug)]
 pub enum Message {
 	Exit,
-	Finished,
+	Finished(String),
 	Debug(String),
+	Verbose(String),
 	NonFatal(Error),
 	Update(u64),
 }
@@ -465,17 +476,28 @@ pub async fn download(config: &Config) -> Result<()> {
 		while let Ok(msg) = rx.try_recv() {
 			match msg {
 				Message::Update(bytes_downloaded) => progress.indicatif.inc(bytes_downloaded),
-				Message::Finished => {
+				Message::Finished(filename) => {
 					current += 1;
-					progress.msg =
-						vec!["Total Packages:".to_string(), format!(" {current}/{total}")];
-					progress.draw()?;
+					progress.msg = vec![
+						"Total Packages:".to_string(),
+						format!(" {current}/{total}, "),
+						"Last Completed:".to_string(),
+						format!(" {filename}"),
+					];
+					progress.render()?;
 				},
 				Message::Exit => {
 					return progress.clean_up();
 				},
 				Message::Debug(msg) => {
-					progress.print(msg)?;
+					if config.debug() {
+						progress.print(msg)?;
+					}
+				},
+				Message::Verbose(msg) => {
+					if config.verbose() {
+						progress.print(msg)?;
+					}
 				},
 				Message::NonFatal(err) => {
 					progress.print(format!("{err}"))?;
@@ -491,7 +513,7 @@ pub async fn download(config: &Config) -> Result<()> {
 		}
 
 		if tick.elapsed() >= tick_rate {
-			progress.draw()?;
+			progress.render()?;
 			tick = Instant::now();
 		}
 	}
