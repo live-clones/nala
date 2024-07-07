@@ -282,13 +282,13 @@ impl Config {
 // ATM they are separated due to additional type checking that seems complicated
 // with serde
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug)]
 struct ThemeType {
 	style: SerdeStyle,
 	color: SerdeColor,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug)]
 #[serde(untagged)]
 enum SerdeStyle {
 	Text(String),
@@ -296,7 +296,7 @@ enum SerdeStyle {
 	Array(Vec<String>),
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug)]
 #[serde(untagged)]
 enum SerdeColor {
 	Text(String),

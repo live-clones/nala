@@ -33,7 +33,7 @@ lazy_static! {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 /// Ansi Color Styles
 pub enum Style {
 	/// Text is Normal
