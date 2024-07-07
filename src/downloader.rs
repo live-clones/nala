@@ -1,16 +1,18 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::Write as FmtWrite;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Error, Result};
 use digest::DynDigest;
+use regex::Regex;
 use rust_apt::records::RecordField;
 use rust_apt::{new_cache, Version};
 use sha2::{Digest, Sha256, Sha512};
 use tokio::fs::{self, File};
 use tokio::io::{AsyncWriteExt, BufWriter};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinSet;
 
 use crate::config::Config;
@@ -51,8 +53,8 @@ impl UriFilter {
 	/// Filter Uris from a package version.
 	/// This will normalize different kinds of possible Uris
 	/// Which are not http.
-	fn uris<'a>(&mut self, version: &'a Version<'a>, config: &Config) -> Result<Vec<String>> {
-		let mut filtered = Vec::new();
+	fn uris<'a>(&mut self, version: &'a Version<'a>, config: &Config) -> Result<VecDeque<String>> {
+		let mut filtered = VecDeque::new();
 
 		for vf in version.version_files() {
 			let pf = vf.package_file();
@@ -95,7 +97,7 @@ impl UriFilter {
 				}
 			}
 			// If none of the conditions meet then we just add it to the uris
-			filtered.push(uri);
+			filtered.push_back(uri);
 		}
 		Ok(filtered)
 	}
@@ -104,13 +106,15 @@ impl UriFilter {
 	fn get_from_mirrors<'a>(
 		&self,
 		version: &'a Version<'a>,
-		uris: &mut Vec<String>,
+		uris: &mut VecDeque<String>,
 		filename: &str,
 	) -> Option<()> {
 		// Return None if not in mirrors.
 		for line in self.mirrors.get(filename)?.lines() {
 			if !line.is_empty() && !line.starts_with('#') {
-				uris.push(line.to_string() + "/" + &version.get_record(RecordField::Filename)?);
+				uris.push_back(
+					line.to_string() + "/" + &version.get_record(RecordField::Filename)?,
+				);
 			}
 		}
 		Some(())
@@ -160,7 +164,7 @@ impl UriFilter {
 
 #[derive(Debug)]
 pub struct Uri {
-	uris: Vec<String>,
+	uris: VecDeque<String>,
 	size: u64,
 	archive: String,
 	destination: String,
@@ -239,11 +243,30 @@ impl Uri {
 		bail!("Checksum did not match for {}", &self.filename);
 	}
 
-	async fn download(self) -> Result<Uri> {
-		// This will be the string URL passed to the http client
-		for url in &self.uris {
+	async fn download(
+		mut self,
+		mut domains: Arc<Mutex<HashMap<String, u8>>>,
+		regex: Regex,
+	) -> Result<Uri> {
+		// This is the string URL passed to the http client
+		while let Some(url) = self.uris.pop_front() {
+			let Some(domain) = regex
+				.captures(&url)
+				.and_then(|c| c.get(1).map(|m| m.as_str()))
+			else {
+				continue;
+			};
+
+			// Lock the map so other threads can't mutate the data while this one does
+			if !add_domain(domain.to_string(), &mut domains).await {
+				// Too many connections to this domain.
+				// Add the URL back to the queue and move to the next.
+				self.uris.push_back(url);
+				continue;
+			}
+
 			self.tx.send(Message::Debug(format!("Starting: {url}")))?;
-			match self.download_file(url).await {
+			match self.download_file(&url).await {
 				Ok(hash) => {
 					// Compare the hash from downloaded file against a known good hash.
 					// Removes the file on disk if it doesn't match.
@@ -253,12 +276,15 @@ impl Uri {
 					self.move_to_archive().await?;
 
 					self.tx.send(Message::Debug(format!("Finished: {url}")))?;
+
+					remove_domain(domain, &mut domains).await;
 					self.tx.send(Message::Finished)?;
 					return Ok(self);
 				},
 				Err(err) => {
 					// Non fatal errors can continue operation.
 					self.tx.send(Message::NonFatal(err))?;
+					remove_domain(domain, &mut domains).await;
 					continue;
 				},
 			}
@@ -312,6 +338,9 @@ pub struct Downloader {
 	client: reqwest::Client,
 	uris: Vec<Uri>,
 	filter: UriFilter,
+	/// Used to count how many connections are open to a domain.
+	/// Nala only allows 3 at a time per domain.
+	domains: Arc<Mutex<HashMap<String, u8>>>,
 	set: JoinSet<Result<Uri>>,
 	tx: mpsc::UnboundedSender<Message>,
 }
@@ -322,6 +351,7 @@ impl Downloader {
 			client: reqwest::Client::new(),
 			uris: vec![],
 			filter: UriFilter::new(),
+			domains: Arc::new(Mutex::new(HashMap::new())),
 			set: JoinSet::new(),
 			tx,
 		})
@@ -347,7 +377,8 @@ impl Downloader {
 		mkdir("./partial").await?;
 
 		while let Some(uri) = self.uris.pop() {
-			self.set.spawn(uri.download());
+			let regex = self.filter.regex.domain()?.clone();
+			self.set.spawn(uri.download(self.domains.clone(), regex));
 		}
 
 		Ok(())
@@ -498,6 +529,25 @@ fn get_hash(config: &Config, version: &Version) -> Result<(String, String)> {
 		config.color.yellow(version.parent().name()),
 		config.color.yellow(version.version()),
 	);
+}
+
+pub async fn add_domain(domain: String, domains: &mut Arc<Mutex<HashMap<String, u8>>>) -> bool {
+	let mut lock = domains.lock().await;
+	let entry = lock.entry(domain).or_default();
+
+	if *entry < 3 {
+		*entry += 1;
+		return true;
+	}
+	false
+}
+
+pub async fn remove_domain(domain: &str, domains: &mut Arc<Mutex<HashMap<String, u8>>>) {
+	if let Some(entry) = domains.lock().await.get_mut(domain) {
+		if *entry > 0 {
+			*entry -= 1;
+		}
+	}
 }
 
 // Like fs::create_dir_all but it has added context for failure.

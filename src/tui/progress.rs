@@ -213,10 +213,7 @@ pub fn render(
 	f.render_widget(get_paragraph(&per_sec).blue(), bar_block[3]);
 }
 
-pub fn get_paragraph(text: &str) -> Paragraph {
-	Paragraph::new(text)
-		.right_aligned()
-}
+pub fn get_paragraph(text: &str) -> Paragraph { Paragraph::new(text).right_aligned() }
 
 pub fn build_block<'a>() -> Block<'a> {
 	Block::bordered()
