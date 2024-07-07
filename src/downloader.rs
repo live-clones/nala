@@ -4,7 +4,6 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Error, Result};
-use crossterm::event::{self, Event, KeyCode};
 use digest::DynDigest;
 use ratatui::backend::CrosstermBackend;
 use ratatui::style::Stylize;
@@ -20,7 +19,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 
 use crate::config::Config;
-use crate::tui::progress::NalaProgressBar;
+use crate::tui;
 use crate::util::{init_terminal, restore_terminal, NalaRegex};
 
 /// Return the package name. Checks if epoch is needed.
@@ -306,7 +305,6 @@ impl Uri {
 #[derive(Debug)]
 pub enum Message {
 	Exit,
-	UserExit,
 	Finished,
 	Debug(String),
 	NonFatal(Error),
@@ -315,7 +313,7 @@ pub enum Message {
 pub struct App {
 	terminal: Terminal<CrosstermBackend<std::io::Stdout>>,
 	tick_rate: Duration,
-	progress: NalaProgressBar,
+	progress: tui::NalaProgressBar,
 	current: usize,
 	total: usize,
 	rx: mpsc::UnboundedReceiver<Message>,
@@ -326,17 +324,17 @@ impl App {
 		Ok(App {
 			terminal: init_terminal(true)?,
 			tick_rate: Duration::from_millis(250),
-			progress: NalaProgressBar::new(true),
+			progress: tui::NalaProgressBar::new(),
 			current: 0,
 			total: 0,
 			rx,
 		})
 	}
 
-	fn clean_up(&mut self) -> Result<Message> {
+	fn clean_up(&mut self) -> Result<bool> {
 		restore_terminal(true)?;
 		self.terminal.clear()?;
-		Ok(Message::Finished)
+		Ok(true)
 	}
 
 	pub async fn download(&mut self, downloader: &mut Downloader, config: &Config) -> Result<()> {
@@ -373,7 +371,8 @@ impl App {
 		self.draw()
 	}
 
-	pub fn run(mut self) -> Result<Message> {
+	/// Run the App. Returns false if the user requested exit.
+	pub fn run(mut self) -> Result<bool> {
 		let mut tick = Instant::now();
 		loop {
 			// Exit if the downloads are finished
@@ -401,17 +400,12 @@ impl App {
 					Message::NonFatal(err) => {
 						self.print(format!("{err}"))?;
 					},
-					Message::UserExit => {},
 				}
 			}
 
-			if crossterm::event::poll(Duration::from_millis(0))? {
-				if let Event::Key(key) = event::read()? {
-					if let KeyCode::Char('q') = key.code {
-						self.clean_up()?;
-						return Ok(Message::UserExit);
-					}
-				}
+			if tui::poll_exit_event()? {
+				self.clean_up()?;
+				return Ok(false);
 			}
 
 			if tick.elapsed() >= self.tick_rate {
@@ -529,7 +523,7 @@ pub async fn download(config: &Config) -> Result<()> {
 	app.download(&mut downloader, config).await?;
 
 	// Spawn UI App in thread that allows blocking
-	if let Message::UserExit = tokio::task::spawn_blocking(|| app.run()).await?? {
+	if !tokio::task::spawn_blocking(|| app.run()).await?? {
 		downloader.set.shutdown().await;
 		config.color.notice("Exiting at user request");
 		return Ok(());

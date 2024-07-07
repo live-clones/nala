@@ -1,67 +1,133 @@
-use std::time::Duration;
-
 use anyhow::Result;
-use crossterm::event;
-use crossterm::event::{Event, KeyCode};
 use ratatui::backend::Backend;
-use ratatui::layout::Alignment;
-use ratatui::style::{Color, Style, Styled, Stylize};
+use ratatui::style::Stylize;
 use ratatui::text::Span;
-use ratatui::widgets::{Paragraph, Widget, Wrap};
+use ratatui::widgets::{Paragraph, Widget};
 use ratatui::Terminal;
-use rust_apt::error::pending_error;
 use rust_apt::progress::{AcquireProgress, DynAcquireProgress};
 use rust_apt::raw::{AcqTextStatus, ItemDesc, ItemState, PkgAcquire};
-use rust_apt::util::time_str;
 use rust_apt::{new_cache, PackageSort};
-use tokio::task::JoinHandle;
+use tokio::sync::mpsc;
 
 use crate::config::Config;
-use crate::tui::progress::NalaProgressBar;
+use crate::tui;
 use crate::util::{init_terminal, restore_terminal};
 
-pub fn poll_exit_event_loop() -> Result<()> {
-	loop {
-		if crossterm::event::poll(Duration::from_millis(250))? {
-			if let Event::Key(key) = event::read()? {
-				if let KeyCode::Char('q') = key.code {
-					return Ok(());
+pub enum Message {
+	Print(String),
+	Messages(Vec<String>),
+	UpdatePosition((u64, u64)),
+	Fetched((String, u64)),
+}
+
+pub struct App<B: Backend> {
+	terminal: Terminal<B>,
+	progress: tui::NalaProgressBar,
+	message: Vec<String>,
+}
+
+impl<B: Backend> App<B> {
+	pub fn new(terminal: Terminal<B>) -> App<B> {
+		App {
+			terminal,
+			progress: tui::NalaProgressBar::new(),
+			message: vec![],
+		}
+	}
+
+	pub fn clean_up(&mut self) -> Result<()> {
+		self.terminal.clear()?;
+		restore_terminal(true)?;
+		self.terminal.show_cursor()?;
+		Ok(())
+	}
+
+	pub fn draw(&mut self) -> Result<()> {
+		let mut spans = vec![];
+
+		if self.message.is_empty() {
+			spans.push(Span::from("Working...").light_green())
+		} else {
+			let mut first = true;
+			for string in self.message.iter() {
+				if first {
+					spans.push(Span::from(string).light_green());
+					first = false;
+					continue;
 				}
+				spans.push(Span::from(string).reset().white());
 			}
 		}
+
+		self.terminal.draw(|f| self.progress.render(f, spans))?;
+		Ok(())
+	}
+
+	pub fn print(&mut self, msg: String) -> Result<()> {
+		self.terminal.insert_before(1, |buf| {
+			Paragraph::new(msg)
+				.left_aligned()
+				.white()
+				.render(buf.area, buf);
+		})?;
+		self.draw()?;
+		Ok(())
 	}
 }
 
-pub fn poll_exit_event() -> Result<bool> {
-	if crossterm::event::poll(Duration::from_millis(250))? {
-		if let Event::Key(key) = event::read()? {
-			if let KeyCode::Char('q') = key.code {
-				return Ok(true);
-			}
-		}
-	}
-	Ok(false)
+/// The function just runs apt's update and is designed to go into
+/// it's own little thread.
+pub async fn update_thread(acquire: NalaAcquireProgress) -> Result<()> {
+	let cache = new_cache!()?;
+	cache.update(&mut AcquireProgress::new(acquire))?;
+	Ok(())
 }
 
 #[tokio::main]
 pub async fn update(config: &Config) -> Result<()> {
-	let cache = new_cache!()?;
+	// Setup channel to talk between threads
+	let (tx, mut rx) = mpsc::unbounded_channel();
+	// Setup the acquire struct and send it to the update thread
+	let acquire = NalaAcquireProgress::new(config, tx);
+	let task = tokio::task::spawn(update_thread(acquire));
 
-	let mut terminal = init_terminal(true)?;
+	let mut app = App::new(init_terminal(true)?);
 
-	let poll = tokio::task::spawn_blocking(poll_exit_event_loop);
+	while let Some(msg) = rx.recv().await {
+		match msg {
+			Message::UpdatePosition((total, current)) => {
+				app.progress.indicatif.set_length(total);
+				app.progress.indicatif.set_position(current);
+			},
+			Message::Print(msg) => {
+				app.print(msg)?;
+			},
+			Message::Fetched((msg, file_size)) => {
+				app.print(if file_size > 0 {
+					format!("{msg} [{}]", app.progress.unit.str(file_size))
+				} else {
+					msg
+				})?;
+			},
+			Message::Messages(msg) => {
+				app.message = msg;
+				app.draw()?;
+			},
+		}
 
-	let res = cache.update(&mut AcquireProgress::new(NalaAcquireProgress::new(
-		config,
-		&mut terminal,
-		&poll,
-	)));
-
-	// // Do not print how many packages are upgradable if update errored.
-	#[allow(clippy::question_mark)]
-	if res.is_err() {
-		return Ok(res?);
+		// Exit immedately.
+		// This is the only way to stop apt's update
+		if tui::poll_exit_event()? {
+			app.clean_up()?;
+			std::process::exit(1);
+		}
 	}
+
+	app.clean_up()?;
+
+	task.await??;
+
+	println!("{}", config.color.bold(&app.progress.finished_string()));
 
 	let cache = new_cache!()?;
 	let sort = PackageSort::default().upgradable();
@@ -86,103 +152,39 @@ pub async fn update(config: &Config) -> Result<()> {
 	// 	println!("{pkg} ({inst}) -> ({cand})");
 	// }
 
-	Ok(res?)
+	Ok(())
 }
 
 /// AptAcquireProgress is the default struct for the update method on the cache.
 ///
 /// This struct mimics the output of `apt update`.
-pub struct NalaAcquireProgress<'a, B: Backend> {
-	config: &'a Config,
-	terminal: &'a mut Terminal<B>,
-	message: Vec<String>,
+pub struct NalaAcquireProgress {
+	apt_config: rust_apt::config::Config,
 	pulse_interval: usize,
-	progress: NalaProgressBar,
 	ign: String,
 	hit: String,
 	get: String,
 	err: String,
-	task: &'a JoinHandle<Result<()>>,
-	stop: bool,
+	tx: mpsc::UnboundedSender<Message>,
 }
 
-impl<'a, B: Backend> NalaAcquireProgress<'a, B> {
+impl NalaAcquireProgress {
 	/// Returns a new default progress instance.
-	pub fn new(
-		config: &'a Config,
-		terminal: &'a mut Terminal<B>,
-		stop: &'a JoinHandle<Result<()>>,
-	) -> Self {
-		// Try to run a thread here for polling keys.
-		// Pulse can then check if it's finished and if it is we quick
-		// have it looop and return when there is a key pressed
-
-		let mut progress = Self {
-			config,
-			terminal,
-			message: vec![],
+	pub fn new(config: &Config, tx: mpsc::UnboundedSender<Message>) -> Self {
+		Self {
+			apt_config: rust_apt::config::Config::new(),
 			pulse_interval: 0,
-			progress: NalaProgressBar::new(false),
 			// TODO: Maybe we should make it configurable.
 			ign: config.color.yellow("Ignored").into(),
 			hit: config.color.package("No Change").into(),
 			get: config.color.blue("Updated").into(),
 			err: config.color.red("Error").into(),
-			task: stop,
-			stop: false,
-		};
-		// Set Length 1 so ratio cannot panic.
-		progress.progress.indicatif.set_length(1);
-		// Draw a blank window so it doesn't look weird
-		progress.draw();
-		progress
-	}
-
-	pub fn draw(&mut self) {
-		if self.stop {
-			return;
+			tx,
 		}
-
-		let mut message = vec![];
-
-		if self.message.is_empty() {
-			message.push(Span::from("Working...").light_green())
-		} else {
-			let mut first = true;
-			for string in self.message.iter() {
-				if first {
-					message.push(Span::from(string).light_green());
-					first = false;
-					continue;
-				}
-				message.push(Span::from(string).reset().white());
-			}
-		}
-
-		self.terminal
-			.draw(|f| self.progress.render(f, message))
-			.unwrap();
-	}
-
-	pub fn print(&mut self, msg: String) {
-		if self.stop {
-			return;
-		}
-		self.terminal
-			.insert_before(1, |buf| {
-				Paragraph::new(msg)
-					.wrap(Wrap { trim: true })
-					.alignment(Alignment::Left)
-					.set_style(Style::default().fg(Color::White))
-					.render(buf.area, buf);
-			})
-			.unwrap();
-		// Must redraw the terminal after printing
-		self.draw();
 	}
 }
 
-impl<'a, B: Backend> DynAcquireProgress for NalaAcquireProgress<'a, B> {
+impl DynAcquireProgress for NalaAcquireProgress {
 	/// Used to send the pulse interval to the apt progress class.
 	///
 	/// Pulse Interval is in microseconds.
@@ -200,21 +202,25 @@ impl<'a, B: Backend> DynAcquireProgress for NalaAcquireProgress<'a, B> {
 	///
 	/// Prints out the short description and the expected size.
 	fn hit(&mut self, item: &ItemDesc) {
-		self.print(format!("{}: {}", self.hit, item.description()))
+		self.tx
+			.send(Message::Print(format!(
+				"{}: {}",
+				self.hit,
+				item.description()
+			)))
+			.unwrap();
 	}
 
 	/// Called when an Item has started to download
 	///
 	/// Prints out the short description and the expected size.
 	fn fetch(&mut self, item: &ItemDesc) {
-		let mut msg = format!("{}:   {}", self.get, item.description());
-
-		let file_size = item.owner().file_size();
-		if file_size != 0 {
-			msg += &format!(" [{}]", self.progress.unit.str(file_size))
-		}
-
-		self.print(msg);
+		self.tx
+			.send(Message::Fetched((
+				format!("{}:   {}", self.get, item.description()),
+				item.owner().file_size(),
+			)))
+			.unwrap();
 	}
 
 	/// Called when an item is successfully and completely fetched.
@@ -234,34 +240,14 @@ impl<'a, B: Backend> DynAcquireProgress for NalaAcquireProgress<'a, B> {
 	/// Stop does not pass information into the method.
 	///
 	/// prints out the bytes downloaded and the overall average line speed.
-	fn stop(&mut self, status: &AcqTextStatus) {
-		if pending_error() {
-			return;
-		}
-
-		let msg = if status.fetched_bytes() != 0 {
-			self.config
-				.color
-				.bold(&format!(
-					"Fetched {} in {} ({}/s)",
-					self.progress.unit.str(status.fetched_bytes()),
-					time_str(status.elapsed_time()),
-					self.progress.unit.str(status.current_cps()),
-				))
-				.to_string()
-		} else {
-			"Nothing to fetch.".to_string()
-		};
-		self.print(msg);
-	}
+	fn stop(&mut self, _: &AcqTextStatus) {}
 
 	/// Called when an Item fails to download.
 	///
 	/// Print out the ErrorText for the Item.
 	fn fail(&mut self, item: &ItemDesc) {
 		let mut show_error = self
-			.config
-			.apt
+			.apt_config
 			.bool("Acquire::Progress::Ignore::ShowErrorText", true);
 		let error_text = item.owner().error_text();
 
@@ -275,10 +261,12 @@ impl<'a, B: Backend> DynAcquireProgress for NalaAcquireProgress<'a, B> {
 			_ => &self.err,
 		};
 
-		self.print(format!("{header}: {}", item.description()));
+		self.tx
+			.send(Message::Print(format!("{header}: {}", item.description())))
+			.unwrap();
 
 		if show_error {
-			self.print(error_text);
+			self.tx.send(Message::Print(error_text)).unwrap();
 		}
 	}
 
@@ -288,26 +276,12 @@ impl<'a, B: Backend> DynAcquireProgress for NalaAcquireProgress<'a, B> {
 	/// Each line has an overall percent meter and a per active item status
 	/// meter along with an overall bandwidth and ETA indicator.
 	fn pulse(&mut self, status: &AcqTextStatus, owner: &PkgAcquire) {
-		self.progress.indicatif.set_length(status.total_bytes());
-		self.progress.indicatif.set_position(status.current_bytes());
-
-		if self.task.is_finished() {
-			self.terminal.clear().unwrap();
-			restore_terminal(true).unwrap();
-			self.terminal.show_cursor().unwrap();
-			self.stop = true;
-			owner.shutdown();
-			return;
-		}
-
-		// if poll_exit_event().is_ok_and(|poll| poll) {
-		// 	self.terminal.clear().unwrap();
-		// 	restore_terminal(true).unwrap();
-		// 	self.terminal.show_cursor().unwrap();
-		// 	self.stop = true;
-		// 	owner.shutdown();
-		// 	return;
-		// }
+		self.tx
+			.send(Message::UpdatePosition((
+				status.total_bytes(),
+				status.current_bytes(),
+			)))
+			.unwrap();
 
 		let mut string: Vec<String> = vec![];
 
@@ -340,15 +314,10 @@ impl<'a, B: Backend> DynAcquireProgress for NalaAcquireProgress<'a, B> {
 				string.push(work_string);
 
 				string.push(uri);
-
-				// Break only for slim progress
-				if !self.config.get_bool("verbose", false) {
-					break;
-				}
+				break;
 			};
 		}
 
-		self.message = string;
-		self.draw();
+		self.tx.send(Message::Messages(string)).unwrap();
 	}
 }

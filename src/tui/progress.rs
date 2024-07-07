@@ -1,12 +1,12 @@
 use std::rc::Rc;
 
 use indicatif::ProgressBar;
-use ratatui::layout::{Alignment, Constraint, Direction, Flex, Layout, Rect};
+use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, LineGauge, Paragraph, Wrap};
+use ratatui::widgets::{Block, BorderType, LineGauge, Padding, Paragraph, Wrap};
 use ratatui::{symbols, Frame};
-use rust_apt::util::NumSys;
+use rust_apt::util::{time_str, NumSys};
 
 pub struct UnitStr {
 	precision: usize,
@@ -42,23 +42,36 @@ impl UnitStr {
 pub struct NalaProgressBar {
 	pub indicatif: ProgressBar,
 	pub unit: UnitStr,
-	remaining: bool,
 }
 
 impl NalaProgressBar {
-	pub fn new(remaining: bool) -> Self {
+	pub fn new() -> Self {
 		let indicatif = ProgressBar::hidden();
 		indicatif.set_length(0);
 
 		Self {
 			indicatif,
 			unit: UnitStr::new(1, NumSys::Binary),
-			remaining,
 		}
 	}
 
-	fn ratio(&self) -> f64 {
-		self.indicatif.position() as f64 / self.indicatif.length().unwrap() as f64
+	pub fn length(&self) -> u64 { self.indicatif.length().unwrap_or_default() }
+
+	fn elapsed(&self) -> u64 { self.indicatif.elapsed().as_secs() }
+
+	fn ratio(&self) -> f64 { self.indicatif.position() as f64 / self.length() as f64 }
+
+	pub fn finished_string(&self) -> String {
+		if self.length() > 0 && self.elapsed() > 0 {
+			format!(
+				"Fetched {} in {} ({}/s)",
+				self.unit.str(self.length()),
+				time_str(self.elapsed()),
+				self.unit.str(self.length() / self.elapsed())
+			)
+		} else {
+			"Nothing to fetch".to_string()
+		}
 	}
 
 	pub fn render(&mut self, f: &mut Frame, msg: Vec<Span>) {
@@ -75,39 +88,31 @@ impl NalaProgressBar {
 		let current_total = format!(
 			"{}/{}",
 			self.unit.str(self.indicatif.position()),
-			self.unit.str(self.indicatif.length().unwrap()),
+			self.unit.str(self.length()),
 		);
-		let per_sec = format!("{}/s ", self.unit.str(self.indicatif.per_sec() as u64));
+		let per_sec = format!("{}/s", self.unit.str(self.indicatif.per_sec() as u64));
 
-		let (label, constraints) = if self.remaining {
-			(
-				Line::from(vec![
-					Span::from("Time Remaining:").light_green(),
-					Span::from(format!(
-						" {}",
-						rust_apt::util::time_str(self.indicatif.eta().as_secs())
-					)),
-				]),
-				[
-					Constraint::Fill(100),
-					Constraint::Length(percentage.len() as u16 + 2),
-					Constraint::Length(current_total.len() as u16 + 2),
-					Constraint::Length(per_sec.len() as u16 + 2),
-				],
-			)
+		let label = if self.indicatif.position() < self.length() {
+			Line::from(vec![
+				Span::from("Time Remaining:").light_green(),
+				Span::from(format!(
+					" {}",
+					rust_apt::util::time_str(self.indicatif.eta().as_secs())
+				)),
+			])
 		} else {
-			(
-				Line::from(Span::from("")),
-				[
-					Constraint::Length(percentage.len() as u16 + 2),
-					Constraint::Fill(100),
-					Constraint::Length(current_total.len() as u16 + 2),
-					Constraint::Length(per_sec.len() as u16 + 2),
-				],
-			)
+			Line::from(Span::from("Working...").light_green())
 		};
 
-		let bar_block = split_horizontal(constraints, inner[1]);
+		let bar_block = split_horizontal(
+			[
+				Constraint::Fill(100),
+				Constraint::Length(percentage.len() as u16 + 2),
+				Constraint::Length(current_total.len() as u16 + 2),
+				Constraint::Length(per_sec.len() as u16 + 2),
+			],
+			inner[1],
+		);
 
 		let bar = LineGauge::default()
 			.line_set(symbols::line::THICK)
@@ -116,17 +121,8 @@ impl NalaProgressBar {
 			.style(Style::default().fg(Color::White))
 			.gauge_style(Style::default().fg(Color::LightGreen).bg(Color::Red));
 
-		if self.remaining {
-			f.render_widget(bar, bar_block[0]);
-			f.render_widget(get_paragraph(&percentage).blue(), bar_block[1]);
-		} else {
-			f.render_widget(
-				get_paragraph(&percentage).left_aligned().white(),
-				bar_block[0],
-			);
-			f.render_widget(bar, bar_block[1]);
-		}
-
+		f.render_widget(bar, bar_block[0]);
+		f.render_widget(get_paragraph(&percentage).blue(), bar_block[1]);
 		f.render_widget(get_paragraph(&current_total).light_green(), bar_block[2]);
 		f.render_widget(get_paragraph(&per_sec).blue(), bar_block[3]);
 	}
@@ -139,10 +135,10 @@ pub fn get_paragraph(text: &str) -> Paragraph {
 }
 
 pub fn build_block<'a>() -> Block<'a> {
-	Block::new()
-		.borders(Borders::ALL)
+	Block::bordered()
 		.border_type(BorderType::Rounded)
 		.title_alignment(Alignment::Left)
+		.padding(Padding::horizontal(1))
 		.style(
 			Style::default()
 				.fg(Color::LightGreen)
@@ -157,7 +153,6 @@ where
 	T::Item: Into<Constraint>,
 {
 	Layout::default()
-		.flex(Flex::SpaceBetween)
 		.direction(Direction::Horizontal)
 		.constraints(constraints)
 		.split(block)
@@ -170,8 +165,6 @@ where
 	T::Item: Into<Constraint>,
 {
 	Layout::default()
-		// TODO: Figure out how to use flex.
-		.flex(Flex::Legacy)
 		.direction(Direction::Vertical)
 		.constraints(constraints)
 		.split(block)
