@@ -5,11 +5,6 @@ use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Error, Result};
 use digest::DynDigest;
-use ratatui::backend::CrosstermBackend;
-use ratatui::style::Stylize;
-use ratatui::text::Span;
-use ratatui::widgets::{Paragraph, Widget};
-use ratatui::Terminal;
 use rust_apt::records::RecordField;
 use rust_apt::{new_cache, Version};
 use sha2::{Digest, Sha256, Sha512};
@@ -20,7 +15,7 @@ use tokio::task::JoinSet;
 
 use crate::config::Config;
 use crate::tui;
-use crate::util::{init_terminal, restore_terminal, NalaRegex};
+use crate::util::NalaRegex;
 
 /// Return the package name. Checks if epoch is needed.
 fn get_pkg_name(version: &Version) -> String {
@@ -163,7 +158,7 @@ impl UriFilter {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Uri {
 	uris: Vec<String>,
 	size: u64,
@@ -310,113 +305,9 @@ pub enum Message {
 	NonFatal(Error),
 	Update(u64),
 }
-pub struct App {
-	terminal: Terminal<CrosstermBackend<std::io::Stdout>>,
-	tick_rate: Duration,
-	progress: tui::NalaProgressBar,
-	current: usize,
-	total: usize,
-	rx: mpsc::UnboundedReceiver<Message>,
-}
-
-impl App {
-	pub fn new(rx: mpsc::UnboundedReceiver<Message>) -> Result<App> {
-		Ok(App {
-			terminal: init_terminal(true)?,
-			tick_rate: Duration::from_millis(250),
-			progress: tui::NalaProgressBar::new(),
-			current: 0,
-			total: 0,
-			rx,
-		})
-	}
-
-	fn clean_up(&mut self) -> Result<bool> {
-		restore_terminal(true)?;
-		self.terminal.clear()?;
-		Ok(true)
-	}
-
-	pub async fn download(&mut self, downloader: &mut Downloader, config: &Config) -> Result<()> {
-		// Error if there are any untrusted URIs.
-		downloader.filter.maybe_untrusted_error(config)?;
-
-		for uri in &downloader.uris {
-			self.total += 1;
-			self.progress.indicatif.inc_length(uri.size)
-		}
-
-		downloader.download().await?;
-		Ok(())
-	}
-
-	pub fn draw(&mut self) -> Result<()> {
-		let msg = vec![
-			Span::from("Total Packages:").light_green(),
-			Span::from(format!(" {}/{}", self.current, self.total)).white(),
-		];
-
-		self.terminal.draw(|f| self.progress.render(f, msg))?;
-		Ok(())
-	}
-
-	pub fn print(&mut self, msg: String) -> Result<()> {
-		self.terminal.insert_before(1, |buf| {
-			Paragraph::new(msg)
-				.left_aligned()
-				.white()
-				.render(buf.area, buf);
-		})?;
-		// Must redraw the terminal after printing
-		self.draw()
-	}
-
-	/// Run the App. Returns false if the user requested exit.
-	pub fn run(mut self) -> Result<bool> {
-		let mut tick = Instant::now();
-		loop {
-			// Exit if the downloads are finished
-			if self.current == self.total {
-				return self.clean_up();
-			}
-
-			while let Ok(message) = self.rx.try_recv() {
-				match message {
-					Message::Update(bytes_downloaded) => {
-						self.progress.indicatif.inc(bytes_downloaded)
-					},
-					Message::Finished => {
-						self.current += 1;
-						if self.current == self.total {
-							return self.clean_up();
-						}
-					},
-					Message::Exit => {
-						return self.clean_up();
-					},
-					Message::Debug(msg) => {
-						self.print(msg)?;
-					},
-					Message::NonFatal(err) => {
-						self.print(format!("{err}"))?;
-					},
-				}
-			}
-
-			if tui::poll_exit_event()? {
-				self.clean_up()?;
-				return Ok(false);
-			}
-
-			if tick.elapsed() >= self.tick_rate {
-				self.draw()?;
-				tick = Instant::now();
-			}
-		}
-	}
-}
 
 // TODO: Need to make the proxy at some point
+// TODO: The Downloader does not properly balance mirrors
 pub struct Downloader {
 	client: reqwest::Client,
 	uris: Vec<Uri>,
@@ -476,8 +367,7 @@ impl Downloader {
 
 #[tokio::main]
 pub async fn download(config: &Config) -> Result<()> {
-	let (tx, rx) = mpsc::unbounded_channel();
-	let mut app = App::new(rx)?;
+	let (tx, mut rx) = mpsc::unbounded_channel();
 	let mut downloader = Downloader::new(tx.clone())?;
 
 	let mut not_found = vec![];
@@ -519,14 +409,60 @@ pub async fn download(config: &Config) -> Result<()> {
 		bail!("Some packages were not found.");
 	}
 
-	// Start the downloads
-	app.download(&mut downloader, config).await?;
+	downloader.filter.maybe_untrusted_error(config)?;
 
-	// Spawn UI App in thread that allows blocking
-	if !tokio::task::spawn_blocking(|| app.run()).await?? {
-		downloader.set.shutdown().await;
-		config.color.notice("Exiting at user request");
-		return Ok(());
+	let mut progress = tui::NalaProgressBar::new()?;
+	// Set the total downloads.
+	let mut total = 0;
+	for uri in &downloader.uris {
+		total += 1;
+		progress.indicatif.inc_length(uri.size)
+	}
+
+	// Start the downloads
+	downloader.download().await?;
+
+	let tick_rate = Duration::from_millis(250);
+	let mut tick = Instant::now();
+	let mut current = 0;
+	loop {
+		if current == total {
+			progress.clean_up()?;
+			break;
+		}
+
+		while let Ok(msg) = rx.try_recv() {
+			match msg {
+				Message::Update(bytes_downloaded) => progress.indicatif.inc(bytes_downloaded),
+				Message::Finished => {
+					current += 1;
+					progress.msg =
+						vec!["Total Packages:".to_string(), format!(" {current}/{total}")];
+					progress.draw()?;
+				},
+				Message::Exit => {
+					return progress.clean_up();
+				},
+				Message::Debug(msg) => {
+					progress.print(msg)?;
+				},
+				Message::NonFatal(err) => {
+					progress.print(format!("{err}"))?;
+				},
+			}
+		}
+
+		if tui::poll_exit_event()? {
+			progress.clean_up()?;
+			downloader.set.shutdown().await;
+			config.color.notice("Exiting at user request");
+			return Ok(());
+		}
+
+		if tick.elapsed() >= tick_rate {
+			progress.draw()?;
+			tick = Instant::now();
+		}
 	}
 
 	let finished = downloader.finish().await?;

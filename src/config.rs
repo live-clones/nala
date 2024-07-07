@@ -53,7 +53,7 @@ impl Paths {
 	}
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug)]
 /// Configuration struct
 pub struct Config {
 	#[serde(rename(deserialize = "Nala"), default)]

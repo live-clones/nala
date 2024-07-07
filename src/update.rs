@@ -1,9 +1,4 @@
 use anyhow::Result;
-use ratatui::backend::Backend;
-use ratatui::style::Stylize;
-use ratatui::text::Span;
-use ratatui::widgets::{Paragraph, Widget};
-use ratatui::Terminal;
 use rust_apt::progress::{AcquireProgress, DynAcquireProgress};
 use rust_apt::raw::{AcqTextStatus, ItemDesc, ItemState, PkgAcquire};
 use rust_apt::{new_cache, PackageSort};
@@ -11,68 +6,12 @@ use tokio::sync::mpsc;
 
 use crate::config::Config;
 use crate::tui;
-use crate::util::{init_terminal, restore_terminal};
 
 pub enum Message {
 	Print(String),
 	Messages(Vec<String>),
 	UpdatePosition((u64, u64)),
 	Fetched((String, u64)),
-}
-
-pub struct App<B: Backend> {
-	terminal: Terminal<B>,
-	progress: tui::NalaProgressBar,
-	message: Vec<String>,
-}
-
-impl<B: Backend> App<B> {
-	pub fn new(terminal: Terminal<B>) -> App<B> {
-		App {
-			terminal,
-			progress: tui::NalaProgressBar::new(),
-			message: vec![],
-		}
-	}
-
-	pub fn clean_up(&mut self) -> Result<()> {
-		self.terminal.clear()?;
-		restore_terminal(true)?;
-		self.terminal.show_cursor()?;
-		Ok(())
-	}
-
-	pub fn draw(&mut self) -> Result<()> {
-		let mut spans = vec![];
-
-		if self.message.is_empty() {
-			spans.push(Span::from("Working...").light_green())
-		} else {
-			let mut first = true;
-			for string in self.message.iter() {
-				if first {
-					spans.push(Span::from(string).light_green());
-					first = false;
-					continue;
-				}
-				spans.push(Span::from(string).reset().white());
-			}
-		}
-
-		self.terminal.draw(|f| self.progress.render(f, spans))?;
-		Ok(())
-	}
-
-	pub fn print(&mut self, msg: String) -> Result<()> {
-		self.terminal.insert_before(1, |buf| {
-			Paragraph::new(msg)
-				.left_aligned()
-				.white()
-				.render(buf.area, buf);
-		})?;
-		self.draw()?;
-		Ok(())
-	}
 }
 
 /// The function just runs apt's update and is designed to go into
@@ -91,43 +30,43 @@ pub async fn update(config: &Config) -> Result<()> {
 	let acquire = NalaAcquireProgress::new(config, tx);
 	let task = tokio::task::spawn(update_thread(acquire));
 
-	let mut app = App::new(init_terminal(true)?);
+	let mut progress = tui::NalaProgressBar::new()?;
 
 	while let Some(msg) = rx.recv().await {
 		match msg {
 			Message::UpdatePosition((total, current)) => {
-				app.progress.indicatif.set_length(total);
-				app.progress.indicatif.set_position(current);
+				progress.indicatif.set_length(total);
+				progress.indicatif.set_position(current);
 			},
 			Message::Print(msg) => {
-				app.print(msg)?;
+				progress.print(msg)?;
 			},
 			Message::Fetched((msg, file_size)) => {
-				app.print(if file_size > 0 {
-					format!("{msg} [{}]", app.progress.unit.str(file_size))
+				progress.print(if file_size > 0 {
+					format!("{msg} [{}]", progress.unit.str(file_size))
 				} else {
 					msg
 				})?;
 			},
 			Message::Messages(msg) => {
-				app.message = msg;
-				app.draw()?;
+				progress.msg = msg;
+				progress.draw()?;
 			},
 		}
 
 		// Exit immedately.
 		// This is the only way to stop apt's update
 		if tui::poll_exit_event()? {
-			app.clean_up()?;
+			progress.clean_up()?;
 			std::process::exit(1);
 		}
 	}
 
-	app.clean_up()?;
+	progress.clean_up()?;
 
 	task.await??;
 
-	println!("{}", config.color.bold(&app.progress.finished_string()));
+	println!("{}", config.color.bold(&progress.finished_string()));
 
 	let cache = new_cache!()?;
 	let sort = PackageSort::default().upgradable();
