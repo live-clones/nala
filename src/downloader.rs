@@ -343,8 +343,6 @@ pub enum Message {
 	Update(u64),
 }
 
-// TODO: Need to make the proxy at some point
-// TODO: The Downloader does not properly balance mirrors
 pub struct Downloader {
 	client: reqwest::Client,
 	uris: Vec<Uri>,
@@ -357,9 +355,47 @@ pub struct Downloader {
 }
 
 impl Downloader {
-	pub fn new(tx: mpsc::UnboundedSender<Message>) -> Result<Downloader> {
+	pub fn new(config: &Config, tx: mpsc::UnboundedSender<Message>) -> Result<Downloader> {
+		let mut proxy_map: HashMap<String, reqwest::Url> = HashMap::new();
+		let mut exclusions = vec![];
+
+		if let Some(proxy_config) = config.apt.tree("Acquire::http::Proxy") {
+			// Check first for a proxy for everything
+			if let Some(proxy) = proxy_config.value() {
+				proxy_map.insert("Default".to_string(), reqwest::Url::parse(&proxy)?);
+			}
+
+			// Check for specific domain proxies
+			if let Some(child) = proxy_config.child() {
+				for node in child {
+					let (Some(domain), Some(proxy)) = (node.tag(), node.value()) else {
+						continue;
+					};
+
+					let lower = proxy.to_lowercase();
+					if ["direct", "false"].contains(&lower.as_str()) {
+						exclusions.push(domain);
+						continue;
+					}
+					proxy_map.insert(domain, reqwest::Url::parse(&proxy)?);
+				}
+			}
+		}
+
+		let proxy = reqwest::Proxy::custom(move |url| {
+			let host = url.host_str()?;
+			if let Some(proxy) = proxy_map.get(host) {
+				return Some(proxy.clone());
+			}
+			Some(proxy_map.get("Default")?.clone())
+		})
+		.no_proxy(reqwest::NoProxy::from_string(&exclusions.join(",")));
+
 		Ok(Downloader {
-			client: reqwest::Client::new(),
+			client: reqwest::Client::builder()
+				.timeout(Duration::from_secs(15))
+				.proxy(proxy)
+				.build()?,
 			uris: vec![],
 			filter: UriFilter::new(),
 			domains: Arc::new(Mutex::new(HashMap::new())),
@@ -410,7 +446,7 @@ impl Downloader {
 #[tokio::main]
 pub async fn download(config: &Config) -> Result<()> {
 	let (tx, mut rx) = mpsc::unbounded_channel();
-	let mut downloader = Downloader::new(tx.clone())?;
+	let mut downloader = Downloader::new(config, tx.clone())?;
 
 	let mut not_found = vec![];
 	if let Some(pkg_names) = config.pkg_names() {
