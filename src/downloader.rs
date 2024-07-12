@@ -166,8 +166,8 @@ impl UriFilter {
 pub struct Uri {
 	uris: VecDeque<String>,
 	size: u64,
+	partial: String,
 	archive: String,
-	destination: String,
 	hash_type: String,
 	hash_value: String,
 	filename: String,
@@ -181,19 +181,19 @@ impl Uri {
 		config: &Config,
 		client: reqwest::Client,
 		filter: &mut UriFilter,
-		archive: String,
+		archive: &str,
 		tx: mpsc::UnboundedSender<Message>,
 	) -> Result<Uri> {
 		let filename = get_pkg_name(version);
-		let destination = format!("{archive}/partial/{filename}");
-		let archive = format!("{archive}{filename}");
+		let partial = format!("{archive}/partial/{filename}");
+		let archive = format!("{archive}/{filename}");
 
 		let (hash_type, hash_value) = get_hash(config, version)?;
 		Ok(Uri {
 			uris: filter.uris(version, config)?,
 			size: version.size(),
 			archive,
-			destination,
+			partial,
 			hash_type,
 			hash_value,
 			filename,
@@ -204,26 +204,21 @@ impl Uri {
 
 	/// Create the File to write the download to.
 	async fn open_file(&self) -> Result<File> {
-		fs::File::create(&self.destination)
+		fs::File::create(&self.partial)
 			.await
-			.with_context(|| format!("Could not create file '{}'", self.destination))
+			.with_context(|| format!("Could not create file '{}'", self.partial))
 	}
 
 	async fn remove_file(&self) -> Result<()> {
-		fs::remove_file(&self.destination)
+		fs::remove_file(&self.partial)
 			.await
-			.with_context(|| format!("Could not remove '{}'", self.destination))
+			.with_context(|| format!("Could not remove '{}'", self.partial))
 	}
 
 	async fn move_to_archive(&self) -> Result<()> {
-		fs::rename(&self.destination, &self.archive)
+		fs::rename(&self.partial, &self.archive)
 			.await
-			.with_context(|| {
-				format!(
-					"Could not move '{}' to '{}'",
-					self.destination, self.archive
-				)
-			})
+			.with_context(|| format!("Could not move '{}' to '{}'", self.partial, self.archive))
 	}
 
 	fn get_hasher(&self) -> Box<dyn DynDigest + Send> {
@@ -428,7 +423,7 @@ pub fn build_proxy(config: &Config, tx: mpsc::UnboundedSender<Message>) -> Resul
 	) {
 		if debug {
 			let message = if let Some(proxy) = proxy {
-				format!("Proxy for '{domain}' is {proxy:?}")
+				format!("Proxy for '{domain}' is '{proxy}'")
 			} else {
 				format!("'{domain}' Proxy is None")
 			};
@@ -480,6 +475,8 @@ pub struct Downloader {
 	client: reqwest::Client,
 	uris: Vec<Uri>,
 	filter: UriFilter,
+	partial_dir: String,
+	archive_dir: String,
 	/// Used to count how many connections are open to a domain.
 	/// Nala only allows 3 at a time per domain.
 	domains: Arc<Mutex<HashMap<String, u8>>>,
@@ -495,6 +492,9 @@ impl Downloader {
 				.proxy(proxy)
 				.build()?,
 			uris: vec![],
+			// TODO: Make these directories configurable?
+			partial_dir: "./partial".to_string(),
+			archive_dir: ".".to_string(),
 			filter: UriFilter::new(),
 			domains: Arc::new(Mutex::new(HashMap::new())),
 			set: JoinSet::new(),
@@ -508,9 +508,7 @@ impl Downloader {
 			config,
 			self.client.clone(),
 			&mut self.filter,
-			// Download command defaults to current directory
-			// TODO: Make this configurable?
-			"./".to_string(),
+			&self.archive_dir,
 			self.tx.clone(),
 		)?;
 		self.uris.push(uri);
@@ -519,7 +517,7 @@ impl Downloader {
 
 	pub async fn download(&mut self) -> Result<()> {
 		// Create the partial directory
-		mkdir("./partial").await?;
+		mkdir(&self.partial_dir).await?;
 
 		while let Some(uri) = self.uris.pop() {
 			let regex = self.filter.regex.domain()?.clone();
@@ -531,7 +529,7 @@ impl Downloader {
 
 	pub async fn finish(mut self) -> Result<Vec<Uri>> {
 		// Finally remove the partial directory
-		rmdir("./partial").await?;
+		rmdir(&self.partial_dir).await?;
 
 		let mut finished = vec![];
 		while let Some(res) = self.set.join_next().await {
@@ -626,9 +624,7 @@ pub async fn download(config: &Config) -> Result<()> {
 					return progress.clean_up();
 				},
 				Message::Debug(msg) => {
-					if config.debug() {
-						progress.print(msg)?;
-					}
+					progress.print(format!("DEBUG: {msg}"))?;
 				},
 				Message::Verbose(msg) => {
 					if config.verbose() {
