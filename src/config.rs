@@ -9,7 +9,7 @@ use rust_apt::config::Config as AptConfig;
 use serde::Deserialize;
 
 use crate::cli::Commands;
-use crate::colors::{Color, ColorType, Style, Theme, COLOR_MAP};
+use crate::colors::{Style, Theme};
 
 /// Represents different file and directory paths
 pub enum Paths {
@@ -52,20 +52,33 @@ impl Paths {
 	}
 }
 
+#[derive(Deserialize, Debug, PartialEq)]
+pub enum Switch {
+	Always,
+	Never,
+	Auto,
+}
+
+impl Default for Switch {
+	/// The default configuration for Nala.
+	fn default() -> Switch { Switch::Auto }
+}
+
 #[derive(Deserialize, Debug)]
 /// Configuration struct
 pub struct Config {
 	#[serde(rename(deserialize = "Nala"), default)]
-	pub(crate) nala_map: HashMap<String, bool>,
-	#[serde(rename(deserialize = "Theme"), default)]
-	color_data: HashMap<String, ThemeType>,
+	pub nala_map: HashMap<String, bool>,
 
-	#[serde(skip)]
-	pub vec_map: HashMap<String, Vec<String>>,
+	#[serde(rename(deserialize = "String"), default)]
+	vec_map: HashMap<String, Vec<String>>,
+
+	#[serde(rename(deserialize = "Theme"), default)]
+	theme: HashMap<Theme, Style>,
 
 	// The following fields are not used with serde
 	#[serde(skip)]
-	pub color: Color,
+	pub can_color: Switch,
 
 	#[serde(skip)]
 	pub apt: AptConfig,
@@ -74,22 +87,24 @@ pub struct Config {
 	pub auto: Option<u8>,
 
 	#[serde(skip)]
-	/// The command the is being run
+	/// The command that is being run
 	pub command: String,
 }
 
 impl Default for Config {
 	/// The default configuration for Nala.
 	fn default() -> Config {
-		Config {
+		let mut config = Config {
 			nala_map: HashMap::new(),
+			theme: HashMap::new(),
 			vec_map: HashMap::new(),
-			color_data: HashMap::new(),
-			color: Color::default(),
+			can_color: Switch::Auto,
 			auto: None,
 			apt: AptConfig::new(),
 			command: "Command Not Given Yet".to_string(),
-		}
+		};
+		config.set_default_theme();
+		config
 	}
 }
 
@@ -97,11 +112,59 @@ impl Config {
 	pub fn new(conf_file: &Path) -> Result<Config> {
 		// Try to read the entire config file and map it.
 		// Return an empty config and print a warning on failure.
-
-		// Eventually this needs to include preinstall and postinstall sections.
 		let mut map = Self::read_config(conf_file)?;
-		map.update_color()?;
+		map.set_default_theme();
 		Ok(map)
+	}
+
+	pub fn set_default_theme(&mut self) {
+		for theme in [
+			Theme::Primary,
+			Theme::Highlight,
+			Theme::Package,
+			Theme::Version,
+			Theme::Notice,
+			Theme::Warning,
+			Theme::Error,
+		] {
+			if self.theme.contains_key(&theme) {
+				continue;
+			}
+			self.theme.insert(theme, theme.default_style());
+		}
+	}
+
+	pub fn color(&self, theme: Theme, string: &str) -> String {
+		if self.can_color != Switch::Never {
+			if let Some(theme) = self.theme.get(&theme) {
+				return format!("{theme}{string}\x1b[0m");
+			}
+		}
+		string.to_string()
+	}
+
+	/// Hightlights the string according to configuration.
+	pub fn highlight(&self, string: &str) -> String { self.color(Theme::Highlight, string) }
+
+	/// Color the version according to configuration.
+	pub fn color_ver(&self, string: &str) -> String {
+		format!(
+			"{}{}{}",
+			self.highlight("("),
+			self.color(Theme::Version, string),
+			self.highlight(")")
+		)
+	}
+
+	/// Print a notice to stderr
+	pub fn stderr(&self, theme: Theme, string: &str) {
+		let header = match theme {
+			Theme::Error => "Error:",
+			Theme::Warning => "Warning:",
+			Theme::Notice => "Notice:",
+			_ => panic!("'{theme:?}' is not a valid stderr!"),
+		};
+		eprintln!("{} {string}", self.color(theme, header));
 	}
 
 	/// Read and Return the entire toml configuration file
@@ -184,59 +247,4 @@ impl Config {
 
 	/// Return true if verbose or debug is enabled
 	pub fn verbose(&self) -> bool { self.get_bool("verbose", self.debug()) }
-
-	fn update_color(&mut self) -> Result<()> {
-		let default_map = &*COLOR_MAP;
-		// Key will be the name of the format, example: "error"
-		for key in default_map.keys() {
-			// If the key is not in the defaults, ignore it
-			let Some(theme) = self.color_data.get(*key) else {
-				continue;
-			};
-
-			self.color.color_map.insert(
-				*key,
-				Theme::new(
-					match &theme.style {
-						SerdeStyle::Text(string) => Style::from_str(string)?,
-						SerdeStyle::Integer(int) => Style::from_u8(*int)?,
-						SerdeStyle::Array(vector) => Style::from_array(vector)?,
-					},
-					match &theme.color {
-						SerdeColor::Text(string) => ColorType::from_str(string)?,
-						SerdeColor::Integer(int) => ColorType::from_u8(*int),
-						SerdeColor::Array(array) => ColorType::from_array(*array),
-					},
-				),
-			);
-		}
-		Ok(())
-	}
-}
-
-// Transitional structs to go from Serde parse into the Color Struct
-// It may be worth considering a way to marry the two.
-// ATM they are separated due to additional type checking that seems complicated
-// with serde
-
-#[derive(Deserialize, Debug)]
-struct ThemeType {
-	style: SerdeStyle,
-	color: SerdeColor,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(untagged)]
-enum SerdeStyle {
-	Text(String),
-	Integer(u8),
-	Array(Vec<String>),
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(untagged)]
-enum SerdeColor {
-	Text(String),
-	Integer(u8),
-	Array([u8; 3]),
 }

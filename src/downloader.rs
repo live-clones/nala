@@ -15,6 +15,7 @@ use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinSet;
 
+use crate::colors::Theme;
 use crate::config::Config;
 use crate::tui;
 use crate::util::NalaRegex;
@@ -67,7 +68,7 @@ impl UriFilter {
 			if !pf.index_file().is_trusted() {
 				// Erroring is handled later if there are any untrusted URIs
 				self.untrusted
-					.insert(config.color.red(version.parent().name()).to_string());
+					.insert(config.color(Theme::Error, version.parent().name()));
 			}
 
 			let uri = pf.index_file().archive_uri(&vf.lookup().filename());
@@ -138,9 +139,10 @@ impl UriFilter {
 			return Ok(());
 		}
 
-		config
-			.color
-			.warn("The Following packages cannot be authenticated!");
+		config.stderr(
+			Theme::Warning,
+			"The Following packages cannot be authenticated!",
+		);
 
 		eprintln!(
 			"  {}",
@@ -155,9 +157,10 @@ impl UriFilter {
 			bail!("Some packages were unable to be authenticated.")
 		}
 
-		config
-			.color
-			.notice("Configuration is set to allow installation of unauthenticated packages.");
+		config.stderr(
+			Theme::Notice,
+			"Configuration is set to allow installation of unauthenticated packages.",
+		);
 		Ok(())
 	}
 }
@@ -564,14 +567,17 @@ pub async fn download(config: &Config) -> Result<()> {
 						break;
 					}
 					// Version wasn't downloadable
-					config.color.warn(&format!(
-						"Can't find a source to download version '{}' of '{}'",
-						version.version(),
-						pkg.fullname(false)
-					));
+					config.stderr(
+						Theme::Warning,
+						&format!(
+							"Can't find a source to download version '{}' of '{}'",
+							version.version(),
+							pkg.fullname(false)
+						),
+					);
 				}
 			} else {
-				not_found.push(config.color.yellow(name).to_string());
+				not_found.push(config.color(Theme::Notice, name));
 			}
 		}
 	} else {
@@ -580,7 +586,7 @@ pub async fn download(config: &Config) -> Result<()> {
 
 	if !not_found.is_empty() {
 		for pkg in &not_found {
-			config.color.error(&format!("{pkg} not found"))
+			config.color(Theme::Error, &format!("{pkg} not found"));
 		}
 		bail!("Some packages were not found.");
 	}
@@ -640,7 +646,7 @@ pub async fn download(config: &Config) -> Result<()> {
 		if tui::poll_exit_event()? {
 			progress.clean_up()?;
 			downloader.set.shutdown().await;
-			config.color.notice("Exiting at user request");
+			config.color(Theme::Notice, "Exiting at user request");
 			return Ok(());
 		}
 
@@ -656,8 +662,8 @@ pub async fn download(config: &Config) -> Result<()> {
 	for uri in finished {
 		println!(
 			"  {} was written to {}",
-			config.color.package(&uri.filename),
-			config.color.package(&uri.archive),
+			config.color(Theme::Primary, &uri.filename),
+			config.color(Theme::Primary, &uri.archive),
 		)
 	}
 
@@ -680,8 +686,8 @@ fn get_hash(config: &Config, version: &Version) -> Result<(String, String)> {
 
 	bail!(
 		"{} {} can't be checked for integrity.\nThere are no hashes available for this package.",
-		config.color.yellow(version.parent().name()),
-		config.color.yellow(version.version()),
+		config.color(Theme::Notice, version.parent().name()),
+		config.color(Theme::Notice, version.version()),
 	);
 }
 

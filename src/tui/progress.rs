@@ -160,7 +160,7 @@ impl NalaProgressBar {
 			.ratio(self.ratio())
 			.label(label)
 			.style(Style::default().fg(Color::White))
-			.gauge_style(Style::default().fg(Color::LightGreen).bg(Color::Red));
+			.filled_style(Style::default().fg(Color::LightGreen).bg(Color::Red));
 
 		self.terminal
 			.draw(|f| render(f, bar, percentage, current_total, per_sec, spans))?;
