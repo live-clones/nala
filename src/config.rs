@@ -10,7 +10,6 @@ use serde::Deserialize;
 
 use crate::cli::Commands;
 use crate::colors::{Color, ColorType, Style, Theme, COLOR_MAP};
-use crate::dprint;
 
 /// Represents different file and directory paths
 pub enum Paths {
@@ -57,22 +56,19 @@ impl Paths {
 /// Configuration struct
 pub struct Config {
 	#[serde(rename(deserialize = "Nala"), default)]
-	nala_map: HashMap<String, bool>,
+	pub(crate) nala_map: HashMap<String, bool>,
 	#[serde(rename(deserialize = "Theme"), default)]
 	color_data: HashMap<String, ThemeType>,
 
 	#[serde(skip)]
 	pub string_map: HashMap<String, String>,
 
+	#[serde(skip)]
+	pub vec_map: HashMap<String, Vec<String>>,
+
 	// The following fields are not used with serde
 	#[serde(skip)]
 	pub color: Color,
-
-	#[serde(skip)]
-	pkg_names: Option<Vec<String>>,
-
-	#[serde(skip)]
-	countries: Option<Vec<String>>,
 
 	#[serde(skip)]
 	pub apt: AptConfig,
@@ -91,10 +87,9 @@ impl Default for Config {
 		Config {
 			nala_map: HashMap::new(),
 			string_map: HashMap::new(),
+			vec_map: HashMap::new(),
 			color_data: HashMap::new(),
 			color: Color::default(),
-			pkg_names: None,
-			countries: None,
 			auto: None,
 			apt: AptConfig::new(),
 			command: "Command Not Given Yet".to_string(),
@@ -130,71 +125,25 @@ impl Config {
 			self.auto = opts.auto;
 		};
 
-		let bool_opts = [
-			"debug",
-			"verbose",
-			"description",
-			"summary",
-			"all_versions",
-			"installed",
-			"nala_installed",
-			"upgradable",
-			"virtual",
-			"names",
-			"lists",
-			"fetch",
-			// Fetch Options
-			"non_free",
-			"https_only",
-			"sources",
-		];
-
-		for opt in bool_opts {
-			// Clap seems to work differently in a release build
-			// For a debug build we need to check for an error
-			if args.try_get_one::<bool>(opt).is_err() {
-				self.set_bool(opt, false);
+		for id in args.ids() {
+			let key = id.as_str().to_string();
+			// Don't do anything if the option wasn't specifically passed
+			if Some(ValueSource::CommandLine) != args.value_source(&key) {
 				continue;
 			}
 
-			// If the flag exists
-			if let Some(value) = args.get_one::<bool>(opt) {
-				// And the flag was passed from the command line
-				if let Some(ValueSource::CommandLine) = args.value_source(opt) {
-					// Set the config
-					self.set_bool(opt, *value);
-					continue;
-				}
+			if let Ok(Some(value)) = args.try_get_one::<bool>(&key) {
+				self.nala_map.insert(key, *value);
+				continue;
 			}
 
-			// If the flag doesn't exist, wasn't passed by the user,
-			// and isn't present in the config
-			if !self.nala_map.contains_key(opt) {
-				// set it to false
-				self.set_bool(opt, false);
+			if let Ok(Some(value)) = args.try_get_one::<Vec<String>>(&key) {
+				self.vec_map.insert(key, value.clone());
+				continue;
 			}
-		}
 
-		if let Ok(Some(pkg_names)) = args.try_get_many::<String>("pkg_names") {
-			let pkgs: Vec<String> = pkg_names.cloned().collect();
-			self.pkg_names = if pkgs.is_empty() { None } else { Some(pkgs) };
-
-			dprint!(self, "Package Names = {:?}", self.pkg_names);
-		}
-
-		// TODO: It may be time to make these like bool opts above.
-		if let Ok(Some(countries)) = args.try_get_many::<String>("country") {
-			let country_vec: Vec<String> = countries.cloned().collect();
-			self.countries = if country_vec.is_empty() { None } else { Some(country_vec) };
-
-			dprint!(self, "Country = {:?}", self.countries);
-		}
-
-		let option_strings = ["debian", "ubuntu", "devuan"];
-
-		for opt in option_strings {
-			if let Ok(Some(value)) = args.try_get_one::<String>(opt) {
-				self.string_map.insert(opt.to_string(), value.to_string());
+			if let Ok(Some(value)) = args.try_get_one::<String>(&key) {
+				self.string_map.insert(key, value.to_string());
 			}
 		}
 
@@ -209,15 +158,7 @@ impl Config {
 
 	/// Get a bool from the configuration by &str
 	pub fn get_bool(&self, key: &str, default: bool) -> bool {
-		match self.nala_map.get(key) {
-			Some(value) => *value,
-			_ => default,
-		}
-	}
-
-	/// Set a bool in the configuration
-	pub fn set_bool(&mut self, key: &str, value: bool) {
-		self.nala_map.insert(key.to_string(), value);
+		*self.nala_map.get(key).unwrap_or(&default)
 	}
 
 	/// Get a file from the configuration based on the Path enum.
@@ -240,16 +181,16 @@ impl Config {
 	}
 
 	/// Get the package names that were passed as arguments
-	pub fn pkg_names(&self) -> Option<&Vec<String>> { self.pkg_names.as_ref() }
+	pub fn pkg_names(&self) -> Option<&Vec<String>> { self.vec_map.get("pkg_names") }
 
 	/// Get the countries that were passed as arguments
-	pub fn countries(&self) -> Option<&Vec<String>> { self.countries.as_ref() }
+	pub fn countries(&self) -> Option<&Vec<String>> { self.vec_map.get("countries") }
 
 	/// Return true if debug is enabled
 	pub fn debug(&self) -> bool { self.get_bool("debug", false) }
 
 	/// Return true if verbose or debug is enabled
-	pub fn verbose(&self) -> bool { self.debug() || self.get_bool("verbose", false) }
+	pub fn verbose(&self) -> bool { self.get_bool("verbose", self.debug()) }
 
 	fn update_color(&mut self) -> Result<()> {
 		let default_map = &*COLOR_MAP;
