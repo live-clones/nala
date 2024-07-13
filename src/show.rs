@@ -27,7 +27,7 @@ pub fn format_dependency(config: &Config, base_dep: &BaseDep, theme: Theme) -> S
 			"{target_name} {open_paren}{comp} {}{close_paren}",
 			// There's a compare operator in the dependency.
 			// Dang better have a version smh my head.
-			config.color(Theme::Version, base_dep.version().unwrap())
+			config.color(Theme::Secondary, base_dep.version().unwrap())
 		);
 	}
 
@@ -99,7 +99,7 @@ pub fn format_local(pkg: &Package, config: &Config, pacstall_regex: &Regex) -> S
 		return "local install".to_string();
 	}
 
-	config.color(Theme::Version, &pac_repo).to_string()
+	config.color(Theme::Secondary, &pac_repo).to_string()
 }
 
 /// The show command
@@ -112,8 +112,8 @@ pub fn show_version<'a>(
 ) {
 	let unit = UnitStr::new(0, NumSys::Binary);
 	let mut version_map: Vec<(&str, String)> = vec![
-		("Package", config.color(Theme::Package, &pkg.fullname(true))),
-		("Version", config.color(Theme::Version, ver.version())),
+		("Package", config.color(Theme::Primary, &pkg.fullname(true))),
+		("Version", config.color(Theme::Secondary, ver.version())),
 		("Architecture", pkg.arch().to_string()),
 		("Installed", ver.is_installed().to_string()),
 		("Priority", ver.priority_str().unwrap_or("Unknown").into()),
@@ -167,7 +167,7 @@ pub fn show_version<'a>(
 	// Package has it right now.
 	let providers: Vec<String> = ver
 		.provides()
-		.map(|p| config.color(Theme::Package, p.name()))
+		.map(|p| config.color(Theme::Primary, p.name()))
 		.collect();
 
 	if !providers.is_empty() {
@@ -205,7 +205,7 @@ pub fn show_version<'a>(
 			let red = if matches!(deptype, DepType::Conflicts | DepType::DpkgBreaks) {
 				Theme::Error
 			} else {
-				Theme::Package
+				Theme::Primary
 			};
 
 			version_map.push((
@@ -266,7 +266,7 @@ pub fn show(config: &Config) -> Result<()> {
 	for name in &not_found {
 		config.color(
 			Theme::Notice,
-			&format!("'{}' was not found", config.color(Theme::Package, name)),
+			&format!("'{}' was not found", config.color(Theme::Primary, name)),
 		);
 	}
 

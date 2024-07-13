@@ -200,7 +200,7 @@ pub fn virtual_filter<'a, Container: IntoIterator<Item = Package<'a>>>(
 				Theme::Warning,
 				&format!(
 					"{} has no providers and is purely virutal",
-					config.color(Theme::Package, pkg.name())
+					config.color(Theme::Primary, pkg.name())
 				),
 			);
 			continue;
@@ -221,8 +221,8 @@ pub fn virtual_filter<'a, Container: IntoIterator<Item = Package<'a>>>(
 				Theme::Notice,
 				&format!(
 					"Selecting {} instead of virtual package {}",
-					config.color(Theme::Package, &target.fullname(false)),
-					config.color(Theme::Package, pkg.name())
+					config.color(Theme::Primary, &target.fullname(false)),
+					config.color(Theme::Primary, pkg.name())
 				),
 			);
 
@@ -238,14 +238,14 @@ pub fn virtual_filter<'a, Container: IntoIterator<Item = Package<'a>>>(
 		if providers.len() > 1 {
 			println!(
 				"{} is a virtual package provided by:",
-				config.color(Theme::Package, pkg.name())
+				config.color(Theme::Primary, pkg.name())
 			);
 			for target in &providers {
 				// If the version doesn't have a candidate no sense in showing it
 				if let Some(cand) = target.candidate() {
 					println!(
 						"    {} {}",
-						config.color(Theme::Package, &target.fullname(true)),
+						config.color(Theme::Primary, &target.fullname(true)),
 						config.color_ver(cand.version()),
 					);
 				}

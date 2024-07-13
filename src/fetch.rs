@@ -247,7 +247,7 @@ async fn score_handler(
 	release: &str,
 ) -> Result<Vec<(String, u128)>> {
 	// Setup Progress Bar
-	let mut pb = tui::NalaProgressBar::new()?;
+	let mut pb = tui::NalaProgressBar::new(config)?;
 	pb.indicatif.set_length(mirror_strings.len() as u64);
 
 	let client = Client::builder().timeout(Duration::from_secs(5)).build()?;
@@ -482,7 +482,7 @@ pub fn fetch(config: &Config) -> Result<()> {
 	} else {
 		dprint!(config, "Interactive mode, starting TUI");
 		let terminal = tui::init_terminal()?;
-		let chosen = tui::fetch::App::new(scored).run(terminal)?;
+		let chosen = tui::fetch::App::new(config, scored).run(terminal)?;
 		tui::restore_terminal()?;
 		chosen
 	};

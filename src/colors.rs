@@ -3,7 +3,7 @@ use std::cell::OnceCell;
 
 use serde::Deserialize;
 
-// pub type RatStyle = ratatui::style::Style;
+pub type RatStyle = ratatui::style::Style;
 pub type RatColor = ratatui::style::Color;
 pub type RatMod = ratatui::style::Modifier;
 
@@ -13,9 +13,11 @@ fn bold() -> RatMod { RatMod::BOLD }
 #[derive(Deserialize, Debug, Hash, Eq, PartialEq, Copy, Clone)]
 pub enum Theme {
 	Primary,
+	Secondary,
 	Highlight,
-	Package,
-	Version,
+	Regular,
+	ProgressFilled,
+	ProgressUnfilled,
 	Notice,
 	Warning,
 	Error,
@@ -24,20 +26,25 @@ pub enum Theme {
 impl Theme {
 	pub fn default_style(&self) -> Style {
 		match self {
-			Theme::Primary => Style::default(RatColor::LightGreen),
-			Theme::Package => Style::default(RatColor::LightGreen),
-			Theme::Version => Style::default(RatColor::LightBlue),
-			Theme::Notice => Style::default(RatColor::LightYellow),
-			Theme::Warning => Style::default(RatColor::LightYellow),
-			Theme::Error => Style::default(RatColor::LightRed),
-			Theme::Highlight => Style::default(RatColor::White),
+			Theme::Primary => Style::bold(RatColor::LightGreen),
+			Theme::Secondary => Style::bold(RatColor::LightBlue),
+			Theme::Regular => Style::no_bold(RatColor::White),
+			Theme::Highlight => Style::bold(RatColor::White),
+
+			Theme::ProgressFilled => Style::bold(RatColor::LightGreen),
+			Theme::ProgressUnfilled => Style::bold(RatColor::LightRed),
+
+			Theme::Notice => Style::bold(RatColor::LightYellow),
+			Theme::Warning => Style::bold(RatColor::LightYellow),
+			Theme::Error => Style::bold(RatColor::LightRed),
 		}
 	}
 }
 
-#[derive(Debug, Deserialize, serde::Serialize)]
+#[derive(Debug, Deserialize)]
 pub struct Style {
-	color: RatColor,
+	fg: RatColor,
+	bg: Option<RatColor>,
 	#[serde(default = "bold")]
 	modifier: RatMod,
 	/// ANSI Code that goes before the string.
@@ -46,18 +53,32 @@ pub struct Style {
 }
 
 impl Style {
-	pub fn new(modifier: RatMod, color: RatColor) -> Self {
+	pub fn new(modifier: RatMod, fg: RatColor, bg: Option<RatColor>) -> Self {
 		Self {
+			fg,
+			bg,
 			modifier,
-			color,
 			string: OnceCell::new(),
 		}
 	}
 
-	pub fn default(color: RatColor) -> Self { Self::new(RatMod::BOLD, color) }
+	pub fn default() -> Self { Self::no_bold(RatColor::White) }
+
+	pub fn bold(color: RatColor) -> Self { Self::new(RatMod::BOLD, color, None) }
+
+	pub fn no_bold(color: RatColor) -> Self { Self::new(RatMod::empty(), color, None) }
+
+	pub fn to_rat(&self) -> RatStyle {
+		let rat = RatStyle::default().fg(self.fg).add_modifier(self.modifier);
+
+		if let Some(bg) = self.bg {
+			return rat.bg(bg);
+		}
+		rat
+	}
 
 	pub fn ansi_color(&self) -> &str {
-		match self.color {
+		match self.fg {
 			RatColor::Reset => "0",
 			RatColor::Black => "30",
 			RatColor::Red => "31",
@@ -101,7 +122,7 @@ impl Style {
 impl fmt::Display for Style {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		let string = self.string.get_or_init(|| {
-			let ansi_color = match self.color {
+			let ansi_color = match self.fg {
 				RatColor::Rgb(r, g, b) => &format!("38;2;{r};{g};{b}"),
 				RatColor::Indexed(int) => &format!("38;5;{int}"),
 				_ => self.ansi_color(),

@@ -9,7 +9,7 @@ use rust_apt::config::Config as AptConfig;
 use serde::Deserialize;
 
 use crate::cli::Commands;
-use crate::colors::{Style, Theme};
+use crate::colors::{RatStyle, Style, Theme};
 
 /// Represents different file and directory paths
 pub enum Paths {
@@ -120,9 +120,11 @@ impl Config {
 	pub fn set_default_theme(&mut self) {
 		for theme in [
 			Theme::Primary,
+			Theme::Secondary,
+			Theme::Regular,
 			Theme::Highlight,
-			Theme::Package,
-			Theme::Version,
+			Theme::ProgressFilled,
+			Theme::ProgressUnfilled,
 			Theme::Notice,
 			Theme::Warning,
 			Theme::Error,
@@ -132,6 +134,10 @@ impl Config {
 			}
 			self.theme.insert(theme, theme.default_style());
 		}
+	}
+
+	pub fn rat_style(&self, theme: Theme) -> RatStyle {
+		self.theme.get(&theme).unwrap_or(&Style::default()).to_rat()
 	}
 
 	pub fn color(&self, theme: Theme, string: &str) -> String {
@@ -151,7 +157,7 @@ impl Config {
 		format!(
 			"{}{}{}",
 			self.highlight("("),
-			self.color(Theme::Version, string),
+			self.color(Theme::Secondary, string),
 			self.highlight(")")
 		)
 	}

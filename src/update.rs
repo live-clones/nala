@@ -31,7 +31,7 @@ pub async fn update(config: &Config) -> Result<()> {
 	let acquire = NalaAcquireProgress::new(config, tx);
 	let task = tokio::task::spawn(update_thread(acquire));
 
-	let mut progress = tui::NalaProgressBar::new()?;
+	let mut progress = tui::NalaProgressBar::new(config)?;
 
 	while let Some(msg) = rx.recv().await {
 		match msg {
@@ -116,8 +116,8 @@ impl NalaAcquireProgress {
 			pulse_interval: 0,
 			// TODO: Maybe we should make it configurable.
 			ign: config.color(Theme::Notice, "Ignored"),
-			hit: config.color(Theme::Package, "No Change"),
-			get: config.color(Theme::Version, "Updated"),
+			hit: config.color(Theme::Primary, "No Change"),
+			get: config.color(Theme::Secondary, "Updated"),
 			err: config.color(Theme::Error, "Error"),
 			tx,
 		}

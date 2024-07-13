@@ -73,7 +73,7 @@ fn list_packages(
 				write!(
 					out,
 					"{} ",
-					config.color(Theme::Package, &pkg.fullname(true))
+					config.color(Theme::Primary, &pkg.fullname(true))
 				)?;
 				list_version(out, config, &pkg, &version)?;
 				list_description(out, config, &version)?;
@@ -90,7 +90,7 @@ fn list_packages(
 		write!(
 			out,
 			"{} ",
-			config.color(Theme::Package, &pkg.fullname(true))
+			config.color(Theme::Primary, &pkg.fullname(true))
 		)?;
 
 		// Get the candidate if we're only going to show one version.
@@ -109,7 +109,7 @@ fn list_packages(
 	for name in &not_found {
 		config.color(
 			Theme::Notice,
-			&format!("'{}' was not found", config.color(Theme::Package, name)),
+			&format!("'{}' was not found", config.color(Theme::Primary, name)),
 		);
 	}
 

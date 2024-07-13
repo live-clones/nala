@@ -593,7 +593,7 @@ pub async fn download(config: &Config) -> Result<()> {
 
 	downloader.filter.maybe_untrusted_error(config)?;
 
-	let mut progress = tui::NalaProgressBar::new()?;
+	let mut progress = tui::NalaProgressBar::new(config)?;
 	// Set the total downloads.
 	let mut total = 0;
 	for uri in &downloader.uris {
@@ -646,7 +646,7 @@ pub async fn download(config: &Config) -> Result<()> {
 		if tui::poll_exit_event()? {
 			progress.clean_up()?;
 			downloader.set.shutdown().await;
-			config.color(Theme::Notice, "Exiting at user request");
+			config.stderr(Theme::Notice, "Exiting at user request");
 			return Ok(());
 		}
 
