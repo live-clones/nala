@@ -61,9 +61,6 @@ pub struct Config {
 	color_data: HashMap<String, ThemeType>,
 
 	#[serde(skip)]
-	pub string_map: HashMap<String, String>,
-
-	#[serde(skip)]
 	pub vec_map: HashMap<String, Vec<String>>,
 
 	// The following fields are not used with serde
@@ -86,7 +83,6 @@ impl Default for Config {
 	fn default() -> Config {
 		Config {
 			nala_map: HashMap::new(),
-			string_map: HashMap::new(),
 			vec_map: HashMap::new(),
 			color_data: HashMap::new(),
 			color: Color::default(),
@@ -137,28 +133,25 @@ impl Config {
 				continue;
 			}
 
-			if let Ok(Some(value)) = args.try_get_one::<Vec<String>>(&key) {
-				self.vec_map.insert(key, value.clone());
-				continue;
-			}
-
-			if let Ok(Some(value)) = args.try_get_one::<String>(&key) {
-				self.string_map.insert(key, value.to_string());
+			if let Ok(Some(value)) = args.try_get_occurrences::<String>(&key) {
+				self.vec_map.insert(key, value.flatten().cloned().collect());
 			}
 		}
 
 		// If Debug is there we can print the whole thing.
 		if self.debug() {
-			let map_string = format!("Config Map = {:#?}", self.nala_map);
-			for line in map_string.lines() {
-				eprintln!("DEBUG: {line}");
-			}
+			dbg!(&self);
 		}
 	}
 
-	/// Get a bool from the configuration by &str
+	/// Get a bool from the configuration.
 	pub fn get_bool(&self, key: &str, default: bool) -> bool {
 		*self.nala_map.get(key).unwrap_or(&default)
+	}
+
+	/// Get a single str from the configuration.
+	pub fn get_str(&self, key: &str) -> Option<&str> {
+		self.vec_map.get(key)?.first().map(|x| x.as_str())
 	}
 
 	/// Get a file from the configuration based on the Path enum.

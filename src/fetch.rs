@@ -26,7 +26,7 @@ fn get_origin_codename(pkg: Option<Package>) -> Option<(String, String)> {
 
 fn detect_release(config: &Config) -> Result<(String, String, String)> {
 	for distro in ["debian", "ubuntu", "devuan"] {
-		if let Some(value) = config.string_map.get(distro) {
+		if let Some(value) = config.get_str(distro) {
 			dprint!(config, "Distro '{distro} {value}' passed on CLI");
 			let distro = distro.to_string();
 			let keyring = format!("/usr/share/keyrings/{distro}-archive-keyring.gpg");
