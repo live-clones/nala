@@ -20,6 +20,7 @@ mod config;
 mod downloader;
 mod tui;
 mod util;
+mod upgrade;
 
 use crate::clean::clean;
 use crate::cli::NalaParser;
@@ -29,6 +30,7 @@ use crate::fetch::fetch;
 use crate::list::{list, search};
 use crate::show::show;
 use crate::update::update;
+use crate::upgrade::upgrade;
 
 fn main() -> ExitCode {
 	let (args, derived, mut config) = match get_config() {
@@ -98,6 +100,7 @@ fn main_nala(args: ArgMatches, derived: NalaParser, config: &mut Config) -> Resu
 			"history" => history_test(config)?,
 			"fetch" => fetch(config)?,
 			"update" => update(config)?,
+			"upgrade" => upgrade(config)?,
 			// Match other subcommands here...
 			_ => bail!("Unknown error in the argument parser"),
 		}

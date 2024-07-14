@@ -38,6 +38,7 @@ pub enum Commands {
 	History(History),
 	Fetch(Fetch),
 	Update(Update),
+	Upgrade(Upgrade),
 }
 
 #[derive(Args, Debug)]
@@ -154,6 +155,13 @@ pub struct Fetch {
 /// Update the package lists.
 #[derive(Args, Debug)]
 pub struct Update {
+	#[clap(short = 'o', long, action)]
+	pub dpkg_option: Vec<String>,
+}
+
+/// Upgrade packages.
+#[derive(Args, Debug)]
+pub struct Upgrade {
 	#[clap(short = 'o', long, action)]
 	pub dpkg_option: Vec<String>,
 }
