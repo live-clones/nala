@@ -93,7 +93,7 @@ fn parse_sources(config: &Config) -> Result<HashSet<String>> {
 		.with_context(|| format!("Failed to read {main}"))?
 		.lines()
 	{
-		if let Some(domain) = domain_from_list(regex.domain()?, line) {
+		if let Some(domain) = domain_from_list(regex.domain(), line) {
 			sources.insert(domain);
 		}
 	}
@@ -139,7 +139,7 @@ fn parse_sources(config: &Config) -> Result<HashSet<String>> {
 						continue;
 					}
 
-					if let Some(domain) = regex_string(regex.domain()?, uri) {
+					if let Some(domain) = regex_string(regex.domain(), uri) {
 						sources.insert(domain);
 					}
 				}
@@ -149,7 +149,7 @@ fn parse_sources(config: &Config) -> Result<HashSet<String>> {
 
 		if filename.ends_with(".list") {
 			for line in data.as_str().lines() {
-				if let Some(domain) = domain_from_list(regex.domain()?, line) {
+				if let Some(domain) = domain_from_list(regex.domain(), line) {
 					sources.insert(domain);
 				}
 			}
@@ -373,24 +373,12 @@ fn ubuntu_url(
 		.any(|arch| arch != "amd64" && arch != "i386");
 
 	if let Some(hash_set) = countries {
-		if !hash_set.contains(
-			regex
-				.ubuntu_country()
-				.unwrap()
-				.captures(mirror)?
-				.get(1)?
-				.as_str(),
-		) {
+		if !hash_set.contains(regex.ubuntu_country().captures(mirror)?.get(1)?.as_str()) {
 			return None;
 		}
 	}
 
-	let url = regex
-		.ubuntu_url()
-		.unwrap()
-		.captures(mirror)?
-		.get(1)?
-		.as_str();
+	let url = regex.ubuntu_url().captures(mirror)?.get(1)?.as_str();
 	let is_ports = url.contains("ubuntu-ports");
 
 	// Don't return non ports if we only want ports

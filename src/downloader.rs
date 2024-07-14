@@ -83,7 +83,7 @@ impl UriFilter {
 
 			// We should probably consolidate this. And maybe test if mirror: works.
 			if uri.starts_with("mirror+file:") || uri.starts_with("mirror:") {
-				if let Some(file_match) = self.regex.mirror()?.captures(&uri) {
+				if let Some(file_match) = self.regex.mirror().captures(&uri) {
 					let filename = file_match.get(1).unwrap().as_str();
 					if !self.mirrors.contains_key(filename) {
 						self.add_to_mirrors(&uri, filename)?;
@@ -523,7 +523,7 @@ impl Downloader {
 		mkdir(&self.partial_dir).await?;
 
 		while let Some(uri) = self.uris.pop() {
-			let regex = self.filter.regex.domain()?.clone();
+			let regex = self.filter.regex.domain().clone();
 			self.set.spawn(uri.download(self.domains.clone(), regex));
 		}
 

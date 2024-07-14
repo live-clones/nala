@@ -9,11 +9,11 @@ macro_rules! dprint {
 	};
 }
 
+use std::cell::OnceCell;
 use std::collections::HashSet;
 
 use anyhow::{bail, Result};
 use globset::GlobBuilder;
-use once_cell::sync::OnceCell;
 use regex::{Regex, RegexBuilder};
 use rust_apt::{Cache, Package, Version};
 
@@ -37,29 +37,31 @@ impl NalaRegex {
 		}
 	}
 
-	fn build_regex(regex: &str) -> Result<Regex> {
-		Ok(RegexBuilder::new(regex).case_insensitive(true).build()?)
+	fn build_regex(regex: &str) -> Regex {
+		RegexBuilder::new(regex)
+			.case_insensitive(true)
+			.build()
+			.unwrap()
 	}
 
-	pub fn mirror(&self) -> Result<&Regex> {
-		self.mirror.get_or_try_init(|| {
-			Self::build_regex(r"(mirror://(.*?)/pool|mirror\+file:(/.*?)/pool)")
-		})
+	pub fn mirror(&self) -> &Regex {
+		self.mirror
+			.get_or_init(|| Self::build_regex(r"(mirror://(.*?)/pool|mirror\+file:(/.*?)/pool)"))
 	}
 
-	pub fn domain(&self) -> Result<&Regex> {
+	pub fn domain(&self) -> &Regex {
 		self.domain
-			.get_or_try_init(|| Self::build_regex(r"https?://([A-Za-z_0-9.-]+).*"))
+			.get_or_init(|| Self::build_regex(r"https?://([A-Za-z_0-9.-]+).*"))
 	}
 
-	pub fn ubuntu_url(&self) -> Result<&Regex> {
+	pub fn ubuntu_url(&self) -> &Regex {
 		self.ubuntu_url
-			.get_or_try_init(|| Self::build_regex(r"<link>(.*)</link>"))
+			.get_or_init(|| Self::build_regex(r"<link>(.*)</link>"))
 	}
 
-	pub fn ubuntu_country(&self) -> Result<&Regex> {
+	pub fn ubuntu_country(&self) -> &Regex {
 		self.ubuntu_country
-			.get_or_try_init(|| Self::build_regex(r"<mirror:countrycode>(.*)</mirror:countrycode>"))
+			.get_or_init(|| Self::build_regex(r"<mirror:countrycode>(.*)</mirror:countrycode>"))
 	}
 }
 
