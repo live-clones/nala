@@ -476,7 +476,7 @@ pub fn fetch(config: &Config) -> Result<()> {
 	}
 
 	// Only run the TUI if --auto is not on
-	let chosen = if config.auto.is_some() {
+	let chosen = if config.auto().is_some() {
 		dprint!(config, "Auto mode, not starting TUI");
 		scored.into_iter().map(|(s, _)| s).collect()
 	} else {
@@ -506,7 +506,7 @@ pub fn fetch(config: &Config) -> Result<()> {
 
 	nala_sources += "URIs: ";
 	for (i, mirror) in chosen.iter().enumerate() {
-		if config.auto.is_some_and(|auto| i + 1 > auto as usize) {
+		if config.auto().is_some_and(|auto| i + 1 > auto as usize) {
 			break;
 		}
 		if i > 0 {

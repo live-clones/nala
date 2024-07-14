@@ -88,7 +88,7 @@ fn main_nala(args: ArgMatches, derived: NalaParser, config: &mut Config) -> Resu
 
 	if let Some((name, cmd)) = args.subcommand() {
 		config.command = name.to_string();
-		config.load_args(cmd, derived.command);
+		config.load_args(cmd);
 		match name {
 			"list" => list(config)?,
 			"search" => search(config)?,

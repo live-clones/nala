@@ -338,7 +338,7 @@ mod test {
 		let mut config = Config::default();
 
 		// Set the description to true so that we are able to get it
-		config.nala_map.insert("description".to_string(), true);
+		config.set_bool("description", true);
 
 		let pkg = cache.get("dpkg").unwrap();
 
@@ -360,8 +360,8 @@ mod test {
 		// Reset and change the environment for the summary test
 		let mut out = Vec::new();
 
-		config.nala_map.insert("description".to_string(), false);
-		config.nala_map.insert("summary".to_string(), true);
+		config.set_bool("description", false);
+		config.set_bool("summary", true);
 
 		list_description(&mut out, &config, &pkg.candidate().unwrap()).unwrap();
 

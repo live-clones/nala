@@ -41,7 +41,7 @@ impl Theme {
 	}
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct Style {
 	fg: RatColor,
 	bg: Option<RatColor>,

@@ -5,10 +5,10 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use clap::parser::ValueSource;
 use clap::ArgMatches;
+use crossterm::tty::IsTty;
 use rust_apt::config::Config as AptConfig;
 use serde::Deserialize;
 
-use crate::cli::Commands;
 use crate::colors::{RatStyle, Style, Theme};
 
 /// Represents different file and directory paths
@@ -59,32 +59,28 @@ pub enum Switch {
 	Auto,
 }
 
-impl Default for Switch {
-	/// The default configuration for Nala.
-	fn default() -> Switch { Switch::Auto }
+#[derive(Deserialize, Debug, PartialEq)]
+#[serde(untagged)]
+pub enum OptType {
+	Bool(bool),
+	Int(u8),
+	Switch(Switch),
+	String(String),
+	VecString(Vec<String>),
 }
 
 #[derive(Deserialize, Debug)]
 /// Configuration struct
 pub struct Config {
 	#[serde(rename(deserialize = "Nala"), default)]
-	pub nala_map: HashMap<String, bool>,
-
-	#[serde(rename(deserialize = "String"), default)]
-	vec_map: HashMap<String, Vec<String>>,
+	map: HashMap<String, OptType>,
 
 	#[serde(rename(deserialize = "Theme"), default)]
 	theme: HashMap<Theme, Style>,
 
 	// The following fields are not used with serde
 	#[serde(skip)]
-	pub can_color: Switch,
-
-	#[serde(skip)]
 	pub apt: AptConfig,
-
-	#[serde(skip)]
-	pub auto: Option<u8>,
 
 	#[serde(skip)]
 	/// The command that is being run
@@ -95,11 +91,8 @@ impl Default for Config {
 	/// The default configuration for Nala.
 	fn default() -> Config {
 		let mut config = Config {
-			nala_map: HashMap::new(),
+			map: HashMap::new(),
 			theme: HashMap::new(),
-			vec_map: HashMap::new(),
-			can_color: Switch::Auto,
-			auto: None,
 			apt: AptConfig::new(),
 			command: "Command Not Given Yet".to_string(),
 		};
@@ -140,8 +133,19 @@ impl Config {
 		self.theme.get(&theme).unwrap_or(&Style::default()).to_rat()
 	}
 
+	pub fn can_color(&self) -> bool {
+		if let Some(OptType::Switch(switch)) = self.map.get("color") {
+			match switch {
+				Switch::Always => return true,
+				Switch::Never => return false,
+				Switch::Auto => return std::io::stdout().is_tty(),
+			}
+		}
+		false
+	}
+
 	pub fn color(&self, theme: Theme, string: &str) -> String {
-		if self.can_color != Switch::Never {
+		if self.can_color() {
 			if let Some(theme) = self.theme.get(&theme) {
 				return format!("{theme}{string}\x1b[0m");
 			}
@@ -185,11 +189,7 @@ impl Config {
 	}
 
 	/// Load configuration with the command line arguments
-	pub fn load_args(&mut self, args: &ArgMatches, commands: Option<Commands>) {
-		if let Some(Commands::Fetch(opts)) = commands {
-			self.auto = opts.auto;
-		};
-
+	pub fn load_args(&mut self, args: &ArgMatches) {
 		for id in args.ids() {
 			let key = id.as_str().to_string();
 			// Don't do anything if the option wasn't specifically passed
@@ -198,13 +198,25 @@ impl Config {
 			}
 
 			if let Ok(Some(value)) = args.try_get_one::<bool>(&key) {
-				self.nala_map.insert(key, *value);
+				self.map.insert(key, OptType::Bool(*value));
 				continue;
 			}
 
 			if let Ok(Some(value)) = args.try_get_occurrences::<String>(&key) {
-				self.vec_map.insert(key, value.flatten().cloned().collect());
+				self.map
+					.insert(key, OptType::VecString(value.flatten().cloned().collect()));
+				continue;
 			}
+
+			if let Ok(Some(value)) = args.try_get_one::<u8>(&key) {
+				self.map.insert(key, OptType::Int(*value));
+			}
+		}
+
+		// Set the color option if it doesn't exist
+		if !self.map.contains_key("color") {
+			self.map
+				.insert("color".to_string(), OptType::Switch(Switch::Auto));
 		}
 
 		// If Debug is there we can print the whole thing.
@@ -215,12 +227,35 @@ impl Config {
 
 	/// Get a bool from the configuration.
 	pub fn get_bool(&self, key: &str, default: bool) -> bool {
-		*self.nala_map.get(key).unwrap_or(&default)
+		if let Some(OptType::Bool(bool)) = self.map.get(key) {
+			return *bool;
+		}
+		default
+	}
+
+	/// Set a bool in the configuration.
+	pub fn set_bool(&mut self, key: &str, value: bool) {
+		self.map.insert(key.to_string(), OptType::Bool(value));
 	}
 
 	/// Get a single str from the configuration.
 	pub fn get_str(&self, key: &str) -> Option<&str> {
-		self.vec_map.get(key)?.first().map(|x| x.as_str())
+		if let OptType::VecString(vec) = self.map.get(key)? {
+			return vec.first().map(|x| x.as_str());
+		}
+
+		if let OptType::String(str) = self.map.get(key)? {
+			return Some(str);
+		}
+		None
+	}
+
+	/// Get a Vec of Strings from the configuration.
+	pub fn get_vec(&self, key: &str) -> Option<&Vec<String>> {
+		if let OptType::VecString(vec) = self.map.get(key)? {
+			return Some(vec);
+		}
+		None
 	}
 
 	/// Get a file from the configuration based on the Path enum.
@@ -242,11 +277,19 @@ impl Config {
 		}
 	}
 
-	/// Get the package names that were passed as arguments
-	pub fn pkg_names(&self) -> Option<&Vec<String>> { self.vec_map.get("pkg_names") }
+	/// Get the package names that were passed as arguments.
+	pub fn pkg_names(&self) -> Option<&Vec<String>> { self.get_vec("pkg_names") }
 
-	/// Get the countries that were passed as arguments
-	pub fn countries(&self) -> Option<&Vec<String>> { self.vec_map.get("countries") }
+	/// Get the countries that were passed as arguments.
+	pub fn countries(&self) -> Option<&Vec<String>> { self.get_vec("countries") }
+
+	/// If fetch should be in auto mode and how many mirrors to get.
+	pub fn auto(&self) -> Option<u8> {
+		if let OptType::Int(value) = self.map.get("auto")? {
+			return Some(*value);
+		}
+		None
+	}
 
 	/// Return true if debug is enabled
 	pub fn debug(&self) -> bool { self.get_bool("debug", false) }
