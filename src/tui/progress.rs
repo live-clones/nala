@@ -107,7 +107,10 @@ impl<'a> NalaProgressBar<'a> {
 		let height = self.ansi.replace_all(&msg, "").len() as f32
 			/ self.terminal.backend().size()?.width as f32;
 
-		self.terminal.insert_before(height.ceil() as u16, |buf| {
+		// Check how many new lines as well
+		let lines = (height.ceil() as u16).max(msg.lines().count() as u16);
+
+		self.terminal.insert_before(lines, |buf| {
 			Paragraph::new(msg)
 				.left_aligned()
 				.wrap(Wrap::default())

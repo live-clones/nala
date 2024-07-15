@@ -232,6 +232,10 @@ impl Uri {
 	}
 
 	async fn check_hash(&self, other: &str) -> Result<()> {
+		self.tx.send(Message::Debug(format!(
+			"'{}':\n    Correct: {},\n    Downloaded: {other}",
+			self.filename, self.hash_value
+		)))?;
 		if other == self.hash_value {
 			return Ok(());
 		}
@@ -319,6 +323,7 @@ impl Uri {
 			// Write the data to file
 			writer.write_all(&chunk).await?;
 		}
+		writer.flush().await?;
 
 		// Build the hash string.
 		let mut download_hash = String::new();
@@ -659,6 +664,9 @@ pub async fn download(config: &Config) -> Result<()> {
 	}
 
 	let finished = downloader.finish().await?;
+	if finished.is_empty() {
+		bail!("Downloads Failed")
+	}
 
 	println!("Downloads Complete:");
 	for uri in finished {
