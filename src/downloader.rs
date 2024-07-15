@@ -630,7 +630,9 @@ pub async fn download(config: &Config) -> Result<()> {
 					return progress.clean_up();
 				},
 				Message::Debug(msg) => {
-					progress.print(format!("DEBUG: {msg}"))?;
+					if config.debug() {
+						progress.print(format!("DEBUG: {msg}"))?;
+					}
 				},
 				Message::Verbose(msg) => {
 					if config.verbose() {
