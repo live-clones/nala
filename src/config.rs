@@ -67,6 +67,8 @@ pub enum OptType {
 	Int(u8),
 	Switch(Switch),
 	UnitStr(UnitStr),
+	// Strings have to be last in the enum
+	// as almost anything will match them
 	String(String),
 	VecString(Vec<String>),
 }
