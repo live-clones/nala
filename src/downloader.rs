@@ -233,7 +233,7 @@ impl Uri {
 
 	async fn check_hash(&self, other: &str) -> Result<()> {
 		self.tx.send(Message::Debug(format!(
-			"'{}':\n    Correct: {},\n    Downloaded: {other}",
+			"'{}':\n    Expected: {}\n    Downloaded: {other}",
 			self.filename, self.hash_value
 		)))?;
 		if other == self.hash_value {
