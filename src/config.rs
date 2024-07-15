@@ -7,9 +7,10 @@ use clap::parser::ValueSource;
 use clap::ArgMatches;
 use crossterm::tty::IsTty;
 use rust_apt::config::Config as AptConfig;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::colors::{RatStyle, Style, Theme};
+use crate::tui::progress::{NumSys, UnitStr};
 
 /// Represents different file and directory paths
 pub enum Paths {
@@ -52,24 +53,25 @@ impl Paths {
 	}
 }
 
-#[derive(Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum Switch {
 	Always,
 	Never,
 	Auto,
 }
 
-#[derive(Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(untagged)]
 pub enum OptType {
 	Bool(bool),
 	Int(u8),
 	Switch(Switch),
+	UnitStr(UnitStr),
 	String(String),
 	VecString(Vec<String>),
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 /// Configuration struct
 pub struct Config {
 	#[serde(rename(deserialize = "Nala"), default)]
@@ -291,9 +293,37 @@ impl Config {
 		None
 	}
 
+	pub fn unit_str(&self, unit: u64) -> String {
+		if let Some(OptType::UnitStr(value)) = self.map.get("UnitStr") {
+			return value.str(unit);
+		}
+		UnitStr::new(0, NumSys::Binary).str(unit)
+	}
+
 	/// Return true if debug is enabled
 	pub fn debug(&self) -> bool { self.get_bool("debug", false) }
 
 	/// Return true if verbose or debug is enabled
 	pub fn verbose(&self) -> bool { self.get_bool("verbose", self.debug()) }
+}
+
+#[cfg(test)]
+mod test {
+	use crate::tui::progress::{NumSys, UnitStr};
+	use crate::Config;
+
+	#[test]
+	fn serialize_config() {
+		let mut config = Config::default();
+		config.set_default_theme();
+
+		config.map.insert(
+			"unit_str".to_string(),
+			super::OptType::UnitStr(UnitStr::new(0, NumSys::Binary)),
+		);
+
+		let toml = toml::to_string_pretty(&config).unwrap();
+
+		println!("{toml}")
+	}
 }

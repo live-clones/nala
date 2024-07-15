@@ -25,14 +25,14 @@ pub struct HistoryEntry {
 	packages: Vec<HistoryPackage>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct HistoryPackage {
-	name: String,
-	version: String,
-	old_version: Option<String>,
-	size: u64,
-	operation: Operation,
-	auto_installed: bool,
+	pub name: String,
+	pub version: String,
+	pub old_version: Option<String>,
+	pub size: u64,
+	pub operation: Operation,
+	pub auto_installed: bool,
 }
 
 impl HistoryPackage {
@@ -49,8 +49,8 @@ impl HistoryPackage {
 	}
 }
 
-#[derive(Serialize, Deserialize)]
-enum Operation {
+#[derive(Serialize, Deserialize, Debug)]
+pub enum Operation {
 	Remove,
 	AutoRemove,
 	Purge,

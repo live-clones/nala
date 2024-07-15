@@ -8,12 +8,24 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, LineGauge, Padding, Paragraph, Widget, Wrap};
 use ratatui::{symbols, Frame, Terminal, TerminalOptions, Viewport};
 use regex::Regex;
-use rust_apt::util::{time_str, NumSys};
+use rust_apt::util::time_str;
+use serde::{Deserialize, Serialize};
 
 use crate::colors::Theme;
 use crate::config::Config;
 
+/// Numeral System for unit conversion.
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub enum NumSys {
+	/// Base 2 | 1024 | KibiByte (KiB)
+	Binary,
+	/// Base 10 | 1000 | KiloByte (KB)
+	Decimal,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct UnitStr {
+	#[serde(default)]
 	precision: usize,
 	base: NumSys,
 }

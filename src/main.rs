@@ -19,8 +19,8 @@ mod colors;
 mod config;
 mod downloader;
 mod tui;
-mod util;
 mod upgrade;
+mod util;
 
 use crate::clean::clean;
 use crate::cli::NalaParser;
