@@ -123,12 +123,10 @@ impl<'a> App<'a> {
 	}
 
 	fn contraints(&self) -> Vec<Constraint> {
-		// Get the len of the inner vec
-		let len = self.items[0].iter().count();
-
-		// Generate the constraints by column
-		(0..len)
-			.into_iter()
+		// Get the len of the inner vec and
+		// generate the constraints by column
+		// TODO: Consider storing this in a field?
+		(0..self.items[0].len())
 			.map(|i| {
 				Constraint::Length(
 					self.items
