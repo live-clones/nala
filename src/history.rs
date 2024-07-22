@@ -3,6 +3,7 @@ use chrono::Utc;
 use rust_apt::{new_cache, Version};
 use serde::{Deserialize, Serialize};
 
+use crate::colors::Theme;
 use crate::config::Config;
 use crate::util::{get_user, geteuid};
 
@@ -36,7 +37,7 @@ pub struct HistoryPackage {
 }
 
 impl HistoryPackage {
-	fn from_version(version: Version, old_version: Option<Version>) -> HistoryPackage {
+	pub fn from_version(version: Version, old_version: Option<Version>) -> HistoryPackage {
 		HistoryPackage {
 			name: version.parent().name().to_string(),
 			version: version.version().to_string(),
@@ -49,7 +50,7 @@ impl HistoryPackage {
 	}
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Operation {
 	Remove,
 	AutoRemove,
@@ -59,6 +60,53 @@ pub enum Operation {
 	Reinstall,
 	Upgrade,
 	Downgrade,
+}
+
+impl Operation {
+	pub fn to_vec() -> Vec<Operation> {
+		vec![
+			Self::Remove,
+			Self::AutoRemove,
+			Self::Purge,
+			Self::AutoPurge,
+			Self::Install,
+			Self::Reinstall,
+			Self::Upgrade,
+			Self::Downgrade,
+		]
+	}
+
+	pub fn as_str(&self) -> &'static str {
+		match self {
+			Operation::Remove => "Remove",
+			Operation::AutoRemove => "AutoRemove",
+			Operation::Purge => "Purge",
+			Operation::AutoPurge => "AutoPurge",
+			Operation::Install => "Install",
+			Operation::Reinstall => "ReInstall",
+			Operation::Upgrade => "Upgrade",
+			Operation::Downgrade => "Downgrade",
+		}
+	}
+
+	pub fn theme(&self) -> Theme {
+		match self {
+			Operation::Remove => Theme::Error,
+			Operation::AutoRemove => Theme::Error,
+			Operation::Purge => Theme::Error,
+			Operation::AutoPurge => Theme::Error,
+			Operation::Install => Theme::Secondary,
+			Operation::Reinstall => Theme::Notice,
+			Operation::Upgrade => Theme::Secondary,
+			Operation::Downgrade => Theme::Notice,
+		}
+	}
+}
+
+impl std::fmt::Display for Operation {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.as_str())
+	}
 }
 
 pub fn history_test(config: &Config) -> Result<()> {

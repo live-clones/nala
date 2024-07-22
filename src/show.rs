@@ -100,6 +100,19 @@ pub fn format_local(pkg: &Package, config: &Config, pacstall_regex: &Regex) -> S
 	config.color(Theme::Secondary, &pac_repo).to_string()
 }
 
+pub fn print_show_version<'a>(
+	config: &Config,
+	pkg: &'a Package,
+	ver: &'a Version,
+	pacstall_regex: &Regex,
+	url_regex: &Regex,
+) {
+	let delimiter = config.highlight(":");
+	for (header, info) in show_version(config, pkg, ver, pacstall_regex, url_regex) {
+		println!("{}{delimiter} {info}", config.highlight(header))
+	}
+}
+
 /// The show command
 pub fn show_version<'a>(
 	config: &Config,
@@ -107,7 +120,7 @@ pub fn show_version<'a>(
 	ver: &'a Version,
 	pacstall_regex: &Regex,
 	url_regex: &Regex,
-) {
+) -> Vec<(&'static str, std::string::String)> {
 	let mut version_map: Vec<(&str, String)> = vec![
 		("Package", config.color(Theme::Primary, &pkg.fullname(true))),
 		("Version", config.color(Theme::Secondary, ver.version())),
@@ -219,10 +232,7 @@ pub fn show_version<'a>(
 		ver.description().unwrap_or_else(|| "Unknown".to_string()) + "\n",
 	));
 
-	let delimiter = config.highlight(":");
-	for (header, info) in version_map {
-		println!("{}{delimiter} {info}", config.highlight(header))
-	}
+	version_map
 }
 
 /// The show command
@@ -251,11 +261,11 @@ pub fn show(config: &Config) -> Result<()> {
 
 		if config.get_bool("all_versions", false) {
 			for version in &versions {
-				show_version(config, &pkg, version, &pacstall_regex, &url_regex);
+				print_show_version(config, &pkg, version, &pacstall_regex, &url_regex);
 				additional_records -= 1;
 			}
 		} else if let Some(version) = versions.first() {
-			show_version(config, &pkg, version, &pacstall_regex, &url_regex);
+			print_show_version(config, &pkg, version, &pacstall_regex, &url_regex);
 			additional_records -= 1;
 		}
 	}
