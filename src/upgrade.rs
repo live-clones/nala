@@ -1,7 +1,7 @@
-use core::panic;
 use std::collections::{BTreeMap, HashMap};
 use std::io;
 
+use ansi_to_tui::IntoText;
 use anyhow::Result;
 use crossterm::event::{
 	self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, MouseEventKind,
@@ -10,23 +10,24 @@ use crossterm::execute;
 use crossterm::terminal::{
 	disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
-use ratatui::backend::{Backend, CrosstermBackend};
+use ratatui::backend::CrosstermBackend;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Constraint::{Length, Max, Min};
 use ratatui::layout::{Alignment, Constraint, Flex, Layout, Margin, Rect};
-use ratatui::style::{Style, Styled, Stylize};
+use ratatui::style::{Style, Styled};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{
-	Block, BorderType, Borders, Cell, HighlightSpacing, Padding, Paragraph, Row, Scrollbar,
+	Block, BorderType, Cell, HighlightSpacing, Padding, Paragraph, Row, Scrollbar,
 	ScrollbarOrientation, ScrollbarState, StatefulWidget, Table, TableState, Tabs, Widget, Wrap,
 };
 use ratatui::Terminal;
 use rust_apt::cache::Upgrade;
 use rust_apt::util::DiskSpace;
-use rust_apt::{new_cache, Cache};
+use rust_apt::{new_cache, Cache, Version};
 
 use crate::colors::Theme;
 use crate::history::{HistoryPackage, Operation};
+use crate::show::{build_regex, show_version};
 use crate::util::sudo_check;
 use crate::Config;
 
@@ -120,6 +121,8 @@ fn version_diff<'a>(config: &Config, old: &'a str, new: String) -> Line<'a> {
 	}
 	return Line::from_iter(new);
 
+	// use ansi-to-tui for this instead of Rat
+
 	// No Rat
 	// new_ver
 	// 	.iter()
@@ -135,44 +138,124 @@ fn version_diff<'a>(config: &Config, old: &'a str, new: String) -> Line<'a> {
 	// 	.join(".")
 }
 
+struct SummaryPkg<'a> {
+	version: Version<'a>,
+	// TODO: Use this to show both versions??
+	old_version: Option<Version<'a>>,
+	items: Vec<Item>,
+}
+
+impl<'a> SummaryPkg<'a> {
+	pub fn new(
+		config: &Config,
+		op: Operation,
+		version: Version<'a>,
+		old_version: Option<Version<'a>>,
+	) -> Self {
+		let secondary = config.rat_style(op.theme());
+		let primary = config.rat_style(Theme::Regular);
+		let mut items = vec![Item::left(secondary, version.parent().name().to_string())];
+
+		if let Some(old) = &old_version {
+			items.push(Item::center(primary, old.version().to_string(), None));
+			items.push(Item::center(
+				primary,
+				version.version().to_string(),
+				Some(old.version().to_string()),
+			));
+		} else {
+			items.push(Item::center(primary, version.version().to_string(), None));
+		}
+		items.push(Item::right(primary, config.unit_str(version.size())));
+
+		Self { version, old_version, items }
+	}
+
+	pub fn render_show(
+		&self,
+		terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
+		config: &Config,
+	) -> Result<()> {
+		let pkg = self.version.parent();
+		let pacstall_regex = build_regex(r#"_remoterepo="(.*?)""#)?;
+		let url_regex = build_regex("(https?://.*?/.*?/)")?;
+		// Maybe we will show both versions if available?
+		let show = show_version(config, &pkg, &self.version, &pacstall_regex, &url_regex);
+		terminal.clear()?;
+
+		let mut lines: Vec<Text> = vec![];
+		for (head, info) in &show {
+			let mut split = info.split("\n");
+			if let Some(first) = split.next() {
+				lines.push(
+					format!("{}: {first}", config.color(Theme::Highlight, head)).into_text()?,
+				);
+				for line in split {
+					let line = line.to_string();
+					lines.push(line.into_text()?)
+				}
+			}
+		}
+
+		loop {
+			terminal.draw(|f| {
+				let header =
+					format!("  {}  ", "Nala Upgrade").set_style(config.rat_style(Theme::Highlight));
+
+				let block = basic_block(config)
+					.title(header)
+					.title_alignment(Alignment::Center)
+					.padding(Padding::horizontal(1));
+
+				let inner = block.inner(f.size());
+
+				let constraints = lines
+					.iter()
+					.map(|line| Length((line.width() as f32 / inner.width as f32).ceil() as u16))
+					.collect::<Vec<_>>();
+
+				let layout = Layout::vertical(constraints)
+					.split(block.inner(f.size()));
+
+				f.render_widget(block, f.size());
+				for (i, line) in lines.iter().enumerate() {
+					f.render_widget(
+						Paragraph::new(line.clone()).wrap(Wrap::default()),
+						layout[i],
+					)
+				}
+			})?;
+
+			match event::read()? {
+				Event::Key(key) => {
+					if key.kind == KeyEventKind::Press {
+						match key.code {
+							KeyCode::Char('q') | KeyCode::Esc => break Ok(()),
+							_ => {},
+						}
+					}
+				},
+				_ => {},
+			}
+		}
+	}
+}
+
 struct App<'a> {
 	state: TableState,
-	op: Operation,
 	scroll_state: ScrollbarState,
 	config: &'a Config,
-	items: Vec<Vec<Item>>,
+	items: Vec<SummaryPkg<'a>>,
 }
 
 impl<'a> App<'a> {
-	fn new(op: Operation, config: &'a Config, items: &Vec<HistoryPackage>) -> Self {
-		let secondary = config.rat_style(op.theme());
-		let primary = config.rat_style(Theme::Regular);
-
+	fn new(config: &'a Config, items: Vec<SummaryPkg<'a>>) -> Self {
 		let scroll_state = ScrollbarState::new(items.len() - 1);
 		Self {
 			state: TableState::default().with_selected(0),
-			op,
 			scroll_state,
 			config,
-			items: items
-				.into_iter()
-				.map(|pkg| {
-					let mut items = vec![Item::left(secondary, pkg.name.to_string())];
-
-					if let Some(old) = &pkg.old_version {
-						items.push(Item::center(primary, old.to_string(), None));
-						items.push(Item::center(
-							primary,
-							pkg.version.to_string(),
-							pkg.old_version.clone(),
-						));
-					} else {
-						items.push(Item::center(primary, pkg.version.to_string(), None));
-					}
-					items.push(Item::right(primary, config.unit_str(pkg.size)));
-					items
-				})
-				.collect(),
+			items,
 		}
 	}
 
@@ -213,17 +296,17 @@ impl<'a> App<'a> {
 
 		let header = headers
 			.into_iter()
-			.zip(self.items[0].iter())
+			.zip(self.items[0].items.iter())
 			.map(|(str, i)| Cell::from(Text::from(str).alignment(i.align)))
 			.collect::<Row>()
 			.style(white);
 
 		let mut constraints = vec![];
-		for i in 0..self.items[0].len() {
+		for i in 0..self.items[0].items.len() {
 			constraints.push(
 				self.items
 					.iter()
-					.map(|item| item[i].string.len())
+					.map(|item| item.items[i].string.len())
 					.max()
 					.unwrap_or_default() as u16,
 			)
@@ -232,7 +315,7 @@ impl<'a> App<'a> {
 		let t = Table::new(
 			self.items
 				.iter()
-				.map(|vec| Row::from_iter(vec.iter().map(|item| item.get_cell(self.config)))),
+				.map(|vec| Row::from_iter(vec.items.iter().map(|item| item.get_cell(self.config)))),
 			constraints,
 		)
 		.header(header)
@@ -279,8 +362,6 @@ struct SummaryTab<'a> {
 	// Array first is the header, second is string.
 	download_size: Option<Vec<String>>,
 	disk_space: Vec<String>,
-	// download_size: Option<[std::string::String; 2]>,
-	// disk_space: [std::string::String; 2],
 	i: usize,
 	tabs: Vec<Operation>,
 }
@@ -289,11 +370,11 @@ impl<'a> SummaryTab<'a> {
 	fn new(
 		cache: &Cache,
 		config: &'a Config,
-		pkg_set: HashMap<Operation, Vec<HistoryPackage>>,
+		pkg_set: HashMap<Operation, Vec<SummaryPkg<'a>>>,
 	) -> Self {
 		let pkg_set = pkg_set
 			.into_iter()
-			.map(|(op, set)| (op, App::new(op, config, &set)))
+			.map(|(op, set)| (op, App::new(config, set)))
 			.collect();
 
 		let size = cache.depcache().download_size();
@@ -334,6 +415,8 @@ impl<'a> SummaryTab<'a> {
 	}
 
 	pub fn current_tab(&self) -> Operation { self.tabs[self.i] }
+
+	pub fn current(&self) -> &App<'a> { self.pkg_set.get(&self.current_tab()).unwrap() }
 
 	pub fn current_mut(&mut self) -> &mut App<'a> {
 		self.pkg_set.get_mut(&self.current_tab()).unwrap()
@@ -445,6 +528,12 @@ impl<'a> SummaryTab<'a> {
 							KeyCode::PageUp => {
 								for _ in 0..10 {
 									self.current_mut().previous();
+								}
+							},
+							KeyCode::Enter => {
+								let app = self.current();
+								if let Some(i) = app.state.selected() {
+									app.items[i].render_show(&mut terminal, self.config)?;
 								}
 							},
 							_ => {},
@@ -574,7 +663,7 @@ pub fn upgrade(config: &Config) -> Result<()> {
 
 	cache.upgrade(Upgrade::FullUpgrade)?;
 
-	let mut pkg_set: HashMap<Operation, Vec<HistoryPackage>> = HashMap::new();
+	let mut pkg_set: HashMap<Operation, Vec<SummaryPkg>> = HashMap::new();
 
 	for pkg in cache.get_changes(true) {
 		if pkg.marked_delete() {
@@ -590,7 +679,7 @@ pub fn upgrade(config: &Config) -> Result<()> {
 				pkg_set
 					.entry(Operation::Install)
 					.or_default()
-					.push(HistoryPackage::from_version(cand, None));
+					.push(SummaryPkg::new(config, Operation::Install, cand, None));
 			}
 		}
 
@@ -598,7 +687,12 @@ pub fn upgrade(config: &Config) -> Result<()> {
 			pkg_set
 				.entry(Operation::Upgrade)
 				.or_default()
-				.push(HistoryPackage::from_version(cand, Some(inst)));
+				.push(SummaryPkg::new(
+					config,
+					Operation::Upgrade,
+					cand,
+					Some(inst),
+				));
 		}
 	}
 
