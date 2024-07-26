@@ -1,8 +1,9 @@
+use std::cell::OnceCell;
 use std::collections::{BTreeMap, HashMap};
 use std::io;
 
 use ansi_to_tui::IntoText;
-use anyhow::Result;
+use anyhow::{bail, Result};
 use crossterm::event::{
 	self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, MouseEventKind,
 };
@@ -23,7 +24,7 @@ use ratatui::widgets::{
 use ratatui::Terminal;
 use rust_apt::cache::Upgrade;
 use rust_apt::util::DiskSpace;
-use rust_apt::{new_cache, Cache, Version};
+use rust_apt::{new_cache, Cache, Package, Version};
 
 use crate::colors::Theme;
 use crate::history::{HistoryPackage, Operation};
@@ -143,6 +144,7 @@ struct SummaryPkg<'a> {
 	// TODO: Use this to show both versions??
 	old_version: Option<Version<'a>>,
 	items: Vec<Item>,
+	changelog: OnceCell<Option<String>>,
 }
 
 impl<'a> SummaryPkg<'a> {
@@ -168,7 +170,64 @@ impl<'a> SummaryPkg<'a> {
 		}
 		items.push(Item::right(primary, config.unit_str(version.size())));
 
-		Self { version, old_version, items }
+		Self {
+			version,
+			old_version,
+			items,
+			changelog: OnceCell::new(),
+		}
+	}
+
+	pub fn get_changelog(&self) -> &Option<String> {
+		self.changelog.get_or_init(|| {
+			Some(
+				reqwest::blocking::get(self.version.parent().changelog_uri()?)
+					.ok()?
+					.text()
+					.ok()?,
+			)
+		})
+	}
+
+	pub fn render(
+		&self,
+		terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
+		config: &Config,
+	) -> Result<()> {
+		if self.render_changelog(terminal).is_err() {
+			self.render_show(terminal, config)?
+		}
+		Ok(())
+	}
+
+	pub fn render_changelog(
+		&self,
+		terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
+	) -> Result<()> {
+		let Some(changelog) = self.get_changelog() else {
+			bail!("Could not get changelog")
+		};
+
+		loop {
+			terminal.draw(|f| {
+				f.render_widget(
+					Paragraph::new(changelog.clone()).wrap(Wrap::default()),
+					f.size(),
+				);
+			})?;
+
+			match event::read()? {
+				Event::Key(key) => {
+					if key.kind == KeyEventKind::Press {
+						match key.code {
+							KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
+							_ => {},
+						}
+					}
+				},
+				_ => {},
+			}
+		}
 	}
 
 	pub fn render_show(
@@ -214,8 +273,7 @@ impl<'a> SummaryPkg<'a> {
 					.map(|line| Length((line.width() as f32 / inner.width as f32).ceil() as u16))
 					.collect::<Vec<_>>();
 
-				let layout = Layout::vertical(constraints)
-					.split(block.inner(f.size()));
+				let layout = Layout::vertical(constraints).split(block.inner(f.size()));
 
 				f.render_widget(block, f.size());
 				for (i, line) in lines.iter().enumerate() {
@@ -533,7 +591,7 @@ impl<'a> SummaryTab<'a> {
 							KeyCode::Enter => {
 								let app = self.current();
 								if let Some(i) = app.state.selected() {
-									app.items[i].render_show(&mut terminal, self.config)?;
+									app.items[i].render(&mut terminal, self.config)?;
 								}
 							},
 							_ => {},
