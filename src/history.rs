@@ -60,6 +60,7 @@ pub enum Operation {
 	Reinstall,
 	Upgrade,
 	Downgrade,
+	Held,
 }
 
 impl Operation {
@@ -86,19 +87,15 @@ impl Operation {
 			Operation::Reinstall => "ReInstall",
 			Operation::Upgrade => "Upgrade",
 			Operation::Downgrade => "Downgrade",
+			Operation::Held => "Held",
 		}
 	}
 
 	pub fn theme(&self) -> Theme {
 		match self {
-			Operation::Remove => Theme::Error,
-			Operation::AutoRemove => Theme::Error,
-			Operation::Purge => Theme::Error,
-			Operation::AutoPurge => Theme::Error,
-			Operation::Install => Theme::Secondary,
-			Operation::Reinstall => Theme::Notice,
-			Operation::Upgrade => Theme::Secondary,
-			Operation::Downgrade => Theme::Notice,
+			Self::Remove | Self::AutoRemove | Self::Purge | Self::AutoPurge => Theme::Error,
+			Self::Install | Self::Upgrade => Theme::Secondary,
+			Self::Reinstall | Self::Downgrade | Self::Held => Theme::Notice,
 		}
 	}
 }

@@ -14,6 +14,8 @@ use serde::{Deserialize, Serialize};
 use crate::colors::Theme;
 use crate::config::Config;
 
+use super::Term;
+
 /// Numeral System for unit conversion.
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum NumSys {
@@ -57,7 +59,7 @@ impl UnitStr {
 }
 
 pub struct NalaProgressBar<'a> {
-	terminal: Terminal<CrosstermBackend<std::io::Stdout>>,
+	terminal: Term,
 	config: &'a Config,
 	pub indicatif: ProgressBar,
 	pub unit: UnitStr,
