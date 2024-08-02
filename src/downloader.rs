@@ -18,24 +18,8 @@ use tokio::task::JoinSet;
 use crate::colors::Theme;
 use crate::config::Config;
 use crate::tui;
-use crate::util::NalaRegex;
+use crate::util::{get_pkg_name, NalaRegex};
 
-/// Return the package name. Checks if epoch is needed.
-fn get_pkg_name(version: &Version) -> String {
-	let filename = version
-		.get_record(RecordField::Filename)
-		.expect("Record does not contain a filename!")
-		.split_terminator('/')
-		.last()
-		.expect("Filename is malformed!")
-		.to_string();
-
-	if let Some(index) = version.version().find(':') {
-		let epoch = format!("_{}%3a", &version.version()[..index]);
-		return filename.replacen('_', &epoch, 1);
-	}
-	filename
-}
 pub struct UriFilter {
 	mirrors: HashMap<String, String>,
 	regex: NalaRegex,

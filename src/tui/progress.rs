@@ -11,10 +11,9 @@ use regex::Regex;
 use rust_apt::util::time_str;
 use serde::{Deserialize, Serialize};
 
+use super::Term;
 use crate::colors::Theme;
 use crate::config::Config;
-
-use super::Term;
 
 /// Numeral System for unit conversion.
 #[derive(Serialize, Deserialize, Debug, PartialEq)]

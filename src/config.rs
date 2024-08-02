@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use clap::parser::ValueSource;
@@ -272,13 +272,13 @@ impl Config {
 	}
 
 	/// Get a path from the configuration based on the Path enum.
-	pub fn get_path(&self, dir: &Paths) -> String {
-		match dir {
+	pub fn get_path(&self, dir: &Paths) -> PathBuf {
+		PathBuf::from(match dir {
 			// For now NalaSources is hard coded.
 			Paths::NalaSources => dir.path().to_string(),
 			// Everything else should be an Apt Path
-			_ => self.apt.dir(dir.path(), dir.default_path()),
-		}
+			_ => self.apt.file(dir.path(), dir.default_path()),
+		})
 	}
 
 	/// Get the package names that were passed as arguments.
