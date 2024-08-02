@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::process::Command;
 
 use anyhow::{bail, Result};
 use rust_apt::cache::Upgrade;
@@ -109,5 +110,38 @@ pub fn upgrade(config: &Config) -> Result<()> {
 	);
 
 	// create app and run it
-	SummaryTab::new(&cache, config, pkg_set).run()
+	SummaryTab::new(&cache, config, pkg_set).run()?;
+
+	let pre_invoke = config.apt.find_vector("DPkg::Pre-Invoke");
+	config.apt.clear("DPkg::Pre-Invoke");
+
+	run_scripts(pre_invoke)?;
+
+	let post_invoke = config.apt.find_vector("DPkg::Post-Invoke");
+	config.apt.clear("DPkg::Post-Invoke");
+
+	run_scripts(post_invoke)
+}
+
+pub fn run_scripts(hooks: Vec<String>) -> Result<()> {
+	for hook in hooks {
+		println!("Running {hook}");
+		let mut child = Command::new("sh")
+			.arg("-c")
+			.arg(hook)
+			.spawn()?;
+
+		let exit = child.wait()?;
+		dbg!(exit);
+		if !exit.success() {
+			// TODO: Figure out how to return the ExitStatus from main.
+			std::process::exit(exit.code().unwrap());
+		}
+	}
+	Ok(())
+}
+
+
+pub fn apt_hook_with_pkgs() {
+
 }
