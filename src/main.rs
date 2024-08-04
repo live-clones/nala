@@ -3,9 +3,14 @@ use std::process::ExitCode;
 
 use anyhow::{bail, Result};
 use clap::{ArgMatches, CommandFactory, FromArgMatches};
+use cli::Commands;
 use colors::Theme;
 use history::history_test;
 use rust_apt::error::AptErrors;
+use rust_apt::new_cache;
+use rust_apt::progress::{AcquireProgress, InstallProgress};
+use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use util::sudo_check;
 
 mod cli;
 mod fetch;
@@ -18,6 +23,8 @@ mod clean;
 mod colors;
 mod config;
 mod downloader;
+mod dpkg;
+mod install;
 mod tui;
 mod upgrade;
 mod util;
@@ -27,6 +34,7 @@ use crate::cli::NalaParser;
 use crate::config::Config;
 use crate::downloader::download;
 use crate::fetch::fetch;
+use crate::install::install;
 use crate::list::{list, search};
 use crate::show::show;
 use crate::update::update;
@@ -88,21 +96,20 @@ fn main_nala(args: ArgMatches, derived: NalaParser, config: &mut Config) -> Resu
 		return Ok(());
 	}
 
-	if let Some((name, cmd)) = args.subcommand() {
+	if let (Some((name, cmd)), Some(command)) = (args.subcommand(), derived.command) {
 		config.command = name.to_string();
 		config.load_args(cmd);
-		match name {
-			"list" => list(config)?,
-			"search" => search(config)?,
-			"show" => show(config)?,
-			"clean" => clean(config)?,
-			"download" => download(config)?,
-			"history" => history_test(config)?,
-			"fetch" => fetch(config)?,
-			"update" => update(config)?,
-			"upgrade" => upgrade(config)?,
-			// Match other subcommands here...
-			_ => bail!("Unknown error in the argument parser"),
+		match command {
+			Commands::List(_) => list(config)?,
+			Commands::Search(_) => search(config)?,
+			Commands::Show(_) => show(config)?,
+			Commands::Clean(_) => clean(config)?,
+			Commands::Download(_) => download(config)?,
+			Commands::History(_) => history_test(config)?,
+			Commands::Fetch(_) => fetch(config)?,
+			Commands::Update(_) => update(config)?,
+			Commands::Upgrade(_) => upgrade(config)?,
+			Commands::Install(_) => install(config)?,
 		}
 	} else {
 		NalaParser::command().print_help()?;

@@ -364,7 +364,7 @@ pub fn apt_hook_with_pkgs(pkgs: &Vec<Package>, config: &Config) -> Result<()> {
 	Ok(())
 }
 
-fn set_inheritable(fd: RawFd) -> Result<()> {
+pub fn set_inheritable(fd: RawFd) -> Result<()> {
 	let flags = FdFlag::from_bits_truncate(fcntl(fd, FcntlArg::F_GETFD)?);
 	fcntl(fd, FcntlArg::F_SETFD(flags & !FdFlag::FD_CLOEXEC))?;
 	Ok(())
