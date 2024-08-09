@@ -7,10 +7,6 @@ use cli::Commands;
 use colors::Theme;
 use history::history_test;
 use rust_apt::error::AptErrors;
-use rust_apt::new_cache;
-use rust_apt::progress::{AcquireProgress, InstallProgress};
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
-use util::sudo_check;
 
 mod cli;
 mod fetch;

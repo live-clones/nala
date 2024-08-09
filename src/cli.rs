@@ -165,6 +165,9 @@ pub struct Update {
 pub struct Upgrade {
 	#[clap(short = 'o', long, action)]
 	pub dpkg_option: Vec<String>,
+
+	#[clap(long, action)]
+	pub print_uris: bool,
 }
 
 #[derive(Args, Debug)]

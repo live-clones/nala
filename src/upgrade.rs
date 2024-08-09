@@ -15,10 +15,11 @@ use rust_apt::raw::quote_string;
 use rust_apt::{new_cache, Cache, Marked, Package, PkgCurrentState, Version};
 
 use crate::config::Paths;
+use crate::downloader::Downloader;
 use crate::history::Operation;
 use crate::tui::summary::{SummaryPkg, SummaryTab};
 use crate::util::{get_pkg_name, sudo_check};
-use crate::{dprint, Config};
+use crate::{dpkg, dprint, Config};
 
 pub fn auto_remover(cache: &Cache) -> Vec<Version> {
 	let mut marked_remove = vec![];
@@ -41,15 +42,24 @@ pub fn auto_remover(cache: &Cache) -> Vec<Version> {
 	marked_remove
 }
 
-pub fn upgrade(config: &Config) -> Result<()> {
-	// sudo_check(config)?;
+#[tokio::main]
+pub async fn upgrade(config: &Config) -> Result<()> {
+	sudo_check(config)?;
 	let cache = new_cache!()?;
 
+	// TODO: This whole section is slow. It iters the entire cache several times.
+	// Need to optimize it by doing one iteration, and this will include
+	// NOT using the cache.get_changes method.
+
+	// TODO: Make it print what upgrade we're doing fr.
+	dprint!(config, "Running Upgrade: FullUpgrade");
 	cache.upgrade(Upgrade::FullUpgrade)?;
 
+	dprint!(config, "Running auto_remover");
 	let auto_remove = auto_remover(&cache);
 	let mut pkg_set: HashMap<Operation, Vec<SummaryPkg>> = HashMap::new();
 
+	dprint!(config, "Calculating changes");
 	let changed = cache.get_changes(true).collect::<Vec<_>>();
 
 	for pkg in &changed {
@@ -113,33 +123,58 @@ pub fn upgrade(config: &Config) -> Result<()> {
 			.push(SummaryPkg::new(config, op, ver, None));
 	}
 
-	pkg_set.insert(
-		Operation::AutoRemove,
-		auto_remove
-			.into_iter()
-			.map(|v| SummaryPkg::new(config, Operation::AutoRemove, v, None))
-			.collect(),
-	);
+	if !auto_remove.is_empty() {
+		pkg_set.insert(
+			Operation::AutoRemove,
+			auto_remove
+				.into_iter()
+				.map(|v| SummaryPkg::new(config, Operation::AutoRemove, v, None))
+				.collect(),
+		);
+	}
 
-	// Create app and run it
-	SummaryTab::new(&cache, config, pkg_set).run()?;
+	let versions = changed
+		.iter()
+		.filter_map(|pkg| pkg.install_version())
+		.collect::<Vec<_>>();
 
-	let pre_invoke = config.apt.find_vector("DPkg::Pre-Invoke");
-	config.apt.clear("DPkg::Pre-Invoke");
+	let mut downloader = Downloader::new(config)?;
+	for ver in &versions {
+		downloader.add_version(ver, config)?;
+	}
 
-	run_scripts(config, pre_invoke)?;
+	if config.get_bool("print_uris", false) {
+		for uri in downloader.uris() {
+			println!("{}", serde_json::to_string_pretty(uri)?);
+		}
+		// Print uris does not go past here
+		return Ok(());
+	};
 
-	let post_invoke = config.apt.find_vector("DPkg::Post-Invoke");
-	config.apt.clear("DPkg::Post-Invoke");
+	// TODO: Implement a summary that is not a Tui
+	// TODO: Implement a simple summary that is very short for serial/console users
 
-	run_scripts(config, post_invoke)?;
-	apt_hook_with_pkgs(&changed, config)?;
+	// App returns true if we should continue.
+	if !SummaryTab::new(&cache, config, pkg_set).run().await? {
+		return Ok(());
+	}
 
+	// TODO: download only mode?
+	let _finished = downloader.run(config, false).await?;
+
+	run_scripts(config, "DPkg::Pre-Invoke")?;
+	apt_hook_with_pkgs(config, &changed, "DPkg::Pre-Install-Pkgs")?;
+
+	config.apt.set("Dpkg::Use-Pty", "0");
+
+	dpkg::run_install(cache, config)?;
+
+	run_scripts(config, "DPkg::Post-Invoke")?;
 	Ok(())
 }
 
-pub fn run_scripts(config: &Config, hooks: Vec<String>) -> Result<()> {
-	for hook in hooks {
+pub fn run_scripts(config: &Config, key: &str) -> Result<()> {
+	for hook in config.apt.find_vector(key) {
 		dprint!(config, "Running {hook}");
 		let mut child = Command::new("sh").arg("-c").arg(hook).spawn()?;
 
@@ -149,6 +184,7 @@ pub fn run_scripts(config: &Config, hooks: Vec<String>) -> Result<()> {
 			std::process::exit(exit.code().unwrap());
 		}
 	}
+	config.apt.clear(key);
 	Ok(())
 }
 
@@ -272,12 +308,9 @@ fn write_config_info<W: Write>(w: &mut W, config: &Config, hook_ver: i32) -> Res
 	Ok(())
 }
 
-pub fn apt_hook_with_pkgs(pkgs: &Vec<Package>, config: &Config) -> Result<()> {
-	let apt_hooks = config.apt.find_vector("DPkg::Pre-Install-Pkgs");
-
+pub fn apt_hook_with_pkgs(config: &Config, pkgs: &Vec<Package>, key: &str) -> Result<()> {
 	let archive = config.get_path(&Paths::Archive);
-
-	for hook in apt_hooks {
+	for hook in config.apt.find_vector(key) {
 		let Some(prog) = hook.split_whitespace().next() else {
 			continue;
 		};
@@ -361,6 +394,7 @@ pub fn apt_hook_with_pkgs(pkgs: &Vec<Package>, config: &Config) -> Result<()> {
 		}
 	}
 
+	config.apt.clear(key);
 	Ok(())
 }
 

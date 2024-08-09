@@ -249,7 +249,7 @@ async fn score_handler(
 	release: &str,
 ) -> Result<Vec<(String, u128)>> {
 	// Setup Progress Bar
-	let mut pb = tui::NalaProgressBar::new(config)?;
+	let mut pb = tui::NalaProgressBar::new(config, false)?;
 	pb.indicatif.set_length(mirror_strings.len() as u64);
 
 	let client = Client::builder().timeout(Duration::from_secs(5)).build()?;

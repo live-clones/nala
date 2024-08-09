@@ -1,9 +1,8 @@
-use std::cell::OnceCell;
 use std::collections::{BTreeMap, HashMap};
 use std::io::{self, Write};
 
 use ansi_to_tui::IntoText;
-use anyhow::Result;
+use anyhow::{bail, Result};
 use crossterm::event::{
 	self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, MouseEventKind,
 };
@@ -24,6 +23,7 @@ use ratatui::widgets::{
 use ratatui::Terminal;
 use rust_apt::util::DiskSpace;
 use rust_apt::{Cache, Version};
+use tokio::sync::OnceCell;
 
 use super::Term;
 use crate::colors::Theme;
@@ -81,7 +81,7 @@ impl Item {
 pub struct SummaryPkg<'a> {
 	version: Version<'a>,
 	pub items: Vec<Item>,
-	changelog: OnceCell<Option<String>>,
+	changelog: OnceCell<String>,
 }
 
 impl<'a> SummaryPkg<'a> {
@@ -114,22 +114,23 @@ impl<'a> SummaryPkg<'a> {
 		}
 	}
 
-	pub fn get_changelog(&self) -> &Option<String> {
-		self.changelog.get_or_init(|| {
-			reqwest::blocking::get(self.version.parent().changelog_uri()?)
-				.ok()?
-				.error_for_status()
-				.ok()?
-				.text()
-				.ok()
-		})
+	pub async fn get_changelog(&self) -> Result<&String> {
+		self.changelog
+			.get_or_try_init(|| async {
+				let uri = match self.version.parent().changelog_uri() {
+					Some(uri) => uri,
+					None => bail!("Unable to find Changelog URI"),
+				};
+
+				Ok(reqwest::get(uri).await?.error_for_status()?.text().await?)
+			})
+			.await
 	}
 
-	pub fn render_changelog(&self, terminal: &mut Term) -> Result<()> {
-		let changelog: &str = if let Some(log) = self.get_changelog().as_ref() {
-			log
-		} else {
-			"Unable to get changelog!"
+	pub async fn render_changelog(&self, terminal: &mut Term) -> Result<()> {
+		let changelog = match self.get_changelog().await {
+			Ok(log) => log,
+			Err(e) => &format!("{e:?}"),
 		};
 
 		let mut pager = std::process::Command::new("less")
@@ -471,7 +472,7 @@ impl<'a> SummaryTab<'a> {
 			.render(new_area[0], buf);
 	}
 
-	pub fn run(&mut self) -> Result<()> {
+	pub async fn run(&mut self) -> Result<bool> {
 		enable_raw_mode()?;
 		let mut stdout = io::stdout();
 		execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -486,7 +487,14 @@ impl<'a> SummaryTab<'a> {
 				Event::Key(key) => {
 					if key.kind == KeyEventKind::Press {
 						match key.code {
-							KeyCode::Char('q') | KeyCode::Esc => break,
+							KeyCode::Char('q') | KeyCode::Esc => {
+								restore_terminal(&mut terminal)?;
+								return Ok(false);
+							},
+							KeyCode::Char('y') => {
+								restore_terminal(&mut terminal)?;
+								return Ok(true);
+							},
 							KeyCode::Char('l') | KeyCode::Right => self.next_tab(),
 							KeyCode::Char('h') | KeyCode::Left => self.previous_tab(),
 							KeyCode::Char('j') | KeyCode::Down => self.current_mut().next(),
@@ -506,7 +514,7 @@ impl<'a> SummaryTab<'a> {
 							KeyCode::Enter => {
 								let app = self.current();
 								if let Some(i) = app.state.selected() {
-									app.items[i].render_changelog(&mut terminal)?;
+									app.items[i].render_changelog(&mut terminal).await?;
 								}
 							},
 							KeyCode::Char('s') => {
@@ -527,17 +535,6 @@ impl<'a> SummaryTab<'a> {
 				_ => {},
 			}
 		}
-
-		// restore terminal
-		disable_raw_mode()?;
-		execute!(
-			terminal.backend_mut(),
-			LeaveAlternateScreen,
-			DisableMouseCapture
-		)?;
-		terminal.show_cursor()?;
-
-		Ok(())
 	}
 }
 
@@ -625,6 +622,18 @@ impl<'a> StatefulWidget for &mut SummaryTab<'a> {
 			.wrap(Wrap::default())
 			.render(info_area, buf);
 	}
+}
+
+/// Restore the terminal
+pub fn restore_terminal(terminal: &mut Term) -> Result<()> {
+	disable_raw_mode()?;
+	execute!(
+		terminal.backend_mut(),
+		LeaveAlternateScreen,
+		DisableMouseCapture
+	)?;
+	terminal.show_cursor()?;
+	Ok(())
 }
 
 fn header_block<'a>(config: &'a Config, title: &'a str) -> Block<'a> {

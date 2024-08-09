@@ -9,6 +9,21 @@ macro_rules! dprint {
 	};
 }
 
+#[macro_export]
+/// Print Debug information using NalaProgress.
+macro_rules! dprog {
+	($config:expr, $progress:expr, $context:expr, $(,)? $($arg:tt)*) => {
+		if $config.debug() {
+			let output = std::fmt::format(std::format_args!($($arg)*));
+			if $progress.hidden() {
+				eprintln!("DEBUG({}): {output}", $context);
+			} else {
+				$progress.print(&format!("DEBUG({}): {output}", $context))?;
+			}
+		}
+	};
+}
+
 use std::cell::OnceCell;
 use std::collections::HashSet;
 
