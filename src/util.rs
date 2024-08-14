@@ -348,11 +348,17 @@ pub fn sudo_check(config: &Config) -> Result<()> {
 }
 
 /// Get the username or return Unknown.
-pub fn get_user() -> String {
-	for key in ["LOGNAME", "USER", "LNAME", "USERNAME"] {
-		if let Ok(name) = std::env::var(key) {
-			return name;
+pub fn get_user() -> (std::string::String, std::string::String) {
+	let uid = std::env::var("SUDO_UID").unwrap_or_else(|_| format!("{}", unsafe { geteuid() }));
+
+	let username = std::env::var("SUDO_USER").unwrap_or_else(|_| {
+		for key in ["LOGNAME", "USER", "LNAME", "USERNAME"] {
+			if let Ok(name) = std::env::var(key) {
+				return name;
+			}
 		}
-	}
-	"Unknown".to_string()
+		"Unknown".to_string()
+	});
+
+	(uid, username)
 }

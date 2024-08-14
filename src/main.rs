@@ -5,7 +5,7 @@ use anyhow::{bail, Result};
 use clap::{ArgMatches, CommandFactory, FromArgMatches};
 use cli::Commands;
 use colors::Theme;
-use history::history_test;
+use history::history;
 use rust_apt::error::AptErrors;
 
 mod cli;
@@ -21,6 +21,7 @@ mod config;
 mod downloader;
 mod dpkg;
 mod install;
+mod table;
 mod tui;
 mod upgrade;
 mod util;
@@ -101,7 +102,7 @@ fn main_nala(args: ArgMatches, derived: NalaParser, config: &mut Config) -> Resu
 			Commands::Show(_) => show(config)?,
 			Commands::Clean(_) => clean(config)?,
 			Commands::Download(_) => download(config)?,
-			Commands::History(_) => history_test(config)?,
+			Commands::History(_) => history(config)?,
 			Commands::Fetch(_) => fetch(config)?,
 			Commands::Update(_) => update(config)?,
 			Commands::Upgrade(_) => upgrade(config)?,

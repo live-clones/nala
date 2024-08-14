@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, HashMap};
-use std::io::{self, Write};
+use std::{fmt, io};
 
 use ansi_to_tui::IntoText;
-use anyhow::{bail, Result};
+use anyhow::Result;
 use crossterm::event::{
 	self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, MouseEventKind,
 };
@@ -22,55 +22,43 @@ use ratatui::widgets::{
 };
 use ratatui::Terminal;
 use rust_apt::util::DiskSpace;
-use rust_apt::{Cache, Version};
-use tokio::sync::OnceCell;
+use rust_apt::Cache;
 
 use super::Term;
 use crate::colors::Theme;
 use crate::config::Config;
-use crate::history::Operation;
-use crate::show::{build_regex, show_version};
-use crate::util::version_diff;
+use crate::history::{HistoryPackage, Operation};
 
 #[derive(Debug)]
 pub struct Item {
 	align: Alignment,
 	style: Style,
-	string: String,
-	old_version: Option<String>,
+	pub string: String,
 }
 
 impl Item {
-	fn new(align: Alignment, style: Style, string: String, old_version: Option<String>) -> Self {
+	fn new(align: Alignment, style: Style, string: String) -> Self {
 		Self {
 			align,
 			style,
 			string,
-			old_version,
 		}
 	}
 
-	fn center(style: Style, string: String, old_version: Option<String>) -> Self {
-		Self::new(Alignment::Center, style, string, old_version)
+	pub fn center(style: Style, string: String) -> Self {
+		Self::new(Alignment::Center, style, string)
 	}
 
-	fn right(style: Style, string: String) -> Self {
-		Self::new(Alignment::Right, style, string, None)
+	pub fn right(style: Style, string: String) -> Self {
+		Self::new(Alignment::Right, style, string)
 	}
 
-	fn left(style: Style, string: String) -> Self {
-		Self::new(Alignment::Left, style, string, None)
-	}
+	pub fn left(style: Style, string: String) -> Self { Self::new(Alignment::Left, style, string) }
 
-	fn get_cell(&self, config: &Config) -> Cell {
-		let text = if let Some(old) = &self.old_version {
-			version_diff(config, old, self.string.to_string())
-		} else {
-			self.string.clone()
-		};
-
+	fn get_cell(&self) -> Cell {
 		Cell::from(
-			text.into_text()
+			self.string
+				.into_text()
 				.unwrap()
 				.style(self.style)
 				.alignment(self.align),
@@ -78,154 +66,18 @@ impl Item {
 	}
 }
 
-pub struct SummaryPkg<'a> {
-	version: Version<'a>,
-	pub items: Vec<Item>,
-	changelog: OnceCell<String>,
+impl fmt::Display for Item {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { f.write_str(&self.string) }
 }
-
-impl<'a> SummaryPkg<'a> {
-	pub fn new(
-		config: &Config,
-		op: Operation,
-		version: Version<'a>,
-		old_version: Option<Version<'a>>,
-	) -> Self {
-		let secondary = config.rat_style(op.theme());
-		let primary = config.rat_style(Theme::Regular);
-		let mut items = vec![Item::left(secondary, version.parent().name().to_string())];
-
-		if let Some(old) = &old_version {
-			items.push(Item::center(primary, old.version().to_string(), None));
-			items.push(Item::center(
-				primary,
-				version.version().to_string(),
-				Some(old.version().to_string()),
-			));
-		} else {
-			items.push(Item::center(primary, version.version().to_string(), None));
-		}
-		items.push(Item::right(primary, config.unit_str(version.size())));
-
-		Self {
-			version,
-			items,
-			changelog: OnceCell::new(),
-		}
-	}
-
-	pub async fn get_changelog(&self) -> Result<&String> {
-		self.changelog
-			.get_or_try_init(|| async {
-				let uri = match self.version.parent().changelog_uri() {
-					Some(uri) => uri,
-					None => bail!("Unable to find Changelog URI"),
-				};
-
-				Ok(reqwest::get(uri).await?.error_for_status()?.text().await?)
-			})
-			.await
-	}
-
-	pub async fn render_changelog(&self, terminal: &mut Term) -> Result<()> {
-		let changelog = match self.get_changelog().await {
-			Ok(log) => log,
-			Err(e) => &format!("{e:?}"),
-		};
-
-		let mut pager = std::process::Command::new("less")
-			.arg("--raw-control-chars")
-			.arg("--clear-screen")
-			.stdin(std::process::Stdio::piped())
-			.spawn()?;
-
-		if let Some(stdin) = pager.stdin.as_mut() {
-			if let Err(err) = stdin.write_all(changelog.as_bytes()) {
-				match err.kind() {
-					// Broken Pipe if not all of the changelog is read.
-					// Happens on pager exit without reading the whole file.
-					io::ErrorKind::BrokenPipe => {},
-					_ => return Err(err.into()),
-				}
-			}
-		}
-
-		pager.wait()?;
-		execute!(
-			terminal.backend_mut(),
-			EnterAlternateScreen,
-			EnableMouseCapture
-		)?;
-		terminal.clear()?;
-
-		Ok(())
-	}
-
-	pub fn render_show(&self, terminal: &mut Term, config: &Config) -> Result<()> {
-		let pkg = self.version.parent();
-		let pacstall_regex = build_regex(r#"_remoterepo="(.*?)""#)?;
-		let url_regex = build_regex("(https?://.*?/.*?/)")?;
-		// Maybe we will show both versions if available?
-		let show = show_version(config, &pkg, &self.version, &pacstall_regex, &url_regex);
-		terminal.clear()?;
-
-		let mut lines: Vec<Text> = vec![];
-		for (head, info) in &show {
-			let mut split = info.split('\n');
-			if let Some(first) = split.next() {
-				lines.push(
-					format!("{}: {first}", config.color(Theme::Highlight, head)).into_text()?,
-				);
-				for line in split {
-					let line = line.to_string();
-					lines.push(line.into_text()?)
-				}
-			}
-		}
-
-		loop {
-			terminal.draw(|f| {
-				let block = header_block(config, "Nala Upgrade");
-
-				let inner = block.inner(f.size());
-
-				let constraints = lines
-					.iter()
-					.map(|line| Length((line.width() as f32 / inner.width as f32).ceil() as u16))
-					.collect::<Vec<_>>();
-
-				let layout = Layout::vertical(constraints).split(block.inner(f.size()));
-
-				f.render_widget(block, f.size());
-				for (i, line) in lines.iter().enumerate() {
-					f.render_widget(
-						Paragraph::new(line.clone()).wrap(Wrap::default()),
-						layout[i],
-					)
-				}
-			})?;
-
-			if let Event::Key(key) = event::read()? {
-				if key.kind == KeyEventKind::Press {
-					match key.code {
-						KeyCode::Char('q') | KeyCode::Esc => break Ok(()),
-						_ => {},
-					}
-				}
-			}
-		}
-	}
-}
-
 pub struct App<'a> {
 	state: TableState,
 	scroll_state: ScrollbarState,
 	config: &'a Config,
-	items: Vec<SummaryPkg<'a>>,
+	items: &'a Vec<HistoryPackage>,
 }
 
 impl<'a> App<'a> {
-	fn new(config: &'a Config, items: Vec<SummaryPkg<'a>>) -> Self {
+	fn new(config: &'a Config, items: &'a Vec<HistoryPackage>) -> Self {
 		let scroll_state = ScrollbarState::new(items.len() - 1);
 		Self {
 			state: TableState::default().with_selected(0),
@@ -265,7 +117,7 @@ impl<'a> App<'a> {
 		let white = self.config.rat_style(Theme::Regular);
 
 		// Choose which headers based on the inner items of the SummaryPkg
-		let headers = if self.items[0].items.len() > 3 {
+		let headers = if self.items[0].items(self.config).len() > 3 {
 			vec!["Package:", "Old Version:", "New Version:", "Size:"]
 		} else {
 			vec!["Package:", "Version:", "Size:"]
@@ -276,26 +128,26 @@ impl<'a> App<'a> {
 		// Build the headers into Cells
 		let header = headers
 			.into_iter()
-			.zip(self.items[0].items.iter())
+			.zip(self.items[0].items(self.config).iter())
 			.map(|(str, i)| Cell::from(Text::from(str).alignment(i.align)))
 			.collect::<Row>()
 			.style(white);
 
 		let mut constraints = vec![];
-		for i in 0..self.items[0].items.len() {
+		for i in 0..self.items[0].items(self.config).len() {
 			constraints.push(
 				self.items
 					.iter()
-					.map(|item| item.items[i].string.len().max(header_max))
+					.map(|item| item.items(self.config)[i].string.len().max(header_max))
 					.max()
 					.unwrap_or_default() as u16,
 			)
 		}
 
 		let t = Table::new(
-			self.items
-				.iter()
-				.map(|vec| Row::from_iter(vec.items.iter().map(|item| item.get_cell(self.config)))),
+			self.items.iter().map(|vec| {
+				Row::from_iter(vec.items(self.config).iter().map(|item| item.get_cell()))
+			}),
 			constraints,
 		)
 		.header(header)
@@ -336,6 +188,7 @@ impl<'a> StatefulWidget for &mut App<'a> {
 }
 
 pub struct SummaryTab<'a> {
+	cache: &'a Cache,
 	config: &'a Config,
 	pkg_set: BTreeMap<Operation, App<'a>>,
 	// Array first is the header, second is string.
@@ -347,13 +200,13 @@ pub struct SummaryTab<'a> {
 
 impl<'a> SummaryTab<'a> {
 	pub fn new(
-		cache: &Cache,
+		cache: &'a Cache,
 		config: &'a Config,
-		pkg_set: HashMap<Operation, Vec<SummaryPkg<'a>>>,
+		pkg_set: &'a HashMap<Operation, Vec<HistoryPackage>>,
 	) -> Self {
 		let pkg_set = pkg_set
-			.into_iter()
-			.map(|(op, set)| (op, App::new(config, set)))
+			.iter()
+			.map(|(op, set)| (*op, App::new(config, set)))
 			.collect();
 
 		let size = cache.depcache().download_size();
@@ -374,6 +227,7 @@ impl<'a> SummaryTab<'a> {
 		};
 
 		let mut tabs = Self {
+			cache,
 			config,
 			pkg_set,
 			download_size,
@@ -514,13 +368,19 @@ impl<'a> SummaryTab<'a> {
 							KeyCode::Enter => {
 								let app = self.current();
 								if let Some(i) = app.state.selected() {
-									app.items[i].render_changelog(&mut terminal).await?;
+									app.items[i]
+										.render_changelog(self.cache, &mut terminal)
+										.await?;
 								}
 							},
 							KeyCode::Char('s') => {
 								let app = self.current();
 								if let Some(i) = app.state.selected() {
-									app.items[i].render_show(&mut terminal, self.config)?;
+									app.items[i].render_show(
+										self.cache,
+										self.config,
+										&mut terminal,
+									)?;
 								}
 							},
 							_ => {},
@@ -636,14 +496,14 @@ pub fn restore_terminal(terminal: &mut Term) -> Result<()> {
 	Ok(())
 }
 
-fn header_block<'a>(config: &'a Config, title: &'a str) -> Block<'a> {
+pub fn header_block<'a>(config: &'a Config, title: &'a str) -> Block<'a> {
 	basic_block(config)
 		.title(format!("  {title}  ").set_style(config.rat_style(Theme::Highlight)))
 		.title_alignment(Alignment::Center)
 		.padding(Padding::horizontal(1))
 }
 
-fn basic_block(config: &Config) -> Block {
+pub fn basic_block(config: &Config) -> Block {
 	Block::bordered()
 		.border_type(BorderType::Thick)
 		.border_style(config.rat_style(Theme::Primary))

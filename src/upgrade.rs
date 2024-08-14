@@ -7,6 +7,7 @@ use std::path::Path;
 use std::process::Command;
 
 use anyhow::{bail, Result};
+use chrono::Utc;
 use nix::fcntl::{fcntl, FcntlArg, FdFlag, OFlag};
 use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::{close, dup2, execv, fork, pipe, ForkResult};
@@ -16,10 +17,9 @@ use rust_apt::{new_cache, Cache, Marked, Package, PkgCurrentState, Version};
 
 use crate::config::Paths;
 use crate::downloader::Downloader;
-use crate::history::Operation;
-use crate::tui::summary::{SummaryPkg, SummaryTab};
+use crate::history::{self, HistoryEntry, HistoryPackage, Operation};
 use crate::util::{get_pkg_name, sudo_check};
-use crate::{dpkg, dprint, Config};
+use crate::{dpkg, dprint, table, tui, Config};
 
 pub fn auto_remover(cache: &Cache) -> Vec<Version> {
 	let mut marked_remove = vec![];
@@ -51,13 +51,21 @@ pub async fn upgrade(config: &Config) -> Result<()> {
 	// Need to optimize it by doing one iteration, and this will include
 	// NOT using the cache.get_changes method.
 
-	// TODO: Make it print what upgrade we're doing fr.
-	dprint!(config, "Running Upgrade: FullUpgrade");
-	cache.upgrade(Upgrade::FullUpgrade)?;
+	// SafeUpgrade takes precedence.
+	let upgrade_type = if config.get_bool("safe", false) {
+		Upgrade::SafeUpgrade
+	} else if config.full_upgrade() {
+		Upgrade::FullUpgrade
+	} else {
+		Upgrade::Upgrade
+	};
+
+	dprint!(config, "Running Upgrade: {upgrade_type:?}");
+	cache.upgrade(upgrade_type)?;
 
 	dprint!(config, "Running auto_remover");
 	let auto_remove = auto_remover(&cache);
-	let mut pkg_set: HashMap<Operation, Vec<SummaryPkg>> = HashMap::new();
+	let mut pkg_set: HashMap<Operation, Vec<HistoryPackage>> = HashMap::new();
 
 	dprint!(config, "Calculating changes");
 	let changed = cache.get_changes(true).collect::<Vec<_>>();
@@ -92,15 +100,9 @@ pub async fn upgrade(config: &Config) -> Result<()> {
 			},
 			Marked::Upgrade => {
 				if let (Some(inst), Some(cand)) = (pkg.installed(), pkg.candidate()) {
-					pkg_set
-						.entry(Operation::Upgrade)
-						.or_default()
-						.push(SummaryPkg::new(
-							config,
-							Operation::Upgrade,
-							cand,
-							Some(inst),
-						));
+					pkg_set.entry(Operation::Upgrade).or_default().push(
+						HistoryPackage::from_version(Operation::Upgrade, &cand, &Some(inst)),
+					);
 				}
 				continue;
 			},
@@ -120,7 +122,7 @@ pub async fn upgrade(config: &Config) -> Result<()> {
 		pkg_set
 			.entry(op)
 			.or_default()
-			.push(SummaryPkg::new(config, op, ver, None));
+			.push(HistoryPackage::from_version(op, &ver, &None));
 	}
 
 	if !auto_remove.is_empty() {
@@ -128,7 +130,7 @@ pub async fn upgrade(config: &Config) -> Result<()> {
 			Operation::AutoRemove,
 			auto_remove
 				.into_iter()
-				.map(|v| SummaryPkg::new(config, Operation::AutoRemove, v, None))
+				.map(|v| HistoryPackage::from_version(Operation::AutoRemove, &v, &None))
 				.collect(),
 		);
 	}
@@ -151,15 +153,82 @@ pub async fn upgrade(config: &Config) -> Result<()> {
 		return Ok(());
 	};
 
-	// TODO: Implement a summary that is not a Tui
 	// TODO: Implement a simple summary that is very short for serial/console users
 
-	// App returns true if we should continue.
-	if !SummaryTab::new(&cache, config, pkg_set).run().await? {
-		return Ok(());
+	if config.show_tui() {
+		// App returns true if we should continue.
+		if !tui::summary::SummaryTab::new(&cache, config, &pkg_set)
+			.run()
+			.await?
+		{
+			return Ok(());
+		}
+	} else {
+		let mut tables = vec![];
+
+		for (op, pkgs) in &pkg_set {
+			let mut table = table::get_table(
+				config,
+				if pkgs[0].items(config).len() > 3 {
+					&["Package:", "Old Version:", "New Version:", "Size:"]
+				} else {
+					&["Package:", "Version:", "Size:"]
+				},
+			);
+
+			table.add_rows(pkgs.iter().map(|p| p.items(config)));
+			tables.push((op, table));
+		}
+
+		for (op, pkgs) in tables {
+			let width = rust_apt::util::terminal_width();
+			let sep = "=".repeat(width);
+			println!("{sep}");
+			println!(" {}", config.highlight(op.as_str()));
+			println!("{sep}");
+
+			println!("{pkgs}");
+		}
+
+		loop {
+			print!("Do you want to continue? [Y/n] ");
+			std::io::stdout().flush()?;
+
+			let mut response = String::new();
+			std::io::stdin().read_line(&mut response)?;
+
+			let resp = response.to_lowercase();
+			if resp.starts_with("y") {
+				break;
+			}
+
+			if resp.starts_with("n") {
+				bail!("User refused confirmation")
+			}
+
+			bail!("'{}' is not a valid response", response.trim())
+		}
+		// TODO: Need to have the confirmation prompt y/n!!!
 	}
 
+	let history_entry = HistoryEntry::new(
+		history::get_history(config)?
+			.iter()
+			.map(|entry| entry.id)
+			.max()
+			.unwrap_or_default()
+			+ 1,
+		Utc::now().to_rfc3339(),
+		pkg_set.into_values().flatten().collect(),
+	);
+
+	history_entry.write_to_file(config)?;
+
+	bincode::serialize(&history_entry)?;
+
 	// TODO: download only mode?
+	// TODO: Need to handle Cntrl C here.
+	// This will start run_scripts below sometimes if you hit it.
 	let _finished = downloader.run(config, false).await?;
 
 	run_scripts(config, "DPkg::Pre-Invoke")?;

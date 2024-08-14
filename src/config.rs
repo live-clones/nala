@@ -29,6 +29,8 @@ pub enum Paths {
 	/// Nala Sources file is generated from the `fetch` command.
 	/// Default file `/etc/apt/sources.list.d/nala-sources.list`
 	NalaSources,
+
+	History,
 }
 
 impl Paths {
@@ -39,6 +41,7 @@ impl Paths {
 			Paths::SourceList => "Dir::Etc::sourcelist",
 			Paths::SourceParts => "Dir::Etc::sourceparts",
 			Paths::NalaSources => "/etc/apt/sources.list.d/nala.sources",
+			Paths::History => "/var/lib/nala/history",
 		}
 	}
 
@@ -48,7 +51,8 @@ impl Paths {
 			Paths::Lists => "/var/lib/apt/lists/",
 			Paths::SourceList => "/etc/apt/sources.list",
 			Paths::SourceParts => "/etc/apt/sources.list.d/",
-			Paths::NalaSources => "/etc/apt/sources.list.d/nala.sources",
+			Paths::NalaSources => self.path(),
+			Paths::History => self.path(),
 		}
 	}
 }
@@ -65,6 +69,7 @@ pub enum Switch {
 pub enum OptType {
 	Bool(bool),
 	Int(u8),
+	Int64(u64),
 	Switch(Switch),
 	UnitStr(UnitStr),
 	// Strings have to be last in the enum
@@ -214,6 +219,11 @@ impl Config {
 
 			if let Ok(Some(value)) = args.try_get_one::<u8>(&key) {
 				self.map.insert(key, OptType::Int(*value));
+				continue;
+			}
+
+			if let Ok(Some(value)) = args.try_get_one::<u64>(&key) {
+				self.map.insert(key, OptType::Int64(*value));
 			}
 		}
 
@@ -267,6 +277,7 @@ impl Config {
 		match file {
 			// For now NalaSources is hard coded.
 			Paths::NalaSources => file.path().to_string(),
+			Paths::History => file.path().to_string(),
 			_ => self.apt.file(file.path(), file.default_path()),
 		}
 	}
@@ -276,9 +287,27 @@ impl Config {
 		PathBuf::from(match dir {
 			// For now NalaSources is hard coded.
 			Paths::NalaSources => dir.path().to_string(),
+			Paths::History => dir.path().to_string(),
 			// Everything else should be an Apt Path
 			_ => self.apt.file(dir.path(), dir.default_path()),
 		})
+	}
+
+	// TODO: Combine these into a function
+
+	/// Should the TUI be shown?
+	pub fn show_tui(&self) -> bool {
+		if self.get_bool("no_tui", false) {
+			return false;
+		}
+		self.get_bool("tui", true)
+	}
+
+	pub fn full_upgrade(&self) -> bool {
+		if self.get_bool("no_full", false) {
+			return false;
+		}
+		self.get_bool("full", true)
 	}
 
 	/// Get the package names that were passed as arguments.
