@@ -190,25 +190,8 @@ pub async fn upgrade(config: &Config) -> Result<()> {
 			println!("{pkgs}");
 		}
 
-		loop {
-			print!("Do you want to continue? [Y/n] ");
-			std::io::stdout().flush()?;
-
-			let mut response = String::new();
-			std::io::stdin().read_line(&mut response)?;
-
-			let resp = response.to_lowercase();
-			if resp.starts_with("y") {
-				break;
-			}
-
-			if resp.starts_with("n") {
-				bail!("User refused confirmation")
-			}
-
-			bail!("'{}' is not a valid response", response.trim())
-		}
-		// TODO: Need to have the confirmation prompt y/n!!!
+		// Returns an error if yes is no selected
+		ask("Do you want to continue?")?;
 	}
 
 	let history_entry = HistoryEntry::new(
@@ -465,6 +448,26 @@ pub fn apt_hook_with_pkgs(config: &Config, pkgs: &Vec<Package>, key: &str) -> Re
 
 	config.apt.clear(key);
 	Ok(())
+}
+
+/// Ask the user a question and let them decide Y or N
+pub fn ask(msg: &str) -> Result<()> {
+	print!("{msg} [Y/n] ");
+	std::io::stdout().flush()?;
+
+	let mut response = String::new();
+	std::io::stdin().read_line(&mut response)?;
+
+	let resp = response.to_lowercase();
+	if resp.starts_with('y') {
+		return Ok(());
+	}
+
+	if resp.starts_with('n') {
+		bail!("User refused confirmation")
+	}
+
+	bail!("'{}' is not a valid response", response.trim())
 }
 
 pub fn set_inheritable(fd: RawFd) -> Result<()> {
