@@ -842,9 +842,16 @@ def filter_uris(
 		# Regex to check if we're using mirror+file:/
 		if regex := MIRROR_FILE_PATTERN.search(uri):
 			if regex.group(1) not in mirrors:
-				mirrors[regex.group(1)] = (
-					Path(regex.group(1)).read_text(encoding="utf-8").splitlines()
-				)
+				mirrors[regex.group(1)] = [
+					# There are some other options in the mirror file
+					# I don't believe it's necessary to implement them
+					# So I am just stripping them out.
+					# See https://gitlab.com/volian/nala/-/issues/323
+					mirror.split("\t")[0]
+					for mirror in Path(regex.group(1))
+					.read_text(encoding="utf-8")
+					.splitlines()
+				]
 
 			yield from (
 				f"{link}/{candidate.filename}"
