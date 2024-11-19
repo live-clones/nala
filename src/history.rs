@@ -399,7 +399,7 @@ pub async fn history(config: &Config) -> Result<()> {
 		table.add_row(row);
 	}
 
-	if !config.show_tui() {
+	if !config.get_no_bool("tui", true) {
 		println!("{table}");
 		return Ok(());
 	}

@@ -1,6 +1,6 @@
 use std::fs;
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 use regex::{Regex, RegexBuilder};
 use rust_apt::records::RecordField;
 use rust_apt::{new_cache, BaseDep, DepType, Dependency, Package, PackageSort, Version};
@@ -248,10 +248,7 @@ pub fn show(config: &Config) -> Result<()> {
 	// Filter the packages by names if they were provided
 	let sort = PackageSort::default().include_virtual();
 
-	let (packages, not_found) = match config.pkg_names() {
-		Some(pkg_names) => glob_pkgs(pkg_names, cache.packages(&sort))?,
-		None => bail!("At least one package name must be specified"),
-	};
+	let (packages, not_found) = glob_pkgs(&config.pkg_names()?, cache.packages(&sort))?;
 
 	let mut additional_records = 0;
 	// Filter virtual packages into their real package.

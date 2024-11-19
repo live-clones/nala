@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 use rust_apt::{new_cache, Package, PackageSort, Version};
 
 use crate::colors::Theme;
@@ -13,11 +13,7 @@ pub fn search(config: &Config) -> Result<()> {
 	let mut out = std::io::stdout().lock();
 	let cache = new_cache!()?;
 
-	// Set up the matcher with the regexes
-	let matcher = match config.pkg_names() {
-		Some(pkg_names) => Matcher::from_regexs(pkg_names)?,
-		None => bail!("You must give at least one search Pattern"),
-	};
+	let matcher = Matcher::from_regexs(&config.pkg_names()?)?;
 
 	// Filter the packages by names if they were provided
 	let sort = get_sorter(config);
@@ -40,15 +36,15 @@ pub fn list(config: &Config) -> Result<()> {
 	let sort = get_sorter(config);
 
 	let (packages, not_found) = match config.pkg_names() {
-		Some(pkg_names) => {
-			let (mut pkgs, not_found) = glob_pkgs(pkg_names, cache.packages(&sort))?;
+		Ok(pkg_names) => {
+			let (mut pkgs, not_found) = glob_pkgs(&pkg_names, cache.packages(&sort))?;
 
 			// Sort the packages after glob filtering.
 			pkgs.sort_by_cached_key(|pkg| pkg.name().to_string());
 
 			(pkgs, not_found)
 		},
-		None => (cache.packages(&sort).collect(), HashSet::new()),
+		Err(_) => (cache.packages(&sort).collect(), HashSet::new()),
 	};
 
 	// List the packages that were found
@@ -107,7 +103,7 @@ fn list_packages(
 	}
 
 	for name in &not_found {
-		config.color(
+		config.stderr(
 			Theme::Notice,
 			&format!("'{}' was not found", config.color(Theme::Primary, name)),
 		);

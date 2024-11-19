@@ -15,7 +15,6 @@ pub struct NalaParser {
 	/// Disable scrolling text and print extra information
 	#[clap(global = true, short, long, action)]
 	pub verbose: bool,
-
 	/// Print debug statements for solving issues
 	#[clap(global = true, short, long, action)]
 	pub debug: bool,
@@ -198,6 +197,10 @@ pub struct Upgrade {
 
 #[derive(Args, Debug)]
 pub struct Install {
+	/// Package names to install
+	#[clap(required = false)]
+	pub pkg_names: Vec<String>,
+
 	#[clap(short = 'o', long, action)]
 	pub dpkg_option: Vec<String>,
 }

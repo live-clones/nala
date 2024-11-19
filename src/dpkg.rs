@@ -120,6 +120,10 @@ pub fn run_install(cache: Cache, config: &Config) -> Result<()> {
 			progress.indicatif.finish();
 			progress.render()?;
 			progress.clean_up()?;
+
+			// Forget the file descriptor, the child closes it.
+			// Not doing this causes Debug build to panic.
+			std::mem::forget(pty);
 		},
 	}
 

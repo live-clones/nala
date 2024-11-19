@@ -1,25 +1,22 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::env;
 use std::ffi::CString;
 use std::io::Write;
-use std::os::fd::{AsRawFd, FromRawFd, RawFd};
+use std::os::fd::{AsRawFd, FromRawFd};
 use std::path::Path;
 use std::process::Command;
 
 use anyhow::{bail, Result};
-use chrono::Utc;
-use nix::fcntl::{fcntl, FcntlArg, FdFlag, OFlag};
+use nix::fcntl::{fcntl, FcntlArg, OFlag};
 use nix::sys::wait::{waitpid, WaitStatus};
-use nix::unistd::{close, dup2, execv, fork, pipe, ForkResult};
+use nix::unistd::{dup2, execv, fork, pipe, ForkResult};
 use rust_apt::cache::Upgrade;
 use rust_apt::raw::quote_string;
-use rust_apt::{new_cache, Cache, Marked, Package, PkgCurrentState, Version};
+use rust_apt::{new_cache, Cache, Package, PkgCurrentState, Version};
 
 use crate::config::Paths;
-use crate::downloader::Downloader;
-use crate::history::{self, HistoryEntry, HistoryPackage, Operation};
 use crate::util::{get_pkg_name, sudo_check};
-use crate::{dpkg, dprint, table, tui, Config};
+use crate::{dprint, Config};
 
 pub fn auto_remover(cache: &Cache) -> Vec<Version> {
 	let mut marked_remove = vec![];
@@ -47,14 +44,10 @@ pub async fn upgrade(config: &Config) -> Result<()> {
 	sudo_check(config)?;
 	let cache = new_cache!()?;
 
-	// TODO: This whole section is slow. It iters the entire cache several times.
-	// Need to optimize it by doing one iteration, and this will include
-	// NOT using the cache.get_changes method.
-
 	// SafeUpgrade takes precedence.
 	let upgrade_type = if config.get_bool("safe", false) {
 		Upgrade::SafeUpgrade
-	} else if config.full_upgrade() {
+	} else if config.get_no_bool("full", false) {
 		Upgrade::FullUpgrade
 	} else {
 		Upgrade::Upgrade
@@ -63,166 +56,7 @@ pub async fn upgrade(config: &Config) -> Result<()> {
 	dprint!(config, "Running Upgrade: {upgrade_type:?}");
 	cache.upgrade(upgrade_type)?;
 
-	dprint!(config, "Running auto_remover");
-	let auto_remove = auto_remover(&cache);
-	let mut pkg_set: HashMap<Operation, Vec<HistoryPackage>> = HashMap::new();
-
-	dprint!(config, "Calculating changes");
-	let changed = cache.get_changes(true).collect::<Vec<_>>();
-
-	for pkg in &changed {
-		let (op, ver) = match pkg.marked() {
-			mark @ (Marked::NewInstall
-			| Marked::Install
-			| Marked::ReInstall
-			| Marked::Downgrade) => {
-				let Some(cand) = pkg.install_version() else {
-					continue;
-				};
-				let op = match mark {
-					Marked::ReInstall => Operation::Reinstall,
-					Marked::Downgrade => Operation::Downgrade,
-					_ => Operation::Install,
-				};
-				(op, cand)
-			},
-			Marked::Remove | Marked::Purge => {
-				let Some(inst) = pkg.installed() else {
-					continue;
-				};
-
-				if auto_remove.contains(&inst) {
-					continue;
-				}
-
-				let op = if pkg.marked_purge() { Operation::Purge } else { Operation::Remove };
-				(op, inst)
-			},
-			Marked::Upgrade => {
-				if let (Some(inst), Some(cand)) = (pkg.installed(), pkg.candidate()) {
-					pkg_set.entry(Operation::Upgrade).or_default().push(
-						HistoryPackage::from_version(Operation::Upgrade, &cand, &Some(inst)),
-					);
-				}
-				continue;
-			},
-			// TODO: See if pkg is held for phasing and show percent
-			// pkgDepCache::PhasingApplied
-			// VerIterator::PhasedUpdatePercentage
-			Marked::Held => {
-				let Some(cand) = pkg.candidate() else {
-					continue;
-				};
-				(Operation::Held, cand)
-			},
-			Marked::Keep => continue,
-			Marked::None => bail!("{pkg} not marked, this should be impossible"),
-		};
-
-		pkg_set
-			.entry(op)
-			.or_default()
-			.push(HistoryPackage::from_version(op, &ver, &None));
-	}
-
-	if !auto_remove.is_empty() {
-		pkg_set.insert(
-			Operation::AutoRemove,
-			auto_remove
-				.into_iter()
-				.map(|v| HistoryPackage::from_version(Operation::AutoRemove, &v, &None))
-				.collect(),
-		);
-	}
-
-	let versions = changed
-		.iter()
-		.filter_map(|pkg| pkg.install_version())
-		.collect::<Vec<_>>();
-
-	let mut downloader = Downloader::new(config)?;
-	for ver in &versions {
-		downloader.add_version(ver, config)?;
-	}
-
-	if config.get_bool("print_uris", false) {
-		for uri in downloader.uris() {
-			println!("{}", serde_json::to_string_pretty(uri)?);
-		}
-		// Print uris does not go past here
-		return Ok(());
-	};
-
-	// TODO: Implement a simple summary that is very short for serial/console users
-
-	if config.show_tui() {
-		// App returns true if we should continue.
-		if !tui::summary::SummaryTab::new(&cache, config, &pkg_set)
-			.run()
-			.await?
-		{
-			return Ok(());
-		}
-	} else {
-		let mut tables = vec![];
-
-		for (op, pkgs) in &pkg_set {
-			let mut table = table::get_table(
-				config,
-				if pkgs[0].items(config).len() > 3 {
-					&["Package:", "Old Version:", "New Version:", "Size:"]
-				} else {
-					&["Package:", "Version:", "Size:"]
-				},
-			);
-
-			table.add_rows(pkgs.iter().map(|p| p.items(config)));
-			tables.push((op, table));
-		}
-
-		for (op, pkgs) in tables {
-			let width = rust_apt::util::terminal_width();
-			let sep = "=".repeat(width);
-			println!("{sep}");
-			println!(" {}", config.highlight(op.as_str()));
-			println!("{sep}");
-
-			println!("{pkgs}");
-		}
-
-		// Returns an error if yes is no selected
-		ask("Do you want to continue?")?;
-	}
-
-	let history_entry = HistoryEntry::new(
-		history::get_history(config)?
-			.iter()
-			.map(|entry| entry.id)
-			.max()
-			.unwrap_or_default()
-			+ 1,
-		Utc::now().to_rfc3339(),
-		pkg_set.into_values().flatten().collect(),
-	);
-
-	history_entry.write_to_file(config)?;
-
-	bincode::serialize(&history_entry)?;
-
-	// TODO: download only mode?
-	// TODO: Need to handle Cntrl C here.
-	// This will start run_scripts below sometimes if you hit it.
-	let _finished = downloader.run(config, false).await?;
-
-	run_scripts(config, "DPkg::Pre-Invoke")?;
-	apt_hook_with_pkgs(config, &changed, "DPkg::Pre-Install-Pkgs")?;
-
-	config.apt.set("Dpkg::Use-Pty", "0");
-
-	dpkg::run_install(cache, config)?;
-
-	run_scripts(config, "DPkg::Post-Invoke")?;
-	Ok(())
+	crate::summary::commit(cache, config).await
 }
 
 pub fn run_scripts(config: &Config, key: &str) -> Result<()> {
@@ -402,13 +236,14 @@ pub fn apt_hook_with_pkgs(config: &Config, pkgs: &Vec<Package>, key: &str) -> Re
 			hook_strings.push(format!("{}\n", filename.display()))
 		}
 
+		dprint!(config, "Forking Child for '{hook}'");
 		let (statusfd, writefd) = pipe()?;
 
 		match unsafe { fork()? } {
 			ForkResult::Child => {
-				set_inheritable(statusfd.as_raw_fd())?;
 				dup2(statusfd.as_raw_fd(), info_fd)?;
 
+				dprint!(config, "From Child");
 				fcntl(statusfd.as_raw_fd(), FcntlArg::F_SETFL(OFlag::O_NONBLOCK))?;
 				env::set_var("APT_HOOK_INFO_FD", info_fd.to_string());
 
@@ -416,7 +251,9 @@ pub fn apt_hook_with_pkgs(config: &Config, pkgs: &Vec<Package>, key: &str) -> Re
 				for arg in ["/bin/sh", "-c", &hook] {
 					args_cstr.push(CString::new(arg)?)
 				}
+				dprint!(config, "Exec {args_cstr:?}");
 				execv(&args_cstr[0], &args_cstr)?;
+
 				// Ensure exit after execv if it fails
 				std::process::exit(1);
 			},
@@ -427,13 +264,15 @@ pub fn apt_hook_with_pkgs(config: &Config, pkgs: &Vec<Package>, key: &str) -> Re
 					write_config_info(&mut w, config, hook_ver)?;
 				}
 
+				dprint!(config, "Writing data into child");
 				for pkg in hook_strings {
 					write!(w, "{pkg}")?;
 					w.flush()?;
 				}
 
-				// Close the write end of the pipe
-				close(writefd.as_raw_fd())?;
+				// Forget the file descriptor, the child closes it.
+				// Not doing this causes Debug build to panic.
+				std::mem::forget(w);
 
 				// Wait for the child process to finish and get its exit code
 				let wait_status = waitpid(child, None)?;
@@ -468,10 +307,4 @@ pub fn ask(msg: &str) -> Result<()> {
 	}
 
 	bail!("'{}' is not a valid response", response.trim())
-}
-
-pub fn set_inheritable(fd: RawFd) -> Result<()> {
-	let flags = FdFlag::from_bits_truncate(fcntl(fd, FcntlArg::F_GETFD)?);
-	fcntl(fd, FcntlArg::F_SETFD(flags & !FdFlag::FD_CLOEXEC))?;
-	Ok(())
 }

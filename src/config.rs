@@ -2,15 +2,17 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use clap::parser::ValueSource;
 use clap::ArgMatches;
 use crossterm::tty::IsTty;
 use rust_apt::config::Config as AptConfig;
+use rust_apt::{Cache, Package, PackageSort};
 use serde::{Deserialize, Serialize};
 
 use crate::colors::{RatStyle, Style, Theme};
 use crate::tui::progress::{NumSys, UnitStr};
+use crate::util::glob_pkgs;
 
 /// Represents different file and directory paths
 pub enum Paths {
@@ -293,25 +295,48 @@ impl Config {
 		})
 	}
 
-	// TODO: Combine these into a function
-
-	/// Should the TUI be shown?
-	pub fn show_tui(&self) -> bool {
-		if self.get_bool("no_tui", false) {
+	/// Retrieve the boolean value from the config
+	/// additionally taking into account if `--no-option`
+	/// has been passed on the cli to disable the feature.
+	pub fn get_no_bool(&self, key: &str, default: bool) -> bool {
+		let mut no_option = String::from("no_");
+		no_option += key;
+		if self.get_bool(&no_option, false) {
 			return false;
 		}
-		self.get_bool("tui", true)
-	}
-
-	pub fn full_upgrade(&self) -> bool {
-		if self.get_bool("no_full", false) {
-			return false;
-		}
-		self.get_bool("full", true)
+		self.get_bool(key, default)
 	}
 
 	/// Get the package names that were passed as arguments.
-	pub fn pkg_names(&self) -> Option<&Vec<String>> { self.get_vec("pkg_names") }
+	pub fn pkg_names(&self) -> Result<Vec<String>> {
+		let Some(pkg_names) = self.get_vec("pkg_names") else {
+			bail!("You must specify a package");
+		};
+
+		let mut deduped = pkg_names.clone();
+		deduped.dedup();
+		deduped.sort();
+
+		Ok(deduped)
+	}
+
+	pub fn pkgs_from_cli<'a>(&self, cache: &'a Cache) -> Result<Vec<Package<'a>>> {
+		let sort = PackageSort::default().include_virtual();
+		let (mut packages, not_found) = glob_pkgs(&self.pkg_names()?, cache.packages(&sort))?;
+
+		packages.sort_by_cached_key(|pkg| pkg.name().to_string());
+
+		if !not_found.is_empty() {
+			for name in &not_found {
+				self.stderr(
+					Theme::Error,
+					&format!("'{}' was not found", self.color(Theme::Notice, name)),
+				);
+			}
+			bail!("Some packages were not found in the cache")
+		}
+		Ok(packages)
+	}
 
 	/// Get the countries that were passed as arguments.
 	pub fn countries(&self) -> Option<&Vec<String>> { self.get_vec("countries") }

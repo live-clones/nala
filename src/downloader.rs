@@ -634,41 +634,31 @@ pub async fn download(config: &Config) -> Result<()> {
 	config.apt.set(Paths::Archive.path(), "./");
 
 	let mut downloader = Downloader::new(config)?;
-
 	let mut not_found = vec![];
-	if let Some(pkg_names) = config.pkg_names() {
-		// Dedupe the pkg names. If the same pkg is given twice
-		// it will be downloaded twice, and then fail when moving the file
-		let mut deduped = pkg_names.clone();
-		deduped.sort();
-		deduped.dedup();
 
-		let cache = new_cache!()?;
-		for name in &deduped {
-			if let Some(pkg) = cache.get(name) {
-				let versions: Vec<Version> = pkg.versions().collect();
-				for version in &versions {
-					if version.is_downloadable() {
-						downloader.add_version(version, config)?;
-						break;
-					}
-					// Version wasn't downloadable
-					config.stderr(
-						Theme::Warning,
-						&format!(
-							"Can't find a source to download version '{}' of '{}'",
-							version.version(),
-							pkg.fullname(false)
-						),
-					);
+	let cache = new_cache!()?;
+	for name in &config.pkg_names()? {
+		if let Some(pkg) = cache.get(name) {
+			let versions: Vec<Version> = pkg.versions().collect();
+			for version in &versions {
+				if version.is_downloadable() {
+					downloader.add_version(version, config)?;
+					break;
 				}
-			} else {
-				not_found.push(config.color(Theme::Notice, name));
+				// Version wasn't downloadable
+				config.stderr(
+					Theme::Warning,
+					&format!(
+						"Can't find a source to download version '{}' of '{}'",
+						version.version(),
+						pkg.fullname(false)
+					),
+				);
 			}
+		} else {
+			not_found.push(config.color(Theme::Notice, name));
 		}
-	} else {
-		bail!("You must specify a package")
-	};
+	}
 
 	if !not_found.is_empty() {
 		for pkg in &not_found {

@@ -31,6 +31,9 @@ nix = { version = "0.29.0", features = ["fs", "process", "term", "ioctl", "signa
 mio = { version = "1.0.1", features = ["os-ext"] }
 bincode = "1.3.3"
 comfy-table = { version = "7.1.1", features = ["tty", "custom_styling"] }
+tar = "0.4.41"
+ar = "0.9.0"
+xz2 = { version = "0.1.6", features = ["tokio"] }
 
 [build-dependencies]
 clap = { version = "4", features = ["derive"] }

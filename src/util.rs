@@ -186,9 +186,9 @@ pub fn glob_pkgs<'a, Container: IntoIterator<Item = Package<'a>>, T: AsRef<str>>
 		}
 	}
 
-	if found_pkgs.is_empty() {
-		bail!("No packages found.")
-	}
+	// if found_pkgs.is_empty() {
+	// 	bail!("No packages found.")
+	// }
 
 	Ok((found_pkgs, not_found))
 }
