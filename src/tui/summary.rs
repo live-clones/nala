@@ -151,7 +151,7 @@ impl<'a> App<'a> {
 			constraints,
 		)
 		.header(header)
-		.highlight_style(highlight)
+		.row_highlight_style(highlight)
 		.flex(Flex::SpaceAround)
 		.block(basic_block(self.config))
 		.highlight_spacing(HighlightSpacing::Never);
@@ -335,7 +335,7 @@ impl<'a> SummaryTab<'a> {
 
 		loop {
 			terminal
-				.draw(|frame| frame.render_stateful_widget(&mut *self, frame.size(), &mut 0))?;
+				.draw(|frame| frame.render_stateful_widget(&mut *self, frame.area(), &mut 0))?;
 
 			match event::read()? {
 				Event::Key(key) => {

@@ -225,16 +225,16 @@ impl HistoryPackage {
 			terminal.draw(|f| {
 				let block = tui::summary::header_block(config, "Nala Upgrade");
 
-				let inner = block.inner(f.size());
+				let inner = block.inner(f.area());
 
 				let constraints = lines
 					.iter()
 					.map(|line| Length((line.width() as f32 / inner.width as f32).ceil() as u16))
 					.collect::<Vec<_>>();
 
-				let layout = Layout::vertical(constraints).split(block.inner(f.size()));
+				let layout = Layout::vertical(constraints).split(block.inner(f.area()));
 
-				f.render_widget(block, f.size());
+				f.render_widget(block, f.area());
 				for (i, line) in lines.iter().enumerate() {
 					f.render_widget(
 						Paragraph::new(line.clone()).wrap(Wrap::default()),

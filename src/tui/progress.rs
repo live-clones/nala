@@ -267,7 +267,7 @@ pub fn render(
 		.style(themes.0);
 
 	let inner = Layout::vertical([Constraint::Length(1), Constraint::Length(1)])
-		.split(block.inner(f.size()));
+		.split(block.inner(f.area()));
 
 	let mut constraints = vec![
 		Constraint::Fill(100),
@@ -276,13 +276,13 @@ pub fn render(
 	];
 
 	let bar_block = if dpkg {
-		Layout::horizontal(constraints).split(block.inner(f.size()))
+		Layout::horizontal(constraints).split(block.inner(f.area()))
 	} else {
 		constraints.push(Constraint::Length(per_sec.len() as u16 + 2));
 		Layout::horizontal(constraints).split(inner[1])
 	};
 
-	f.render_widget(block, f.size());
+	f.render_widget(block, f.area());
 
 	if !dpkg {
 		f.render_widget(Paragraph::new(Line::from(spans)), inner[0]);
