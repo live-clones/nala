@@ -210,7 +210,12 @@ pub async fn commit(cache: Cache, config: &Config) -> Result<()> {
 
 	history_entry.write_to_file(config)?;
 
-	let _finished = downloader.run(config, false).await?;
+	// Only download if needed
+	// Downloader will error if empty download
+	// TODO: Should probably just make run check and return Ok(vec![])?
+	if !downloader.uris().is_empty() {
+		let _finished = downloader.run(config, false).await?;
+	}
 
 	if config.get_bool("download_only", false) {
 		return Ok(());

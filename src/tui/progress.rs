@@ -144,6 +144,8 @@ impl<'a> NalaProgressBar<'a> {
 		// Check how many new lines as well
 		let lines = (height.ceil() as u16).max(msg.lines().count() as u16);
 
+		// Artifacts come into play if the viewport isn't cleared
+		self.terminal.clear()?;
 		self.terminal.insert_before(lines, |buf| {
 			Paragraph::new(msg)
 				.left_aligned()

@@ -5,14 +5,13 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Error, Result};
-use digest::DynDigest;
 use regex::Regex;
 use rust_apt::records::RecordField;
 use rust_apt::{new_cache, Version};
 use serde::Serialize;
 use sha2::{Digest, Sha256, Sha512};
 use tokio::fs::{self, File};
-use tokio::io::{AsyncWriteExt, BufWriter};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufWriter};
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinSet;
 
@@ -150,6 +149,26 @@ impl UriFilter {
 	}
 }
 
+pub async fn hash_file<P: AsRef<Path>>(path: P) -> Result<String> {
+	// This means it's a real file, Initialize the hasher.
+	let mut hasher = Sha256::new();
+	// Open the file
+	let mut file = fs::File::open(&path).await?;
+	let mut buffer = [0u8; 4096];
+
+	// Read the file in chunks and feed it to the hasher.
+	loop {
+		let bytes_read = file.read(&mut buffer).await?;
+		if bytes_read == 0 {
+			break;
+		}
+		hasher.update(&buffer[..bytes_read]);
+	}
+
+	// Get the hash result and format it as a hex string.
+	Ok(format!("{:x}", hasher.finalize()))
+}
+
 #[derive(Debug, Serialize)]
 pub struct Uri {
 	uris: VecDeque<String>,
@@ -219,7 +238,7 @@ impl Uri {
 			})
 	}
 
-	fn get_hasher(&self) -> Box<dyn DynDigest + Send> {
+	fn get_hasher(&self) -> Box<dyn digest::DynDigest + Send> {
 		match self.hash_type.as_str() {
 			"sha256" => Box::new(Sha256::new()),
 			_ => Box::new(Sha512::new()),
@@ -245,6 +264,18 @@ impl Uri {
 		mut domains: Arc<Mutex<HashMap<String, u8>>>,
 		regex: Regex,
 	) -> Result<Uri> {
+		// First check if the file already exists on disk.
+		if self.archive.exists() {
+			let file_hash = hash_file(&self.archive).await?;
+			if file_hash == self.hash_value {
+				self.tx.send(Message::Update(self.size))?;
+				self.tx.send(Message::Finished(self.filename.to_string()))?;
+				return Ok(self);
+			} else {
+				self.remove_file().await?;
+			}
+		}
+
 		// This is the string URL passed to the http client
 		while let Some(url) = self.uris.pop_front() {
 			let Some(domain) = regex
@@ -566,7 +597,7 @@ impl Downloader {
 		// Start the downloads
 		self.download().await?;
 
-		let tick_rate = Duration::from_millis(250);
+		let tick_rate = Duration::from_millis(100);
 		let mut tick = Instant::now();
 		let mut current = 0;
 		loop {
@@ -586,7 +617,6 @@ impl Downloader {
 							"Last Completed:".to_string(),
 							format!(" {filename}"),
 						];
-						progress.render()?;
 					},
 					Message::Exit => {
 						progress.clean_up()?;

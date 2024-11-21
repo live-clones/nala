@@ -7,9 +7,8 @@ use std::path::Path;
 use std::process::Command;
 
 use anyhow::{bail, Result};
-use nix::fcntl::{fcntl, FcntlArg, OFlag};
 use nix::sys::wait::{waitpid, WaitStatus};
-use nix::unistd::{dup2, execv, fork, pipe, ForkResult};
+use nix::unistd::{close, dup2, execv, fork, pipe, ForkResult};
 use rust_apt::cache::Upgrade;
 use rust_apt::raw::quote_string;
 use rust_apt::{new_cache, Cache, Package, PkgCurrentState, Version};
@@ -93,7 +92,7 @@ fn set_multi_arch(version: &Version, hook_ver: i32) -> String {
 		return String::new();
 	}
 
-	format!("{} {} ", version.arch(), version.multi_arch())
+	format!("{} {} ", version.arch(), version.multi_arch_type())
 }
 
 fn get_now_version<'a>(pkg: &Package<'a>) -> Option<Version<'a>> {
@@ -177,14 +176,15 @@ fn write_config_info<W: Write>(w: &mut W, config: &Config, hook_ver: i32) -> Res
 			stack.push_back(item);
 		}
 
-		if let (Some(tag), Some(value)) = (node.tag(), node.value()) {
+		if let (Some(tag), Some(value)) = (node.full_tag(), node.value()) {
 			if !value.is_empty() {
-				writeln!(
-					w,
+				let tag_value = format!(
 					"{}={}",
 					quote_string(&tag, "=\"\n".to_string()),
-					quote_string(&value, "\n".to_string()),
-				)?;
+					quote_string(&value, "\n".to_string())
+				);
+				dprint!(config, "{tag_value}");
+				writeln!(w, "{tag_value}",)?;
 				w.flush()?;
 			}
 		}
@@ -227,9 +227,7 @@ pub fn apt_hook_with_pkgs(config: &Config, pkgs: &Vec<Package>, key: &str) -> Re
 				continue;
 			};
 
-			let mut filename = archive.to_owned();
-			filename.push(get_pkg_name(&cand));
-
+			let filename = archive.join(get_pkg_name(&cand));
 			if !filename.exists() {
 				continue;
 			}
@@ -241,10 +239,10 @@ pub fn apt_hook_with_pkgs(config: &Config, pkgs: &Vec<Package>, key: &str) -> Re
 
 		match unsafe { fork()? } {
 			ForkResult::Child => {
+				close(writefd.as_raw_fd())?;
 				dup2(statusfd.as_raw_fd(), info_fd)?;
 
 				dprint!(config, "From Child");
-				fcntl(statusfd.as_raw_fd(), FcntlArg::F_SETFL(OFlag::O_NONBLOCK))?;
 				env::set_var("APT_HOOK_INFO_FD", info_fd.to_string());
 
 				let mut args_cstr: Vec<CString> = vec![];
@@ -266,13 +264,15 @@ pub fn apt_hook_with_pkgs(config: &Config, pkgs: &Vec<Package>, key: &str) -> Re
 
 				dprint!(config, "Writing data into child");
 				for pkg in hook_strings {
+					dprint!(config, "{pkg}");
 					write!(w, "{pkg}")?;
 					w.flush()?;
 				}
-
-				// Forget the file descriptor, the child closes it.
-				// Not doing this causes Debug build to panic.
-				std::mem::forget(w);
+				// Must drop the pipe or the child may hang
+				drop(w);
+				// Forget the file descriptor as we just closed it with drop
+				std::mem::forget(writefd);
+				dprint!(config, "Waiting for Child");
 
 				// Wait for the child process to finish and get its exit code
 				let wait_status = waitpid(child, None)?;

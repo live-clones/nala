@@ -8,8 +8,8 @@ readme = "README.rst"
 description = "Commandline frontend for the APT package manager"
 
 [dependencies]
-rust-apt = { git = "https://gitlab.com/volian/rust-apt" }
-# rust-apt = { path = "../rust-apt" }
+# rust-apt = { git = "https://gitlab.com/volian/rust-apt" }
+rust-apt = { path = "../rust-apt" }
 #rust-apt = "0.8.0"
 clap = { version = "4", features = ["derive"] }
 toml = "0.8"
