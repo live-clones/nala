@@ -203,4 +203,8 @@ pub struct Install {
 
 	#[clap(short = 'o', long, action)]
 	pub dpkg_option: Vec<String>,
+
+	/// Only download packages.
+	#[clap(long, action)]
+	pub download_only: bool,
 }
