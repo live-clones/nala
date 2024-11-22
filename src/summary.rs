@@ -182,12 +182,12 @@ pub async fn commit(cache: Cache, config: &Config) -> Result<()> {
 
 	let mut downloader = Downloader::new(config)?;
 	for ver in &versions {
-		downloader.add_version(ver, config)?;
+		downloader.add_version(ver, config).await?;
 	}
 
 	if config.get_bool("print_uris", false) {
 		for uri in downloader.uris() {
-			println!("{}", serde_json::to_string_pretty(uri)?);
+			println!("{}", uri.to_json()?);
 		}
 		// Print uris does not go past here
 		return Ok(());
@@ -196,6 +196,17 @@ pub async fn commit(cache: Cache, config: &Config) -> Result<()> {
 	if !crate::summary::display_summary(&cache, config, &pkg_set).await? {
 		return Ok(());
 	};
+
+	// Only download if needed
+	// Downloader will error if empty download
+	// TODO: Should probably just make run check and return Ok(vec![])?
+	if !downloader.uris().is_empty() {
+		let _finished = downloader.run(config, false).await?;
+	}
+
+	if config.get_bool("download_only", false) {
+		return Ok(());
+	}
 
 	let history_entry = HistoryEntry::new(
 		history::get_history(config)?
@@ -210,16 +221,11 @@ pub async fn commit(cache: Cache, config: &Config) -> Result<()> {
 
 	history_entry.write_to_file(config)?;
 
-	// Only download if needed
-	// Downloader will error if empty download
-	// TODO: Should probably just make run check and return Ok(vec![])?
-	if !downloader.uris().is_empty() {
-		let _finished = downloader.run(config, false).await?;
-	}
-
-	if config.get_bool("download_only", false) {
-		return Ok(());
-	}
+	// TODO: There should likely be a field in the history
+	// to mark that it was a transaction that failed.
+	// The idea is to run the rest of this program,
+	// catch any errors, and then write the history file
+	// Either way but we'll know that it failed.
 
 	run_scripts(config, "DPkg::Pre-Invoke")?;
 	apt_hook_with_pkgs(config, &changed, "DPkg::Pre-Install-Pkgs")?;

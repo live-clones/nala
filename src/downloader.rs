@@ -18,7 +18,7 @@ use tokio::task::JoinSet;
 use crate::colors::Theme;
 use crate::config::{Config, Paths};
 use crate::util::{get_pkg_name, NalaRegex};
-use crate::{dprog, tui};
+use crate::{dprint, dprog, tui};
 
 pub struct UriFilter {
 	mirrors: HashMap<String, String>,
@@ -35,10 +35,18 @@ impl UriFilter {
 		}
 	}
 
+	fn add_untrusted(&mut self, config: &Config, item: &str) {
+		self.untrusted.insert(config.color(Theme::Error, item));
+	}
+
 	/// Filter Uris from a package version.
 	/// This will normalize different kinds of possible Uris
 	/// Which are not http.
-	fn uris<'a>(&mut self, version: &'a Version<'a>, config: &Config) -> Result<VecDeque<String>> {
+	async fn uris<'a>(
+		&mut self,
+		version: &'a Version<'a>,
+		config: &Config,
+	) -> Result<VecDeque<String>> {
 		let mut filtered = VecDeque::new();
 
 		for vf in version.version_files() {
@@ -51,18 +59,17 @@ impl UriFilter {
 			// Make sure the File is trusted.
 			if !pf.index_file().is_trusted() {
 				// Erroring is handled later if there are any untrusted URIs
-				self.untrusted
-					.insert(config.color(Theme::Error, version.parent().name()));
+				self.add_untrusted(config, version.parent().name());
 			}
 
 			let uri = pf.index_file().archive_uri(&vf.lookup().filename());
 
-			if uri.starts_with("file:") {
-				// Sending a file path through the downloader will cause it to lock up
-				// These have already been handled before the downloader runs.
-				// TODO: We haven't actually handled anything yet. In python nala it happens
-				// before it gets here. lol
-				continue;
+			// Any real files should be copied into the Archive directory for use
+			if let Some(path) = uri.strip_prefix("file:").map(Path::new) {
+				let Some(filename) = path.file_name() else {
+					bail!("{path:?} Does not have a valid filename!")
+				};
+				fs::copy(path, config.get_path(&Paths::Archive).join(filename)).await?;
 			}
 
 			// We should probably consolidate this. And maybe test if mirror: works.
@@ -115,67 +122,80 @@ impl UriFilter {
 		);
 		Ok(())
 	}
+}
 
-	/// If there are any untrusted URIs,
-	/// check if we're allowed to fetch them and error otherwise.
-	pub fn maybe_untrusted_error(&self, config: &Config) -> Result<()> {
-		if self.untrusted.is_empty() {
-			return Ok(());
+fn get_hasher(hash_type: &str) -> Result<Box<dyn digest::DynDigest + Send>> {
+	Ok(match hash_type {
+		"sha512" => Box::new(Sha512::new()),
+		"sha256" => Box::new(Sha256::new()),
+		anything_else => bail!("Hash Type: {anything_else} is not supported"),
+	})
+}
+
+fn bytes_to_hex_string(bytes: &[u8]) -> String {
+	let mut hash = String::new();
+	for byte in bytes {
+		write!(&mut hash, "{:02x}", byte).expect("Unable to write hash to string");
+	}
+	hash
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+pub enum HashSum {
+	Sha512(String),
+	Sha256(String),
+}
+
+impl HashSum {
+	pub fn from_str_len(hash_type: usize, hash: String) -> Result<Self> {
+		Ok(match hash_type {
+			128 => Self::Sha512(hash),
+			64 => Self::Sha256(hash),
+			anything_else => bail!("Hash Type: {anything_else} is not supported"),
+		})
+	}
+
+	pub fn from_str(hash_type: &str, hash: String) -> Result<Self> {
+		Ok(match hash_type {
+			"sha512" => Self::Sha512(hash),
+			"sha256" => Self::Sha256(hash),
+			anything_else => bail!("Hash Type: {anything_else} is not supported"),
+		})
+	}
+
+	pub async fn from_path<P: AsRef<Path>>(path: P, hash_type: &str) -> Result<Self> {
+		let mut hasher = get_hasher(hash_type)?;
+
+		let mut file = fs::File::open(&path).await?;
+		let mut buffer = [0u8; 4096];
+
+		// Read the file in chunks and feed it to the hasher.
+		loop {
+			let bytes_read = file.read(&mut buffer).await?;
+			if bytes_read == 0 {
+				break;
+			}
+			hasher.update(&buffer[..bytes_read]);
 		}
 
-		config.stderr(
-			Theme::Warning,
-			"The Following packages cannot be authenticated!",
-		);
+		Self::from_str(hash_type, bytes_to_hex_string(&hasher.finalize()))
+	}
 
-		eprintln!(
-			"  {}",
-			self.untrusted
-				.iter()
-				.map(|s| s.to_string())
-				.collect::<Vec<String>>()
-				.join(", ")
-		);
-
-		if !config.apt.bool("APT::Get::AllowUnauthenticated", false) {
-			bail!("Some packages were unable to be authenticated.")
+	pub fn str_type(&self) -> &'static str {
+		match self {
+			Self::Sha512(_) => "sha512",
+			Self::Sha256(_) => "sha256",
 		}
-
-		config.stderr(
-			Theme::Notice,
-			"Configuration is set to allow installation of unauthenticated packages.",
-		);
-		Ok(())
 	}
 }
 
-pub async fn hash_file<P: AsRef<Path>>(path: P) -> Result<String> {
-	// This means it's a real file, Initialize the hasher.
-	let mut hasher = Sha256::new();
-	// Open the file
-	let mut file = fs::File::open(&path).await?;
-	let mut buffer = [0u8; 4096];
-
-	// Read the file in chunks and feed it to the hasher.
-	loop {
-		let bytes_read = file.read(&mut buffer).await?;
-		if bytes_read == 0 {
-			break;
-		}
-		hasher.update(&buffer[..bytes_read]);
-	}
-	// Get the hash result and format it as a hex string.
-	Ok(format!("{:x}", hasher.finalize()))
-}
-
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
 pub struct Uri {
 	uris: VecDeque<String>,
 	size: u64,
-	archive: PathBuf,
+	pub archive: PathBuf,
 	partial: PathBuf,
-	hash_type: String,
-	hash_value: String,
+	hash: Option<HashSum>,
 	filename: String,
 	#[serde(skip)]
 	client: reqwest::Client,
@@ -184,7 +204,7 @@ pub struct Uri {
 }
 
 impl Uri {
-	fn from_version<'a>(
+	async fn from_version<'a>(
 		version: &'a Version<'a>,
 		config: &Config,
 		client: reqwest::Client,
@@ -198,19 +218,19 @@ impl Uri {
 
 		partial.push(&filename);
 
-		let (hash_type, hash_value) = get_hash(config, version)?;
 		Ok(Uri {
-			uris: filter.uris(version, config)?,
+			uris: filter.uris(version, config).await?,
 			size: version.size(),
 			archive,
 			partial,
-			hash_type,
-			hash_value,
+			hash: Some(get_hash(config, version)?),
 			filename,
 			client,
 			tx,
 		})
 	}
+
+	pub fn to_json(&self) -> Result<String> { Ok(serde_json::to_string_pretty(self)?) }
 
 	/// Create the File to write the download to.
 	async fn open_file(&self) -> Result<File> {
@@ -237,19 +257,20 @@ impl Uri {
 			})
 	}
 
-	fn get_hasher(&self) -> Box<dyn digest::DynDigest + Send> {
-		match self.hash_type.as_str() {
-			"sha256" => Box::new(Sha256::new()),
-			_ => Box::new(Sha512::new()),
-		}
-	}
+	/// Warning: If URI has None for hash_value this will not error
+	/// Ensure that you make sure that it has Some(hash_string)
+	async fn check_hash(&self, other: &HashSum) -> Result<()> {
+		let Some(hash) = &self.hash else {
+			return Ok(());
+		};
 
-	async fn check_hash(&self, other: &str) -> Result<()> {
 		self.tx.send(Message::Debug(format!(
-			"'{}':\n    Expected: {}\n    Downloaded: {other}",
-			self.filename, self.hash_value
+			"'{}':\n    Expected: {hash:?}\n    Downloaded: {other:?}",
+			self.filename
 		)))?;
-		if other == self.hash_value {
+
+		if other == hash {
+			self.tx.send(Message::Debug("hash matched!".to_string()))?;
 			return Ok(());
 		}
 		self.remove_file().await?;
@@ -265,17 +286,20 @@ impl Uri {
 	) -> Result<Uri> {
 		// First check if the file already exists on disk.
 		if self.archive.exists() {
-			self.tx.send(Message::Debug(format!(
-				"{:?} exists, checking hash",
-				self.archive
-			)))?;
-			let file_hash = hash_file(&self.archive).await?;
-			if file_hash == self.hash_value {
-				self.tx.send(Message::Update(self.size))?;
-				self.tx.send(Message::Finished)?;
-				return Ok(self);
+			if let Some(hash) = &self.hash {
+				self.tx.send(Message::Debug(format!(
+					"{:?} exists, checking hash",
+					self.archive
+				)))?;
+
+				if hash == &HashSum::from_path(&self.archive, hash.str_type()).await? {
+					self.tx.send(Message::Update(self.size))?;
+					self.tx.send(Message::Finished)?;
+					return Ok(self);
+				}
 			}
 			// Async remove hangs for some reason.
+			// Remove the file unconditionally since it's planned to download
 			std::fs::remove_file(&self.archive)
 				.with_context(|| format!("Unable to remove {:?}", self.archive))?;
 		}
@@ -331,13 +355,16 @@ impl Uri {
 	}
 
 	/// Downloads the file and returns the hash
-	pub async fn download_file(&self, url: &str) -> Result<String> {
+	pub async fn download_file(&self, url: &str) -> Result<HashSum> {
 		// Initiate http(s) connection
 		let mut response = self.client.get(url).send().await.context("Get")?;
 
 		// Get a mutable writer for our outfile.
 		let mut writer = BufWriter::new(self.open_file().await?);
-		let mut hasher = self.get_hasher();
+
+		let default_hash = HashSum::Sha512(String::new());
+		let hash_type = self.hash.as_ref().unwrap_or(&default_hash).str_type();
+		let mut hasher = get_hasher(hash_type)?;
 
 		// Iter over the response stream and update the hasher and progress bars
 		while let Some(chunk) = response
@@ -354,12 +381,7 @@ impl Uri {
 		}
 		writer.flush().await?;
 
-		// Build the hash string.
-		let mut download_hash = String::new();
-		for byte in hasher.finalize().as_ref() {
-			write!(&mut download_hash, "{:02x}", byte).expect("Unable to write hash to string");
-		}
-		Ok(download_hash)
+		HashSum::from_str(hash_type, bytes_to_hex_string(&hasher.finalize()))
 	}
 }
 
@@ -547,7 +569,11 @@ impl Downloader {
 		})
 	}
 
-	pub fn add_version<'a>(&mut self, version: &'a Version<'a>, config: &Config) -> Result<()> {
+	pub async fn add_version<'a>(
+		&mut self,
+		version: &'a Version<'a>,
+		config: &Config,
+	) -> Result<()> {
 		let uri = Uri::from_version(
 			version,
 			config,
@@ -555,26 +581,23 @@ impl Downloader {
 			&mut self.filter,
 			&self.archive_dir,
 			self.tx.clone(),
-		)?;
+		)
+		.await?;
 		self.uris.push(uri);
 		Ok(())
 	}
 
-	pub async fn add_from_cmdline(&mut self, cli_uri: &str) -> Result<()> {
+	/// This method ingests URLs from the command line to download
+	pub async fn add_from_cmdline(&mut self, config: &Config, cli_uri: &str) -> Result<()> {
 		let mut parser = cli_uri.split_terminator(":");
 
 		let Some(protocol) = parser.next() else {
 			bail!("No protocol was defined")
 		};
 
-		let Some(uri) = parser.next() else {
+		// Rebuild the string to maintain order
+		let Some(uri) = parser.next().map(|u| format!("{protocol}:{u}")) else {
 			bail!("No uri was defined")
-		};
-
-		// TODO: Make it so you don't have to have a hash
-		// Security warning they must accept, etc.
-		let Some(hash) = parser.next() else {
-			bail!("ATM you have to supply a hash!")
 		};
 
 		// sha512 d500faf8b2b9ee3a8fbc6a18f966076ed432894cd4d17b42514ffffac9ee81ce
@@ -583,46 +606,40 @@ impl Downloader {
 		// sha256 a694f44fa05fff6d00365bf23217d978841b9e7c8d7f48e80864df08cebef1a8
 		// md5 b9ef863f210d170d282991ad1e0676eb
 		// sha1 d1f34ed00dea59f886b9b99919dfcbbf90d69e15
-
-		let hash_type = match hash.len() {
-			128 => "sha512",
-			64 => "sha256",
-			32 => "md5sum",
-			40 => "sha1",
-			_ => bail!("Hash has unsupported length {}", hash.len()),
+		let hash = if let Some(hashsum) = parser.next() {
+			Some(HashSum::from_str_len(hashsum.len(), hashsum.to_string())?)
+		} else {
+			config.stderr(Theme::Warning, &format!("No Hash Found for '{uri}'"));
+			None
 		};
 
-		let response = self
-			.client
-			.head(format!("{protocol}:{uri}"))
-			.send()
-			.await?
-			.error_for_status()?;
+		let response = self.client.head(&uri).send().await?.error_for_status()?;
 
-		// TODO: I think this doesn't need to be an unwrap here
-		let size = response
-			.headers()
-			.get("content-length")
-			.unwrap()
-			.to_str()?
-			.parse::<u64>()?;
+		// Check headers for the size of the download
+		let headers = response.headers();
 
-		dbg!(protocol, uri, hash, hash_type, size);
+		dprint!(config, "URL Headers for {uri} {headers:#?}");
+		let Some(content_len) = response.headers().get("content-length") else {
+			bail!("content-length does not exist in {headers:#?}");
+		};
 
-		println!("{:#?}", response.headers());
+		let size = content_len
+			.to_str()
+			.with_context(|| format!("Converting content-len to &str {headers:#?}"))?
+			.parse::<u64>()
+			.with_context(|| format!("Parsing content-len to usize {headers:#?}"))?;
 
-		let mut uris = VecDeque::new();
-		uris.push_back(format!("{protocol}:{uri}"));
+		let Some(filename) = uri.split_terminator("/").last().map(|s| s.to_string()) else {
+			bail!("'{uri}' is malformed!");
+		};
 
-		let filename = uri.split_terminator("/").last().unwrap();
 		self.uris.push(Uri {
-			uris,
+			uris: VecDeque::from([uri]),
 			size,
-			archive: self.archive_dir.join(filename),
-			partial: self.partial_dir.join(filename),
-			hash_type: hash_type.to_string(),
-			hash_value: hash.to_string(),
-			filename: filename.to_string(),
+			archive: self.archive_dir.join(&filename),
+			partial: self.partial_dir.join(&filename),
+			hash,
+			filename,
 			client: self.client.clone(),
 			tx: self.tx.clone(),
 		});
@@ -657,7 +674,28 @@ impl Downloader {
 	}
 
 	pub async fn run(mut self, config: &Config, rm_partial: bool) -> Result<Vec<Uri>> {
-		self.filter.maybe_untrusted_error(config)?;
+		if config.debug() {
+			for uri in self.uris() {
+				dprint!(config, "{}", uri.to_json()?);
+			}
+		}
+		// TODO: This is correct, but it is also likely very inefficient.
+		// Decide if it's worth refactoring.
+		// I don't believe we'll have many perf issues here
+		self.uris()
+			.iter()
+			// Iterate uris and get the filenames of all the ones who do not have hashes
+			.filter(|&uri| uri.hash.is_none())
+			.map(|uri| uri.filename.to_string())
+			// Collect so filter_map runs before for_each due to mut and immutable borrows
+			.collect::<Vec<_>>()
+			.into_iter()
+			// Add all the filenames without hashes into the filter
+			.for_each(|filename| self.filter.add_untrusted(config, &filename));
+
+		if !self.filter.untrusted.is_empty() {
+			untrusted_error(config, self.filter.untrusted.iter().cloned().collect())?;
+		}
 
 		let mut progress = tui::NalaProgressBar::new(config, false)?;
 		// Set the total downloads.
@@ -673,7 +711,7 @@ impl Downloader {
 		let tick_rate = Duration::from_millis(150);
 		let mut tick = Instant::now();
 		let mut current = 0;
-		loop {
+		'outer: loop {
 			if current == total {
 				progress.clean_up()?;
 				break;
@@ -687,7 +725,7 @@ impl Downloader {
 					},
 					Message::Exit => {
 						progress.clean_up()?;
-						return Ok(vec![]);
+						break 'outer;
 					},
 					Message::Debug(msg) => {
 						dprog!(config, progress, "downloader", "{msg}");
@@ -746,7 +784,7 @@ pub async fn download(config: &Config) -> Result<()> {
 			let versions: Vec<Version> = pkg.versions().collect();
 			for version in &versions {
 				if version.is_downloadable() {
-					downloader.add_version(version, config)?;
+					downloader.add_version(version, config).await?;
 					break;
 				}
 				// Version wasn't downloadable
@@ -786,7 +824,7 @@ pub async fn download(config: &Config) -> Result<()> {
 }
 
 /// Return the hash_type and the hash_value to be used.
-fn get_hash(config: &Config, version: &Version) -> Result<(String, String)> {
+fn get_hash(config: &Config, version: &Version) -> Result<HashSum> {
 	// From Debian's requirements we are not to use these for security checking.
 	// https://wiki.debian.org/DebianRepository/Format#MD5Sum.2C_SHA1.2C_SHA256
 	// Clients may not use the MD5Sum and SHA1 fields for security purposes,
@@ -794,8 +832,8 @@ fn get_hash(config: &Config, version: &Version) -> Result<(String, String)> {
 	// hashes = ('SHA512', 'SHA256', 'SHA1', 'MD5')
 
 	for hash_type in ["sha512", "sha256"] {
-		if let Some(hash_value) = version.hash(hash_type) {
-			return Ok((hash_type.to_string(), hash_value));
+		if let Some(hash) = version.hash(hash_type) {
+			return HashSum::from_str(hash_type, hash);
 		}
 	}
 
@@ -823,6 +861,37 @@ pub async fn remove_domain(domain: &str, domains: &mut Arc<Mutex<HashMap<String,
 			*entry -= 1;
 		}
 	}
+}
+
+/// If there are any untrusted URIs,
+/// check if we're allowed to fetch them and error otherwise.
+///
+/// Each String in Vec<String> is a pkg_name or url
+/// ["apt", "nala", "fastfetch"]
+pub fn untrusted_error(config: &Config, untrusted: Vec<String>) -> Result<()> {
+	if untrusted.is_empty() {
+		return Ok(());
+	}
+
+	config.stderr(
+		Theme::Warning,
+		"The Following packages cannot be authenticated!",
+	);
+
+	eprintln!("  {}", untrusted.join(", "));
+
+	if !config.apt.bool("APT::Get::AllowUnauthenticated", false) {
+		bail!(format!(
+			"Some packages were unable to be authenticated.\n  If you're sure use {}",
+			config.color(Theme::Notice, "--allow-unauthenticated")
+		));
+	}
+
+	config.stderr(
+		Theme::Notice,
+		"Configuration is set to allow installation of unauthenticated packages.",
+	);
+	Ok(())
 }
 
 // Like fs::create_dir_all but it has added context for failure.

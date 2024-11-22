@@ -39,17 +39,26 @@ pub async fn install(config: &Config) -> Result<()> {
 		deb_files.push(DebFile::new(pkg)?);
 	}
 
-	if !http_pkgs.is_empty() {
+	// TODO: This is a little clunky because of DebFile
+	// holding a reference to the cli_uris
+	//
+	// Download packages from http before anything else
+	// so we know the dependencies for resolving other packages
+	let uris = if !http_pkgs.is_empty() {
 		let mut downloader = Downloader::new(config)?;
 		for pkg in http_pkgs {
-			downloader.add_from_cmdline(pkg).await?;
+			downloader.add_from_cmdline(config, pkg).await?;
 		}
+		downloader.run(config, true).await?
+	} else {
+		vec![]
+	};
 
-		dbg!(downloader.uris());
-
-		// TODO: I think that this hangs because the file already exists maybe?
-		// Investigate
-		let _finished = downloader.run(config, true).await?;
+	for uri in &uris {
+		if config.verbose() {
+			println!("Downloaded: {:?}", uri.archive)
+		}
+		deb_files.push(DebFile::new(&uri.archive)?)
 	}
 
 	let deb_paths: Vec<&str> = deb_files.iter().map(|deb| deb.path).collect();

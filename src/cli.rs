@@ -33,6 +33,10 @@ pub struct NalaParser {
 
 	#[clap(subcommand)]
 	pub command: Option<Commands>,
+
+	/// Allow Nala to install packages that can't be hashsum verified
+	#[clap(global = true, long, action)]
+	pub allow_unauthenticated: bool,
 }
 
 #[derive(Subcommand, Debug)]
