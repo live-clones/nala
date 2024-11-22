@@ -164,7 +164,6 @@ pub async fn hash_file<P: AsRef<Path>>(path: P) -> Result<String> {
 		}
 		hasher.update(&buffer[..bytes_read]);
 	}
-
 	// Get the hash result and format it as a hex string.
 	Ok(format!("{:x}", hasher.finalize()))
 }
@@ -266,14 +265,19 @@ impl Uri {
 	) -> Result<Uri> {
 		// First check if the file already exists on disk.
 		if self.archive.exists() {
+			self.tx.send(Message::Debug(format!(
+				"{:?} exists, checking hash",
+				self.archive
+			)))?;
 			let file_hash = hash_file(&self.archive).await?;
 			if file_hash == self.hash_value {
 				self.tx.send(Message::Update(self.size))?;
-				self.tx.send(Message::Finished(self.filename.to_string()))?;
+				self.tx.send(Message::Finished)?;
 				return Ok(self);
-			} else {
-				self.remove_file().await?;
 			}
+			// Async remove hangs for some reason.
+			std::fs::remove_file(&self.archive)
+				.with_context(|| format!("Unable to remove {:?}", self.archive))?;
 		}
 
 		// This is the string URL passed to the http client
@@ -311,7 +315,7 @@ impl Uri {
 					self.tx.send(Message::Verbose(format!("Finished: {url}")))?;
 
 					remove_domain(domain, &mut domains).await;
-					self.tx.send(Message::Finished(self.filename.to_string()))?;
+					self.tx.send(Message::Finished)?;
 					return Ok(self);
 				},
 				Err(err) => {
@@ -364,7 +368,7 @@ impl Uri {
 #[derive(Debug)]
 pub enum Message {
 	Exit,
-	Finished(String),
+	Finished,
 	Debug(String),
 	Verbose(String),
 	NonFatal((Error, u64)),
@@ -556,6 +560,75 @@ impl Downloader {
 		Ok(())
 	}
 
+	pub async fn add_from_cmdline(&mut self, cli_uri: &str) -> Result<()> {
+		let mut parser = cli_uri.split_terminator(":");
+
+		let Some(protocol) = parser.next() else {
+			bail!("No protocol was defined")
+		};
+
+		let Some(uri) = parser.next() else {
+			bail!("No uri was defined")
+		};
+
+		// TODO: Make it so you don't have to have a hash
+		// Security warning they must accept, etc.
+		let Some(hash) = parser.next() else {
+			bail!("ATM you have to supply a hash!")
+		};
+
+		// sha512 d500faf8b2b9ee3a8fbc6a18f966076ed432894cd4d17b42514ffffac9ee81ce
+		// 945610554a11df24ded152569b77693c57c7967dd71f644af3066bf79a923bfe
+		//
+		// sha256 a694f44fa05fff6d00365bf23217d978841b9e7c8d7f48e80864df08cebef1a8
+		// md5 b9ef863f210d170d282991ad1e0676eb
+		// sha1 d1f34ed00dea59f886b9b99919dfcbbf90d69e15
+
+		let hash_type = match hash.len() {
+			128 => "sha512",
+			64 => "sha256",
+			32 => "md5sum",
+			40 => "sha1",
+			_ => bail!("Hash has unsupported length {}", hash.len()),
+		};
+
+		let response = self
+			.client
+			.head(format!("{protocol}:{uri}"))
+			.send()
+			.await?
+			.error_for_status()?;
+
+		// TODO: I think this doesn't need to be an unwrap here
+		let size = response
+			.headers()
+			.get("content-length")
+			.unwrap()
+			.to_str()?
+			.parse::<u64>()?;
+
+		dbg!(protocol, uri, hash, hash_type, size);
+
+		println!("{:#?}", response.headers());
+
+		let mut uris = VecDeque::new();
+		uris.push_back(format!("{protocol}:{uri}"));
+
+		let filename = uri.split_terminator("/").last().unwrap();
+		self.uris.push(Uri {
+			uris,
+			size,
+			archive: self.archive_dir.join(filename),
+			partial: self.partial_dir.join(filename),
+			hash_type: hash_type.to_string(),
+			hash_value: hash.to_string(),
+			filename: filename.to_string(),
+			client: self.client.clone(),
+			tx: self.tx.clone(),
+		});
+		Ok(())
+	}
+
 	pub fn uris(&self) -> &Vec<Uri> { &self.uris }
 
 	pub async fn download(&mut self) -> Result<()> {
@@ -597,7 +670,7 @@ impl Downloader {
 		// Start the downloads
 		self.download().await?;
 
-		let tick_rate = Duration::from_millis(100);
+		let tick_rate = Duration::from_millis(150);
 		let mut tick = Instant::now();
 		let mut current = 0;
 		loop {
@@ -609,14 +682,8 @@ impl Downloader {
 			while let Ok(msg) = self.rx.try_recv() {
 				match msg {
 					Message::Update(bytes_downloaded) => progress.indicatif.inc(bytes_downloaded),
-					Message::Finished(filename) => {
+					Message::Finished => {
 						current += 1;
-						progress.msg = vec![
-							"Total Packages:".to_string(),
-							format!(" {current}/{total}, "),
-							"Last Completed:".to_string(),
-							format!(" {filename}"),
-						];
 					},
 					Message::Exit => {
 						progress.clean_up()?;
@@ -645,6 +712,13 @@ impl Downloader {
 			}
 
 			if tick.elapsed() >= tick_rate {
+				let domains = format!(" {:?}", self.domains.lock().await);
+				progress.msg = vec![
+					"Total Packages:".to_string(),
+					format!(" {current}/{total}, "),
+					"Connections:".to_string(),
+					domains,
+				];
 				progress.render()?;
 				tick = Instant::now();
 			}

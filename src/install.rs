@@ -4,6 +4,7 @@ use rust_apt::{new_cache, PackageSort};
 use crate::colors::Theme;
 use crate::config::Config;
 use crate::debfile::DebFile;
+use crate::downloader::Downloader;
 use crate::dprint;
 use crate::util::{glob_pkgs, sudo_check};
 
@@ -21,12 +22,6 @@ pub async fn install(config: &Config) -> Result<()> {
 	// deduped list stored in the config object?
 	let cmd_line_pkgs = config.pkg_names()?;
 	for pkg in &cmd_line_pkgs {
-		// Treat it as pkg name if it isn't .deb
-		if !pkg.ends_with(".deb") {
-			cache_pkgs.push(pkg);
-			continue;
-		}
-
 		// TODO: Make Http actually do something
 		// Look at python Nala for hints on features
 		if pkg.starts_with("http") {
@@ -34,8 +29,27 @@ pub async fn install(config: &Config) -> Result<()> {
 			continue;
 		}
 
+		// Treat it as pkg name if it isn't .deb
+		if !pkg.ends_with(".deb") {
+			cache_pkgs.push(pkg);
+			continue;
+		}
+
 		// All else are local
 		deb_files.push(DebFile::new(pkg)?);
+	}
+
+	if !http_pkgs.is_empty() {
+		let mut downloader = Downloader::new(config)?;
+		for pkg in http_pkgs {
+			downloader.add_from_cmdline(pkg).await?;
+		}
+
+		dbg!(downloader.uris());
+
+		// TODO: I think that this hangs because the file already exists maybe?
+		// Investigate
+		let _finished = downloader.run(config, true).await?;
 	}
 
 	let deb_paths: Vec<&str> = deb_files.iter().map(|deb| deb.path).collect();
