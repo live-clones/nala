@@ -6,7 +6,7 @@ use rust_apt::util::DiskSpace;
 use rust_apt::{Cache, Marked};
 
 use crate::config::Config;
-use crate::downloader::Downloader;
+use crate::download::Downloader;
 use crate::history::{self, HistoryEntry, HistoryPackage, Operation};
 use crate::upgrade::{apt_hook_with_pkgs, ask, auto_remover, run_scripts};
 use crate::{dpkg, dprint, table, tui};

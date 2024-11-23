@@ -4,7 +4,7 @@ use rust_apt::{new_cache, PackageSort};
 use crate::colors::Theme;
 use crate::config::Config;
 use crate::debfile::DebFile;
-use crate::downloader::Downloader;
+use crate::download::Downloader;
 use crate::dprint;
 use crate::util::{glob_pkgs, sudo_check};
 
