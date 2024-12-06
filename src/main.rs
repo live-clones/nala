@@ -22,6 +22,7 @@ mod debfile;
 mod download;
 mod dpkg;
 mod fs;
+mod glob;
 mod hashsum;
 mod install;
 mod summary;

@@ -1,12 +1,14 @@
 use anyhow::{bail, Result};
-use rust_apt::{new_cache, PackageSort};
+use rust_apt::new_cache;
 
 use crate::colors::Theme;
 use crate::config::Config;
 use crate::debfile::DebFile;
 use crate::download::Downloader;
-use crate::dprint;
-use crate::util::{glob_pkgs, sudo_check};
+use crate::glob::CliPackage;
+use crate::history::Operation;
+use crate::util::sudo_check;
+use crate::{dprint, glob};
 
 #[tokio::main]
 pub async fn install(config: &Config) -> Result<()> {
@@ -64,20 +66,7 @@ pub async fn install(config: &Config) -> Result<()> {
 	let deb_paths: Vec<&str> = deb_files.iter().map(|deb| deb.path).collect();
 	let cache = new_cache!(&deb_paths)?;
 
-	let sort = PackageSort::default().include_virtual();
-	let (mut packages, not_found) = glob_pkgs(&cache_pkgs, cache.packages(&sort))?;
-
-	packages.sort_by_cached_key(|pkg| pkg.name().to_string());
-
-	if !not_found.is_empty() {
-		for name in &not_found {
-			config.stderr(
-				Theme::Error,
-				&format!("'{}' was not found", config.color(Theme::Notice, name)),
-			);
-		}
-		bail!("Some packages were not found in the cache")
-	}
+	let mut packages = glob::pkgs_with_modifiers(config, &cache)?;
 
 	// Fetch the correct local .deb and version from the cache
 	for deb in deb_files {
@@ -98,27 +87,39 @@ pub async fn install(config: &Config) -> Result<()> {
 			)
 		};
 		ver.set_candidate();
-		packages.push(pkg)
+		packages.push(CliPackage::new_glob(pkg.name().to_string())?.with_pkg(pkg, ver))
 	}
 
-	for pkg in &packages {
-		let Some(cand) = pkg.candidate() else {
-			bail!("{} has no install candidate", pkg.name())
+	for cli in packages.iter() {
+		let Some(pkg) = cli.pkgs.first().map(|f| &f.pkg) else {
+			panic!("NOOOOOOO")
 		};
 
-		if let Some(inst) = pkg.installed() {
-			if inst == cand {
-				let pkg_name = config.color(Theme::Primary, pkg.name());
-				let ver = config.color_ver(cand.version());
+		match cli.modifier.unwrap_or(Operation::Install) {
+			Operation::Install => {
+				let Some(cand) = pkg.candidate() else {
+					bail!("{} has no install candidate", pkg.name())
+				};
 
-				config.stderr(
-					Theme::Notice,
-					&format!("{pkg_name}{ver} is already installed and at the latest version"),
-				);
-				continue;
-			}
+				if let Some(inst) = pkg.installed() {
+					if inst == cand {
+						let pkg_name = config.color(Theme::Primary, pkg.name());
+						let ver = config.color_ver(cand.version());
+
+						config.stderr(
+							Theme::Notice,
+							&format!(
+								"{pkg_name}{ver} is already installed and at the latest version"
+							),
+						);
+						continue;
+					}
+				}
+				pkg.mark_install(true, true);
+			},
+			Operation::Remove => {},
+			_ => todo!(),
 		}
-		pkg.mark_install(true, true);
 	}
 
 	cache.resolve(false)?;

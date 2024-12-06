@@ -89,12 +89,12 @@ pub struct List {
 	pub r#virtual: bool,
 }
 
+/// Like `List`, but uses regex and searches package descriptions.
 #[derive(Args, Debug)]
 pub struct Search {
-	/// Search is basically list but with an added restriction
-	/// by allowing only searching pkg names
+	/// Search only using pkg names and not descriptions.
 	#[clap(long, action)]
-	pub names: bool,
+	pub names_only: bool,
 
 	// Flatten list commands args into search
 	#[clap(flatten)]
@@ -123,7 +123,7 @@ pub struct Clean {
 	pub fetch: bool,
 }
 
-/// Removes the local archive of downloaded package files.
+/// Downloads a package to the current directory.
 #[derive(Args, Debug)]
 pub struct Download {
 	/// Package names to download

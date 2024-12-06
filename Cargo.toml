@@ -39,8 +39,8 @@ xz2 = { version = "0.1", features = ["tokio"] }
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
 
-[profile.dev]
-opt-level = 1
+[profile.release]
+debug = true
 
 [profile.lto]
 # A profile with various additional optimizations

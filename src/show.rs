@@ -3,11 +3,12 @@ use std::fs;
 use anyhow::Result;
 use regex::{Regex, RegexBuilder};
 use rust_apt::records::RecordField;
-use rust_apt::{new_cache, BaseDep, DepType, Dependency, Package, PackageSort, Version};
+use rust_apt::{new_cache, BaseDep, DepType, Dependency, Package, Version};
 
 use crate::colors::Theme;
 use crate::config::Config;
-use crate::util::{glob_pkgs, virtual_filter};
+use crate::glob;
+use crate::util::virtual_filter;
 
 pub fn build_regex(pattern: &str) -> Result<Regex> {
 	Ok(RegexBuilder::new(pattern).case_insensitive(true).build()?)
@@ -246,9 +247,7 @@ pub fn show(config: &Config) -> Result<()> {
 	let pacstall_regex = build_regex(r#"_remoterepo="(.*?)""#)?;
 
 	// Filter the packages by names if they were provided
-	let sort = PackageSort::default().include_virtual();
-
-	let (packages, not_found) = glob_pkgs(&config.pkg_names()?, cache.packages(&sort))?;
+	let packages = glob::pkgs_with_modifiers(config, &cache)?.only_pkgs();
 
 	let mut additional_records = 0;
 	// Filter virtual packages into their real package.
@@ -267,23 +266,13 @@ pub fn show(config: &Config) -> Result<()> {
 		}
 	}
 
-	for name in &not_found {
-		config.color(
-			Theme::Notice,
-			&format!("'{}' was not found", config.color(Theme::Primary, name)),
-		);
-	}
-
 	if additional_records != 0 {
-		config.color(
-			Theme::Notice,
-			&format!(
-				"There are {} additional records. Please use the {} switch to see them.",
-				config.color(Theme::Notice, &additional_records.to_string()),
-				config.color(Theme::Notice, "'-a'"),
-			)
-			.to_string(),
+		let notice = format!(
+			"There are {} additional records. Please use the {} switch to see them.",
+			config.color(Theme::Notice, &additional_records.to_string()),
+			config.color(Theme::Notice, "'-a'"),
 		);
+		config.stderr(Theme::Notice, &notice);
 	}
 
 	Ok(())
