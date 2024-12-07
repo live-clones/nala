@@ -20,12 +20,6 @@ pub enum Matcher {
 #[derive(Debug)]
 pub struct CliPackages<'a>(Vec<CliPackage<'a>>);
 
-impl<'a> FromIterator<CliPackage<'a>> for CliPackages<'a> {
-	fn from_iter<I: IntoIterator<Item = CliPackage<'a>>>(iter: I) -> Self {
-		CliPackages(iter.into_iter().collect())
-	}
-}
-
 #[derive(Debug)]
 // TODO: Maybe we want to be able to skip adding matcher for install command?
 pub struct CliPackage<'a> {
@@ -43,6 +37,12 @@ pub struct FoundPackage<'a> {
 	pub _version: Version<'a>,
 	pub modifier: Option<Operation>,
 	_marker: PhantomData<&'a Cache>,
+}
+
+impl<'a> FromIterator<CliPackage<'a>> for CliPackages<'a> {
+	fn from_iter<I: IntoIterator<Item = CliPackage<'a>>>(iter: I) -> Self {
+		CliPackages(iter.into_iter().collect())
+	}
 }
 
 impl<'a> CliPackages<'a> {
