@@ -38,6 +38,7 @@ xz2 = { version = "0.1", features = ["tokio"] }
 [build-dependencies]
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
+rust-apt = { path = "../rust-apt" }
 
 [profile.release]
 debug = true

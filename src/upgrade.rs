@@ -20,6 +20,9 @@ use crate::{dprint, Config};
 pub fn auto_remover(cache: &Cache) -> Vec<Version> {
 	let mut marked_remove = vec![];
 	for package in cache.iter() {
+		if !package.is_installed() {
+			continue;
+		}
 		if !package.is_auto_removable() {
 			continue;
 		}

@@ -106,21 +106,21 @@ pub enum Message {
 	Finished,
 	Debug(String),
 	Verbose(String),
-	NonFatal((Error, u64)),
-	Update(u64),
+	NonFatal((Error, usize)),
+	Update(usize),
 }
 
 pub struct Downloader {
-	client: reqwest::Client,
+	pub(crate) client: reqwest::Client,
 	uris: Vec<Uri>,
-	filter: UriFilter,
-	archive_dir: PathBuf,
-	partial_dir: PathBuf,
+	pub(crate) filter: UriFilter,
+	pub(crate) archive_dir: PathBuf,
+	pub(crate) partial_dir: PathBuf,
 	/// Used to count how many connections are open to a domain.
 	/// Nala only allows 3 at a time per domain.
 	domains: Arc<Mutex<HashMap<String, u8>>>,
 	set: JoinSet<Result<Uri>>,
-	tx: mpsc::UnboundedSender<Message>,
+	pub(crate) tx: mpsc::UnboundedSender<Message>,
 	rx: mpsc::UnboundedReceiver<Message>,
 }
 
@@ -134,7 +134,7 @@ impl Downloader {
 
 		Ok(Downloader {
 			client: reqwest::Client::builder()
-				.timeout(Duration::from_secs(15))
+				.timeout(Duration::from_secs(30))
 				.proxy(proxy)
 				.build()?,
 			uris: vec![],
@@ -154,15 +154,7 @@ impl Downloader {
 		version: &'a Version<'a>,
 		config: &Config,
 	) -> Result<()> {
-		let uri = Uri::from_version(
-			version,
-			config,
-			self.client.clone(),
-			&mut self.filter,
-			&self.archive_dir,
-			self.tx.clone(),
-		)
-		.await?;
+		let uri = Uri::from_version(self, version, config).await?;
 		self.uris.push(uri);
 		Ok(())
 	}
@@ -206,23 +198,16 @@ impl Downloader {
 		let size = content_len
 			.to_str()
 			.with_context(|| format!("Converting content-len to &str {headers:#?}"))?
-			.parse::<u64>()
+			.parse::<usize>()
 			.with_context(|| format!("Parsing content-len to usize {headers:#?}"))?;
 
 		let Some(filename) = uri.split_terminator("/").last().map(|s| s.to_string()) else {
 			bail!("'{uri}' is malformed!");
 		};
 
-		self.uris.push(Uri {
-			uris: VecDeque::from([uri]),
-			size,
-			archive: self.archive_dir.join(&filename),
-			partial: self.partial_dir.join(&filename),
-			hash,
-			filename,
-			client: self.client.clone(),
-			tx: self.tx.clone(),
-		});
+		self.uris
+			.push(Uri::new(self, VecDeque::from([uri]), size, filename, hash));
+
 		Ok(())
 	}
 
@@ -282,7 +267,7 @@ impl Downloader {
 		let mut total = 0;
 		for uri in &self.uris {
 			total += 1;
-			progress.indicatif.inc_length(uri.size)
+			progress.indicatif.inc_length(uri.size as u64)
 		}
 
 		// Start the downloads
@@ -299,7 +284,9 @@ impl Downloader {
 
 			while let Ok(msg) = self.rx.try_recv() {
 				match msg {
-					Message::Update(bytes_downloaded) => progress.indicatif.inc(bytes_downloaded),
+					Message::Update(bytes_downloaded) => {
+						progress.indicatif.inc(bytes_downloaded as u64)
+					},
 					Message::Finished => {
 						current += 1;
 					},
@@ -317,7 +304,9 @@ impl Downloader {
 					},
 					Message::NonFatal((err, size)) => {
 						progress.print(&format!("Error: {err:?}"))?;
-						progress.indicatif.set_position(progress.length() - size)
+						progress
+							.indicatif
+							.set_position(progress.length() - size as u64)
 					},
 				}
 			}

@@ -34,6 +34,11 @@ build:
 release:
 	@RUSTFLAGS="-C target-cpu=native" cargo build --profile=lto
 
+# Build release and install the binary
+install:
+	cargo build --release
+	sudo mv target/release/nala /usr/bin/nala
+
 # Run the tests
 test +ARGS="":
 	@cargo test -- --test-threads 1 {{ARGS}}

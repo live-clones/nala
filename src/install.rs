@@ -90,12 +90,9 @@ pub async fn install(config: &Config) -> Result<()> {
 		packages.push(CliPackage::new_glob(pkg.name().to_string())?.with_pkg(pkg, ver))
 	}
 
-	for cli in packages.iter() {
-		let Some(pkg) = cli.pkgs.first().map(|f| &f.pkg) else {
-			panic!("NOOOOOOO")
-		};
-
-		match cli.modifier.unwrap_or(Operation::Install) {
+	for found in packages.found() {
+		let pkg = found.pkg;
+		match found.modifier.unwrap_or(Operation::Install) {
 			Operation::Install => {
 				let Some(cand) = pkg.candidate() else {
 					bail!("{} has no install candidate", pkg.name())
@@ -117,7 +114,22 @@ pub async fn install(config: &Config) -> Result<()> {
 				}
 				pkg.mark_install(true, true);
 			},
-			Operation::Remove => {},
+			Operation::Remove => {
+				let Some(_inst) = pkg.installed() else {
+					config.stderr(Theme::Notice, &format!("{} is not installed", pkg.name()));
+					continue;
+				};
+
+				// TODO: Apt has this, I think we need to bind this in rust-apt though
+				// Potentially can call it pkg.mark_hold()?
+				//
+				// MarkInstall refuses to install packages on hold
+				// Pkg->SelectedState = pkgCache::State::Hold;
+
+				// TODO: Configure so we can purge >:)
+				dprint!(config, "Mark Delete: {pkg}");
+				pkg.mark_delete(false);
+			},
 			_ => todo!(),
 		}
 	}

@@ -11,6 +11,7 @@ use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::sync::{mpsc, Mutex};
 
 use super::downloader::Message;
+use super::Downloader;
 use crate::colors::Theme;
 use crate::config::{Config, Paths};
 use crate::fs;
@@ -39,11 +40,12 @@ pub async fn remove_domain(domain: &str, domains: &mut Arc<Mutex<HashMap<String,
 #[derive(Serialize)]
 pub struct Uri {
 	pub uris: VecDeque<String>,
-	pub size: u64,
+	pub size: usize,
 	pub archive: PathBuf,
 	pub partial: PathBuf,
 	pub hash: Option<HashSum>,
 	pub filename: String,
+	retries: usize,
 	#[serde(skip)]
 	pub client: reqwest::Client,
 	#[serde(skip)]
@@ -52,29 +54,37 @@ pub struct Uri {
 
 impl Uri {
 	pub async fn from_version<'a>(
+		downloader: &mut Downloader,
 		version: &'a Version<'a>,
 		config: &Config,
-		client: reqwest::Client,
-		filter: &mut UriFilter,
-		archive: &Path,
-		tx: mpsc::UnboundedSender<Message>,
 	) -> Result<Uri> {
+		let uris = downloader.filter.uris(version, config).await?;
+		let size = version.size() as usize;
 		let filename = get_pkg_name(version);
-		let mut partial = archive.join("partial");
-		let archive = archive.join(&filename);
+		let hash = hashsum::get_hash(config, version)?;
+		Ok(Self::new(downloader, uris, size, filename, Some(hash)))
+	}
 
-		partial.push(&filename);
-
-		Ok(Uri {
-			uris: filter.uris(version, config).await?,
-			size: version.size(),
+	pub fn new(
+		downloader: &Downloader,
+		uris: VecDeque<String>,
+		size: usize,
+		filename: String,
+		hash: Option<HashSum>,
+	) -> Uri {
+		let archive = downloader.archive_dir.join(&filename);
+		let partial = downloader.partial_dir.join(&filename);
+		Self {
+			uris,
+			size,
 			archive,
 			partial,
-			hash: Some(hashsum::get_hash(config, version)?),
+			hash,
 			filename,
-			client,
-			tx,
-		})
+			retries: 0,
+			client: downloader.client.clone(),
+			tx: downloader.tx.clone(),
+		}
 	}
 
 	pub fn to_json(&self) -> Result<String> { Ok(serde_json::to_string_pretty(self)?) }
@@ -128,6 +138,7 @@ impl Uri {
 
 		// This is the string URL passed to the http client
 		while let Some(url) = self.uris.pop_front() {
+			self.retries = 0;
 			let Some(domain) = regex
 				.captures(&url)
 				.and_then(|c| c.get(1).map(|m| m.as_str()))
@@ -148,28 +159,33 @@ impl Uri {
 				self.filename
 			)))?;
 
-			self.tx.send(Message::Verbose(format!("Starting: {url}")))?;
-			match self.download_file(&url).await {
-				Ok(hash) => {
-					// Compare the hash from downloaded file against a known good hash.
-					// Removes the file on disk if it doesn't match.
-					self.check_hash(&hash).await?;
+			while self.retries <= 3 {
+				self.tx.send(Message::Verbose(format!(
+					"Starting: {url}, Retries: {}",
+					self.retries
+				)))?;
+				match self.download_file(&url).await {
+					Ok(hash) => {
+						// Compare the hash from downloaded file against a known good hash.
+						// Removes the file on disk if it doesn't match.
+						self.check_hash(&hash).await?;
 
-					// Move the good file from partial to the archive dir.
-					fs::rename(&self.partial, &self.archive).await?;
+						// Move the good file from partial to the archive dir.
+						fs::rename(&self.partial, &self.archive).await?;
+						self.tx.send(Message::Verbose(format!("Finished: {url}")))?;
 
-					self.tx.send(Message::Verbose(format!("Finished: {url}")))?;
-
-					remove_domain(domain, &mut domains).await;
-					self.tx.send(Message::Finished)?;
-					return Ok(self);
-				},
-				Err(err) => {
-					// Non fatal errors can continue operation.
-					self.tx.send(Message::NonFatal((err, self.size)))?;
-					remove_domain(domain, &mut domains).await;
-					continue;
-				},
+						remove_domain(domain, &mut domains).await;
+						self.tx.send(Message::Finished)?;
+						return Ok(self);
+					},
+					Err(err) => {
+						// Non fatal errors can continue operation.
+						self.retries += 1;
+						self.tx.send(Message::NonFatal((err, self.size)))?;
+						remove_domain(domain, &mut domains).await;
+						continue;
+					},
+				}
 			}
 		}
 		self.tx.send(Message::Exit)?;
@@ -195,7 +211,7 @@ impl Uri {
 			.with_context(|| format!("Unable to stream data from '{url}'"))?
 		{
 			// Send message to add to total progress bar.
-			self.tx.send(Message::Update(chunk.len() as u64))?;
+			self.tx.send(Message::Update(chunk.len()))?;
 			hasher.update(&chunk);
 
 			// Write the data to file

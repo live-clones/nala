@@ -31,6 +31,14 @@ pub struct NalaParser {
 	#[clap(global = true, short, long, action)]
 	pub no_tui: bool,
 
+	/// Only download packages.
+	#[clap(long, action)]
+	pub download_only: bool,
+
+	/// TODO: Copy from Python Nala and maybe reword.
+	#[clap(short = 'o', long, action)]
+	pub dpkg_option: Vec<String>,
+
 	#[clap(subcommand)]
 	pub command: Option<Commands>,
 
@@ -169,18 +177,11 @@ pub struct Fetch {
 
 /// Update the package lists.
 #[derive(Args, Debug)]
-pub struct Update {
-	#[clap(short = 'o', long, action)]
-	pub dpkg_option: Vec<String>,
-}
+pub struct Update {}
 
 /// Upgrade packages.
 #[derive(Args, Debug)]
 pub struct Upgrade {
-	/// TODO: Copy from Python Nala and maybe reword.
-	#[clap(short = 'o', long, action)]
-	pub dpkg_option: Vec<String>,
-
 	/// Prints the URIs in json and does not perform an upgrade.
 	#[clap(long, action)]
 	pub print_uris: bool,
@@ -204,11 +205,4 @@ pub struct Install {
 	/// Package names to install
 	#[clap(required = false)]
 	pub pkg_names: Vec<String>,
-
-	#[clap(short = 'o', long, action)]
-	pub dpkg_option: Vec<String>,
-
-	/// Only download packages.
-	#[clap(long, action)]
-	pub download_only: bool,
 }
