@@ -1,9 +1,10 @@
 use anyhow::{bail, Result};
 use rust_apt::new_cache;
+use rust_apt::util::show_broken_pkg;
 
 use crate::colors::Theme;
 use crate::config::Config;
-use crate::debfile::DebFile;
+use crate::deb::DebFile;
 use crate::download::Downloader;
 use crate::glob::CliPackage;
 use crate::history::Operation;
@@ -23,7 +24,7 @@ pub async fn install(config: &Config) -> Result<()> {
 	// For example maybe not having to hold ownership
 	// deduped list stored in the config object?
 	let cmd_line_pkgs = config.pkg_names()?;
-	for pkg in &cmd_line_pkgs {
+	for pkg in cmd_line_pkgs {
 		// TODO: Make Http actually do something
 		// Look at python Nala for hints on features
 		if pkg.starts_with("http") {
@@ -38,7 +39,7 @@ pub async fn install(config: &Config) -> Result<()> {
 		}
 
 		// All else are local
-		deb_files.push(DebFile::new(pkg)?);
+		deb_files.push(DebFile::new(pkg).await?);
 	}
 
 	// TODO: This is a little clunky because of DebFile
@@ -49,7 +50,7 @@ pub async fn install(config: &Config) -> Result<()> {
 	let uris = if !http_pkgs.is_empty() {
 		let mut downloader = Downloader::new(config)?;
 		for pkg in http_pkgs {
-			downloader.add_from_cmdline(config, pkg).await?;
+			downloader.add_from_cmdline(config, &pkg).await?;
 		}
 		downloader.run(config, true).await?
 	} else {
@@ -60,10 +61,10 @@ pub async fn install(config: &Config) -> Result<()> {
 		if config.verbose() {
 			println!("Downloaded: {:?}", uri.archive)
 		}
-		deb_files.push(DebFile::new(&uri.archive)?)
+		deb_files.push(DebFile::new(uri.archive.to_string_lossy().into()).await?);
 	}
 
-	let deb_paths: Vec<&str> = deb_files.iter().map(|deb| deb.path).collect();
+	let deb_paths: Vec<&str> = deb_files.iter().map(|deb| deb.path.as_str()).collect();
 	let cache = new_cache!(&deb_paths)?;
 
 	let mut packages = glob::pkgs_with_modifiers(config, &cache)?;
@@ -91,7 +92,7 @@ pub async fn install(config: &Config) -> Result<()> {
 	}
 
 	for found in packages.found() {
-		let pkg = found.pkg;
+		let pkg = &found.pkg;
 		match found.modifier.unwrap_or(Operation::Install) {
 			Operation::Install => {
 				let Some(cand) = pkg.candidate() else {
@@ -112,6 +113,8 @@ pub async fn install(config: &Config) -> Result<()> {
 						continue;
 					}
 				}
+				cache.resolver().clear(pkg);
+				cache.resolver().protect(pkg);
 				pkg.mark_install(true, true);
 			},
 			Operation::Remove => {
@@ -128,12 +131,23 @@ pub async fn install(config: &Config) -> Result<()> {
 
 				// TODO: Configure so we can purge >:)
 				dprint!(config, "Mark Delete: {pkg}");
+				cache.resolver().clear(pkg);
+				cache.resolver().protect(pkg);
 				pkg.mark_delete(false);
 			},
 			_ => todo!(),
 		}
 	}
 
-	cache.resolve(false)?;
+	if let Err(err) = cache.resolve(false) {
+		println!("Broken Count: {}", cache.depcache().broken_count());
+		for pkg in cache.iter() {
+			if let Some(broken) = show_broken_pkg(&cache, &pkg, false) {
+				eprintln!("{broken}");
+			};
+		}
+		bail!(err);
+	}
+
 	crate::summary::commit(cache, config).await
 }

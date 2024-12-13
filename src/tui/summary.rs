@@ -69,6 +69,7 @@ impl Item {
 impl fmt::Display for Item {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { f.write_str(&self.string) }
 }
+
 pub struct App<'a> {
 	state: TableState,
 	scroll_state: ScrollbarState,

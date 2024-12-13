@@ -209,7 +209,8 @@ pub async fn commit(cache: Cache, config: &Config) -> Result<()> {
 	}
 
 	let history_entry = HistoryEntry::new(
-		history::get_history(config)?
+		history::get_history(config)
+			.await?
 			.iter()
 			.map(|entry| entry.id)
 			.max()

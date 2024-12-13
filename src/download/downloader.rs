@@ -11,8 +11,9 @@ use tokio::task::JoinSet;
 use super::{proxy, Uri, UriFilter};
 use crate::colors::Theme;
 use crate::config::{Config, Paths};
+use crate::fs::AsyncFs;
 use crate::hashsum::HashSum;
-use crate::{dprint, dprog, fs, tui};
+use crate::{dprint, dprog, tui};
 
 #[tokio::main]
 pub async fn download(config: &Config) -> Result<()> {
@@ -215,7 +216,7 @@ impl Downloader {
 
 	pub async fn download(&mut self) -> Result<()> {
 		// Create the partial directory
-		fs::create_dir_all(&self.partial_dir).await?;
+		self.partial_dir.mkdir().await?;
 
 		while let Some(uri) = self.uris.pop() {
 			let regex = self.filter.regex.domain().clone();
@@ -228,7 +229,7 @@ impl Downloader {
 	pub async fn finish(mut self, rm_partial: bool) -> Result<Vec<Uri>> {
 		// Finally remove the partial directory
 		if rm_partial {
-			fs::remove_dir_all(&self.partial_dir).await?;
+			self.partial_dir.remove_recurse().await?;
 		}
 
 		let mut finished = vec![];

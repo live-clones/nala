@@ -18,6 +18,7 @@ use tokio::sync::OnceCell;
 
 use crate::colors::Theme;
 use crate::config::{Config, Paths};
+use crate::fs::AsyncFs;
 use crate::show::{build_regex, show_version};
 use crate::{dprint, table, tui, util};
 
@@ -311,11 +312,10 @@ impl std::fmt::Display for Operation {
 	}
 }
 
-pub fn get_history(config: &Config) -> Result<Vec<HistoryEntry>> {
+pub async fn get_history(config: &Config) -> Result<Vec<HistoryEntry>> {
 	let history_db = config.get_path(&Paths::History);
 	if !history_db.exists() {
-		std::fs::create_dir_all(&history_db)
-			.with_context(|| format!("Could not create {}", history_db.display()))?;
+		history_db.mkdir().await?;
 	}
 
 	let mut history = std::fs::read_dir(&history_db)
@@ -364,7 +364,7 @@ pub fn get_history(config: &Config) -> Result<Vec<HistoryEntry>> {
 
 #[tokio::main]
 pub async fn history(config: &Config) -> Result<()> {
-	let history_file = get_history(config)?;
+	let history_file = get_history(config).await?;
 	let cache = new_cache!()?;
 
 	let mut table = table::get_table(

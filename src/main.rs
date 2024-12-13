@@ -1,12 +1,15 @@
-use std::path::PathBuf;
+use std::path::Path;
 use std::process::ExitCode;
 
 use anyhow::{bail, Result};
 use clap::{ArgMatches, CommandFactory, FromArgMatches};
 use cli::Commands;
 use colors::Theme;
+use config::Paths;
+use deb::DebFile;
 use history::history;
 use rust_apt::error::AptErrors;
+use rust_apt::{new_cache, PackageSort};
 
 mod cli;
 mod fetch;
@@ -18,7 +21,7 @@ mod update;
 mod clean;
 mod colors;
 mod config;
-mod debfile;
+mod deb;
 mod download;
 mod dpkg;
 mod fs;
@@ -84,12 +87,97 @@ fn get_config() -> Result<(ArgMatches, NalaParser, Config)> {
 	let args = NalaParser::command().get_matches();
 	let derived = NalaParser::from_arg_matches(&args)?;
 
-	let config = match derived.config {
-		Some(ref conf_file) => Config::new(conf_file)?,
-		None => Config::new(&PathBuf::from("/etc/nala/nala.conf"))?,
+	let config_file = match derived.config {
+		Some(ref conf_file) => conf_file,
+		None => Path::new("/etc/nala/nala.conf"),
+	};
+
+	let config = match Config::new(config_file) {
+		Ok(config) => config,
+		Err(err) => {
+			eprintln!("Warning: {err}");
+			Config::default()
+		},
 	};
 
 	Ok((args, derived, config))
+}
+
+#[tokio::main]
+pub async fn system(config: &Config) -> Result<()> {
+	// This downloads all of the pkgs into the archives directory
+	// let cache = rust_apt::new_cache!()?;
+	// println!("Cache Total Pkgs: {}", cache.iter().count());
+
+	// let mut downloader = Downloader::new(config)?;
+
+	// let versions = cache
+	// 	.iter()
+	// 	.filter_map(|p| {
+	// 		let v = p.installed()?;
+	// 		if v.is_downloadable() {
+	// 			Some(v)
+	// 		} else {
+	// 			None
+	// 		}
+	// 	})
+	// 	.collect::<Vec<_>>();
+
+	// for ver in &versions {
+	// 	downloader.add_version(ver, config).await?;
+	// }
+
+	// downloader.run(config, false).await?;
+
+	let archive = config.get_path(&Paths::Archive);
+	let mut debs = vec![];
+	for entry in std::fs::read_dir(archive)? {
+		let entry = entry?;
+		let metadata = entry.metadata()?;
+
+		let path = entry.path();
+
+		// If it's a directory, recurse into it
+		if metadata.is_dir() {
+			continue;
+		}
+
+		debs.push(path.to_string_lossy().to_string())
+	}
+
+	let cache = new_cache!(&debs)?;
+	let filtered_pkgs = cache
+		.packages(&PackageSort::default().installed())
+		.filter_map(|pkg| {
+			let version = pkg.installed()?;
+			let file = version
+				.version_files()
+				.filter_map(|vf| {
+					let pf = vf.package_file();
+					// Instead of archive we could match the filename
+					// pf.filename().unwrap().contains(Paths::Archive.default_path())
+					if pf.archive()? == "local-deb" {
+						Some(pf.filename()?.to_string())
+					} else {
+						None
+					}
+				})
+				.next()?;
+			Some((version, file))
+		})
+		.collect::<Vec<_>>();
+
+	let mut pb = tui::NalaProgressBar::new(config, true)?;
+	let mut set = tokio::task::JoinSet::new();
+	for (_, file) in filtered_pkgs {
+		set.spawn(DebFile::new(file));
+	}
+
+	let files = pb.join(set).await?;
+	for file in files {
+		file.store().await?;
+	}
+	Ok(())
 }
 
 fn main_nala(args: ArgMatches, derived: NalaParser, config: &mut Config) -> Result<()> {
@@ -112,6 +200,7 @@ fn main_nala(args: ArgMatches, derived: NalaParser, config: &mut Config) -> Resu
 			Commands::Update(_) => update(config)?,
 			Commands::Upgrade(_) => upgrade(config)?,
 			Commands::Install(_) => install(config)?,
+			Commands::System(_) => system(config)?,
 		}
 	} else {
 		NalaParser::command().print_help()?;

@@ -7,14 +7,14 @@ use regex::Regex;
 use rust_apt::records::RecordField;
 use rust_apt::Version;
 use serde::Serialize;
-use tokio::io::{AsyncWriteExt, BufWriter};
+use tokio::io::AsyncWriteExt;
 use tokio::sync::{mpsc, Mutex};
 
 use super::downloader::Message;
 use super::Downloader;
 use crate::colors::Theme;
 use crate::config::{Config, Paths};
-use crate::fs;
+use crate::fs::AsyncFs;
 use crate::hashsum::{self, HashSum};
 use crate::util::{get_pkg_name, NalaRegex};
 
@@ -105,7 +105,7 @@ impl Uri {
 			self.tx.send(Message::Debug("hash matched!".to_string()))?;
 			return Ok(());
 		}
-		fs::remove_file(&self.partial).await?;
+		self.partial.remove().await?;
 
 		self.tx.send(Message::Exit)?;
 		bail!("Checksum did not match for {}", &self.filename);
@@ -171,7 +171,7 @@ impl Uri {
 						self.check_hash(&hash).await?;
 
 						// Move the good file from partial to the archive dir.
-						fs::rename(&self.partial, &self.archive).await?;
+						self.partial.rename(&self.archive).await?;
 						self.tx.send(Message::Verbose(format!("Finished: {url}")))?;
 
 						remove_domain(domain, &mut domains).await;
@@ -198,7 +198,7 @@ impl Uri {
 		let mut response = self.client.get(url).send().await.context("Get")?;
 
 		// Get a mutable writer for our outfile.
-		let mut writer = BufWriter::new(fs::open_file(&self.partial).await?);
+		let mut writer = self.partial.open_writer().await?;
 
 		let default_hash = HashSum::Sha512(String::new());
 		let hash_type = self.hash.as_ref().unwrap_or(&default_hash).str_type();
@@ -272,7 +272,8 @@ impl UriFilter {
 				let Some(filename) = path.file_name() else {
 					bail!("{path:?} Does not have a valid filename!")
 				};
-				fs::copy(path, config.get_path(&Paths::Archive).join(filename)).await?;
+				path.cp(&config.get_path(&Paths::Archive).join(filename))
+					.await?;
 			}
 
 			// We should probably consolidate this. And maybe test if mirror: works.
@@ -319,7 +320,7 @@ impl UriFilter {
 		self.mirrors.insert(
 			filename.to_string(),
 			match uri.starts_with("mirror+file:") {
-				true => fs::read_to_string(filename).await?,
+				true => Path::new(filename).read_string().await?,
 				false => reqwest::blocking::get("http://".to_string() + filename)?.text()?,
 			},
 		);

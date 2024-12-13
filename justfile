@@ -54,6 +54,18 @@ leak:
 		-printf "%T@ %p\n" | sort -nr | awk '{print $2}' \
 	) --test-threads 1
 
+rst_to_md:
+	#!/bin/sh
+
+	set -e
+
+	FILES=docs/*.rst
+	for f in $FILES; do
+		filename="${f%.*}"
+		echo "Converting $f to $filename.md"
+		`pandoc $f -f rst -t markdown -o $filename.md`
+	done
+
 # Lint the codebase
 clippy +ARGS="":
 	@cargo clippy --all-targets --all-features --workspace -- --deny warnings {{ARGS}}

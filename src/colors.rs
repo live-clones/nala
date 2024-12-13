@@ -127,7 +127,6 @@ impl fmt::Display for Style {
 				RatColor::Indexed(int) => &format!("38;5;{int}"),
 				_ => self.ansi_color(),
 			};
-
 			format!("\x1b[{};{ansi_color}m", self.mod_string())
 		});
 		write!(f, "{string}")

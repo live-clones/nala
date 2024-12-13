@@ -59,8 +59,10 @@ pub enum Commands {
 	Update(Update),
 	Upgrade(Upgrade),
 	Install(Install),
+	System(System),
 }
 
+/// List all packages or only packages based on the provided name
 #[derive(Args, Debug)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct List {
@@ -109,6 +111,7 @@ pub struct Search {
 	pub list_args: List,
 }
 
+/// Show information about one or more packages
 #[derive(Args, Debug)]
 pub struct Show {
 	/// Package names to show
@@ -206,3 +209,7 @@ pub struct Install {
 	#[clap(required = false)]
 	pub pkg_names: Vec<String>,
 }
+
+/// Experimental, use at own risk
+#[derive(Args, Debug)]
+pub struct System {}
