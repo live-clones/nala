@@ -32,8 +32,7 @@ use regex::{Regex, RegexBuilder};
 use rust_apt::records::RecordField;
 use rust_apt::{Cache, Package, Version};
 
-use crate::colors::Theme;
-use crate::config::Config;
+use crate::config::{Config, Theme};
 
 pub struct NalaRegex {
 	mirror: OnceCell<Regex>,

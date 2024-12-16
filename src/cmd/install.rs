@@ -2,12 +2,11 @@ use anyhow::{bail, Result};
 use rust_apt::new_cache;
 use rust_apt::util::show_broken_pkg;
 
-use crate::colors::Theme;
-use crate::config::Config;
+use crate::config::{Config, Theme};
 use crate::deb::DebFile;
 use crate::download::Downloader;
 use crate::glob::CliPackage;
-use crate::history::Operation;
+use crate::cmd::Operation;
 use crate::util::sudo_check;
 use crate::{dprint, glob};
 

@@ -12,8 +12,7 @@ use tokio::sync::{mpsc, Mutex};
 
 use super::downloader::Message;
 use super::Downloader;
-use crate::colors::Theme;
-use crate::config::{Config, Paths};
+use crate::config::{Config, Paths, Theme};
 use crate::fs::AsyncFs;
 use crate::hashsum::{self, HashSum};
 use crate::util::{get_pkg_name, NalaRegex};

@@ -4,8 +4,7 @@ use rust_apt::raw::{AcqTextStatus, ItemDesc, ItemState, PkgAcquire};
 use rust_apt::{new_cache, PackageSort};
 use tokio::sync::mpsc;
 
-use crate::colors::Theme;
-use crate::config::Config;
+use crate::config::{Config, Theme};
 use crate::tui;
 
 pub enum Message {

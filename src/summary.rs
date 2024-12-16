@@ -5,10 +5,12 @@ use chrono::Utc;
 use rust_apt::util::DiskSpace;
 use rust_apt::{Cache, Marked};
 
+use crate::cmd::{
+	self, apt_hook_with_pkgs, ask, auto_remover, run_scripts, HistoryEntry, HistoryPackage,
+	Operation,
+};
 use crate::config::Config;
 use crate::download::Downloader;
-use crate::history::{self, HistoryEntry, HistoryPackage, Operation};
-use crate::upgrade::{apt_hook_with_pkgs, ask, auto_remover, run_scripts};
 use crate::{dpkg, dprint, table, tui};
 
 /// Run the autoremover and then get the changes from the cache.
@@ -209,7 +211,7 @@ pub async fn commit(cache: Cache, config: &Config) -> Result<()> {
 	}
 
 	let history_entry = HistoryEntry::new(
-		history::get_history(config)
+		cmd::get_history(config)
 			.await?
 			.iter()
 			.map(|entry| entry.id)

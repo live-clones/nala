@@ -8,8 +8,7 @@ use sha2::{Digest, Sha256, Sha512};
 use tokio::fs;
 use tokio::io::AsyncReadExt;
 
-use crate::colors::Theme;
-use crate::config::Config;
+use crate::config::{Config, Theme};
 
 /// Return the hash_type and the hash_value to be used.
 pub fn get_hash(config: &Config, version: &Version) -> Result<HashSum> {

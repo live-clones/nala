@@ -16,10 +16,9 @@ use rust_apt::{new_cache, Cache, Package, Version};
 use serde::{Deserialize, Serialize};
 use tokio::sync::OnceCell;
 
-use crate::colors::Theme;
-use crate::config::{Config, Paths};
+use crate::config::{Config, Paths, Theme};
 use crate::fs::AsyncFs;
-use crate::show::{build_regex, show_version};
+use super::{build_regex, show_version, Operation};
 use crate::{dprint, table, tui, util};
 
 #[derive(Serialize, Deserialize)]
@@ -253,62 +252,6 @@ impl HistoryPackage {
 				}
 			}
 		}
-	}
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Operation {
-	Remove,
-	AutoRemove,
-	Purge,
-	AutoPurge,
-	Install,
-	Reinstall,
-	Upgrade,
-	Downgrade,
-	Held,
-}
-
-impl Operation {
-	pub fn to_vec() -> Vec<Operation> {
-		vec![
-			Self::Remove,
-			Self::AutoRemove,
-			Self::Purge,
-			Self::AutoPurge,
-			Self::Install,
-			Self::Reinstall,
-			Self::Upgrade,
-			Self::Downgrade,
-		]
-	}
-
-	pub fn as_str(&self) -> &'static str {
-		match self {
-			Operation::Remove => "Remove",
-			Operation::AutoRemove => "AutoRemove",
-			Operation::Purge => "Purge",
-			Operation::AutoPurge => "AutoPurge",
-			Operation::Install => "Install",
-			Operation::Reinstall => "ReInstall",
-			Operation::Upgrade => "Upgrade",
-			Operation::Downgrade => "Downgrade",
-			Operation::Held => "Held",
-		}
-	}
-
-	pub fn theme(&self) -> Theme {
-		match self {
-			Self::Remove | Self::AutoRemove | Self::Purge | Self::AutoPurge => Theme::Error,
-			Self::Install | Self::Upgrade => Theme::Secondary,
-			Self::Reinstall | Self::Downgrade | Self::Held => Theme::Notice,
-		}
-	}
-}
-
-impl std::fmt::Display for Operation {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", self.as_str())
 	}
 }
 

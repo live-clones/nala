@@ -1,8 +1,7 @@
 use anyhow::Result;
 use rust_apt::{new_cache, Package, Version};
 
-use crate::colors::Theme;
-use crate::config::Config;
+use crate::config::{Config, Theme};
 use crate::{dprint, glob};
 
 /// The search command
@@ -230,7 +229,9 @@ fn list_virtual(
 #[cfg(test)]
 #[allow(clippy::wildcard_imports)]
 mod test {
-	use crate::list::*;
+	use crate::new_cache;
+	use crate::config::Config;
+	use crate::cmd::list::*;
 
 	#[test]
 	fn virtual_list() {

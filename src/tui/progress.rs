@@ -16,8 +16,7 @@ use serde::{Deserialize, Serialize};
 use tokio::task::JoinSet;
 
 use super::Term;
-use crate::colors::Theme;
-use crate::config::Config;
+use crate::config::{Config, Theme};
 use crate::tui;
 
 /// Numeral System for unit conversion.
@@ -77,7 +76,7 @@ pub struct Progress<'a> {
 	themes: (Style, Style),
 }
 
-impl<'a> Widget for Progress<'a> {
+impl Widget for Progress<'_> {
 	fn render(self, area: Rect, buf: &mut Buffer) {
 		let block = Block::bordered()
 			.border_type(BorderType::Rounded)

@@ -9,28 +9,26 @@ use crossterm::tty::IsTty;
 use rust_apt::config::Config as AptConfig;
 use serde::{Deserialize, Serialize};
 
-use crate::colors::{RatStyle, Style, Theme};
+use super::{OptType, Paths, Switch};
+use crate::config::colors::{RatStyle, Style, Theme};
 use crate::tui::progress::{NumSys, UnitStr};
 
-/// Represents different file and directory paths
-pub enum Paths {
-	/// The Archive dir holds packages.
-	/// Default dir `/var/cache/apt/archives/`
-	Archive,
-	/// The Lists dir hold package lists from `update` command.
-	/// Default dir `/var/lib/apt/lists/`
-	Lists,
-	/// The main Source List.
-	/// Default file `/etc/apt/sources.list`
-	SourceList,
-	/// The Sources parts directory
-	/// Default dir `/etc/apt/sources.list.d/`
-	SourceParts,
-	/// Nala Sources file is generated from the `fetch` command.
-	/// Default file `/etc/apt/sources.list.d/nala-sources.list`
-	NalaSources,
+#[derive(Serialize, Deserialize, Debug)]
+/// Configuration struct
+pub struct Config {
+	#[serde(rename(deserialize = "Nala"), default)]
+	map: HashMap<String, OptType>,
 
-	History,
+	#[serde(rename(deserialize = "Theme"), default)]
+	theme: HashMap<Theme, Style>,
+
+	// The following fields are not used with serde
+	#[serde(skip)]
+	pub apt: AptConfig,
+
+	#[serde(skip)]
+	/// The command that is being run
+	pub command: String,
 }
 
 impl Paths {
@@ -55,45 +53,6 @@ impl Paths {
 			Paths::History => self.path(),
 		}
 	}
-}
-
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
-pub enum Switch {
-	Always,
-	Never,
-	Auto,
-}
-
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
-#[serde(untagged)]
-pub enum OptType {
-	Bool(bool),
-	Int(u8),
-	Int64(u64),
-	Switch(Switch),
-	UnitStr(UnitStr),
-	// Strings have to be last in the enum
-	// as almost anything will match them
-	String(String),
-	VecString(Vec<String>),
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-/// Configuration struct
-pub struct Config {
-	#[serde(rename(deserialize = "Nala"), default)]
-	map: HashMap<String, OptType>,
-
-	#[serde(rename(deserialize = "Theme"), default)]
-	theme: HashMap<Theme, Style>,
-
-	// The following fields are not used with serde
-	#[serde(skip)]
-	pub apt: AptConfig,
-
-	#[serde(skip)]
-	/// The command that is being run
-	pub command: String,
 }
 
 impl Default for Config {

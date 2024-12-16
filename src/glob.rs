@@ -6,10 +6,9 @@ use regex::{Regex, RegexBuilder};
 use rust_apt::raw::IntoRawIter;
 use rust_apt::{Cache, Package, PackageSort, Version};
 
-use crate::colors::Theme;
-use crate::config::Config;
+use crate::cmd::Operation;
+use crate::config::{Config, Theme};
 use crate::dprint;
-use crate::history::Operation;
 
 #[derive(Debug)]
 pub enum Matcher {

@@ -8,38 +8,39 @@ readme = "README.rst"
 description = "Commandline frontend for the APT package manager"
 
 [dependencies]
-# rust-apt = { git = "https://gitlab.com/volian/rust-apt" }
-rust-apt = { path = "../rust-apt" }
-#rust-apt = "0.8.0"
+rust-apt = { git = "https://gitlab.com/volian/rust-apt" }
+# rust-apt = { path = "../rust-apt" }
+tokio = { version = "1", features = ["fs", "macros", "rt-multi-thread"] }
+nix = { version = "0.29", features = ["fs", "process", "term", "ioctl", "signal"] }
+async-compression = { version = "0.4", features = ["tokio", "all-algorithms"] }
+reqwest = { version = "0.12", features = ["json", "blocking"] }
+serde = { version = "1", features = ["derive"] }
 clap = { version = "4", features = ["derive"] }
 clap_complete = { version = "4", features = ["unstable-dynamic"] }
+ratatui = { version = "0.29", features = ["serde"] }
+comfy-table = { version = "7", features = ["tty", "custom_styling"] }
+mio = { version = "1", features = ["os-ext"] }
 toml = "0.8"
-anyhow = "1.0"
-regex = "1.10"
+anyhow = "1"
+regex = "1"
 globset = "0.4"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-reqwest = { version = "0.12", features = ["json", "blocking"] }
-tokio = { version = "1", features = ["fs", "macros", "rt-multi-thread"] }
+serde_json = "1"
 indicatif = "0.17"
 crossterm = "0.28"
 sha2 = "0.10"
 digest = "0.10"
 chrono = "0.4"
-ratatui = { version = "0.29", features = ["serde"] }
 ansi-to-tui = "7"
-nix = { version = "0.29.0", features = ["fs", "process", "term", "ioctl", "signal"] }
-mio = { version = "1.0.1", features = ["os-ext"] }
-bincode = "1.3"
-comfy-table = { version = "7", features = ["tty", "custom_styling"] }
+bincode = "1"
 tar = "0.4"
-ar = "0.9.0"
-async-compression = { version = "0.4.18", features = ["tokio", "all-algorithms"] }
+ar = "0.9"
+
 
 [build-dependencies]
 clap = { version = "4", features = ["derive"] }
+clap-markdown = "0.1"
 clap_complete = { version = "4", features = ["unstable-dynamic"] }
-rust-apt = { path = "../rust-apt" }
+clap_mangen = "0.2"
 
 [profile.release]
 debug = true

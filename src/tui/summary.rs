@@ -25,9 +25,8 @@ use rust_apt::util::DiskSpace;
 use rust_apt::Cache;
 
 use super::Term;
-use crate::colors::Theme;
-use crate::config::Config;
-use crate::history::{HistoryPackage, Operation};
+use crate::cmd::{HistoryPackage, Operation};
+use crate::config::{Config, Theme};
 
 #[derive(Debug)]
 pub struct Item {
@@ -161,7 +160,7 @@ impl<'a> App<'a> {
 	}
 }
 
-impl<'a> StatefulWidget for &mut App<'a> {
+impl StatefulWidget for &mut App<'_> {
 	type State = u8;
 
 	fn render(self, area: Rect, buf: &mut Buffer, _: &mut Self::State) {
@@ -399,7 +398,7 @@ impl<'a> SummaryTab<'a> {
 	}
 }
 
-impl<'a> StatefulWidget for &mut SummaryTab<'a> {
+impl StatefulWidget for &mut SummaryTab<'_> {
 	type State = u8;
 
 	fn render(self, area: Rect, buf: &mut Buffer, _: &mut Self::State) {

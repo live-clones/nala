@@ -4,22 +4,13 @@ use std::process::ExitCode;
 use anyhow::{bail, Result};
 use clap::{ArgMatches, CommandFactory, FromArgMatches};
 use cli::Commands;
-use colors::Theme;
-use config::Paths;
+use config::{Paths, Theme};
 use deb::DebFile;
-use history::history;
 use rust_apt::error::AptErrors;
 use rust_apt::{new_cache, PackageSort};
 
 mod cli;
-mod fetch;
-mod history;
-mod list;
-mod show;
-mod update;
-
-mod clean;
-mod colors;
+mod cmd;
 mod config;
 mod deb;
 mod download;
@@ -27,23 +18,15 @@ mod dpkg;
 mod fs;
 mod glob;
 mod hashsum;
-mod install;
 mod summary;
 mod table;
 mod tui;
-mod upgrade;
 mod util;
 
-use crate::clean::clean;
 use crate::cli::NalaParser;
+use crate::cmd::{clean, fetch, history, install, list, search, show, update, upgrade};
 use crate::config::Config;
 use crate::download::download;
-use crate::fetch::fetch;
-use crate::install::install;
-use crate::list::{list, search};
-use crate::show::show;
-use crate::update::update;
-use crate::upgrade::upgrade;
 
 fn main() -> ExitCode {
 	let (args, derived, mut config) = match get_config() {

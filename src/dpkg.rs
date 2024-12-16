@@ -19,8 +19,7 @@ use regex::RegexBuilder;
 use rust_apt::progress::{AcquireProgress, InstallProgress};
 use rust_apt::Cache;
 
-use crate::colors::Theme;
-use crate::config::Config;
+use crate::config::{Config, Theme};
 use crate::tui::NalaProgressBar;
 use crate::{dprint, dprog};
 

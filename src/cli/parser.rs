@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Parser, Debug)]
-#[clap(name = "nala-rs")]
+#[clap(name = "nala")]
 #[clap(author = "Blake Lee <blake@volian.org>")]
 #[clap(version = "0.1.0")]
 #[clap(about = "Commandline front-end for libapt-pkg", long_about = None)]

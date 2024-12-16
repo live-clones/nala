@@ -10,8 +10,7 @@ use ratatui::widgets::{
 };
 use ratatui::Terminal;
 
-use crate::colors::Theme;
-use crate::config::Config;
+use crate::config::{Config, Theme};
 
 struct FetchItem {
 	url: String,
@@ -224,7 +223,7 @@ impl<'a> App<'a> {
 	}
 }
 
-impl<'a> Widget for &mut App<'a> {
+impl Widget for &mut App<'_> {
 	fn render(self, area: Rect, buf: &mut Buffer) {
 		// Create a space for header, todo list and the footer.
 		let [list_area, info_area, footer_area] = Layout::vertical([

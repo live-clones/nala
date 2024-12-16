@@ -9,8 +9,7 @@ use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinSet;
 
 use super::{proxy, Uri, UriFilter};
-use crate::colors::Theme;
-use crate::config::{Config, Paths};
+use crate::config::{Config, Paths, Theme};
 use crate::fs::AsyncFs;
 use crate::hashsum::HashSum;
 use crate::{dprint, dprog, tui};
