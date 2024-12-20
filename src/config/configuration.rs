@@ -5,12 +5,12 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Context, Result};
 use clap::parser::ValueSource;
 use clap::ArgMatches;
-use crossterm::tty::IsTty;
 use rust_apt::config::Config as AptConfig;
 use serde::{Deserialize, Serialize};
 
+use super::color::{setup_color, Color};
 use super::{OptType, Paths, Switch};
-use crate::config::colors::{RatStyle, Style, Theme};
+use crate::config::color::{RatStyle, Style, Theme};
 use crate::tui::progress::{NumSys, UnitStr};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -20,7 +20,7 @@ pub struct Config {
 	map: HashMap<String, OptType>,
 
 	#[serde(rename(deserialize = "Theme"), default)]
-	theme: HashMap<Theme, Style>,
+	pub(crate) theme: HashMap<Theme, Style>,
 
 	// The following fields are not used with serde
 	#[serde(skip)]
@@ -101,50 +101,6 @@ impl Config {
 		self.theme.get(&theme).unwrap_or(&Style::default()).to_rat()
 	}
 
-	pub fn can_color(&self) -> bool {
-		if let Some(OptType::Switch(switch)) = self.map.get("color") {
-			match switch {
-				Switch::Always => return true,
-				Switch::Never => return false,
-				Switch::Auto => return std::io::stdout().is_tty(),
-			}
-		}
-		false
-	}
-
-	pub fn color(&self, theme: Theme, string: &str) -> String {
-		if self.can_color() {
-			if let Some(theme) = self.theme.get(&theme) {
-				return format!("{theme}{string}\x1b[0m");
-			}
-		}
-		string.to_string()
-	}
-
-	/// Hightlights the string according to configuration.
-	pub fn highlight(&self, string: &str) -> String { self.color(Theme::Highlight, string) }
-
-	/// Color the version according to configuration.
-	pub fn color_ver(&self, string: &str) -> String {
-		format!(
-			"{}{}{}",
-			self.highlight("("),
-			self.color(Theme::Secondary, string),
-			self.highlight(")")
-		)
-	}
-
-	/// Print a notice to stderr
-	pub fn stderr(&self, theme: Theme, string: &str) {
-		let header = match theme {
-			Theme::Error => "Error:",
-			Theme::Warning => "Warning:",
-			Theme::Notice => "Notice:",
-			_ => panic!("'{theme:?}' is not a valid stderr!"),
-		};
-		eprintln!("{} {string}", self.color(theme, header));
-	}
-
 	/// Read and Return the entire toml configuration file
 	fn read_config(conf_file: &Path) -> Result<Config> {
 		let conf = fs::read_to_string(conf_file)
@@ -186,11 +142,16 @@ impl Config {
 			}
 		}
 
-		// Set the color option if it doesn't exist
-		if !self.map.contains_key("color") {
-			self.map
-				.insert("color".to_string(), OptType::Switch(Switch::Auto));
-		}
+		let switch = match self
+			.map
+			.get("color")
+			.unwrap_or(&OptType::Switch(Switch::Auto))
+		{
+			OptType::Switch(switch) => *switch,
+			_ => Switch::Auto,
+		};
+
+		setup_color(Color::new(switch, self.theme.clone()));
 
 		// If Debug is there we can print the whole thing.
 		if self.debug() {
@@ -275,6 +236,14 @@ impl Config {
 		deduped.sort();
 
 		Ok(deduped)
+	}
+
+	pub fn arches(&self) -> Vec<String> {
+		if self.get_bool("all_arches", false) {
+			self.apt.get_architectures()
+		} else {
+			vec![self.apt.get_architectures().into_iter().next().unwrap()]
+		}
 	}
 
 	/// Get the countries that were passed as arguments.

@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{bail, Context, Result};
-use regex::Regex;
 use rust_apt::records::RecordField;
 use rust_apt::Version;
 use serde::Serialize;
@@ -12,10 +11,10 @@ use tokio::sync::{mpsc, Mutex};
 
 use super::downloader::Message;
 use super::Downloader;
-use crate::config::{Config, Paths, Theme};
+use crate::config::{color, Theme};
 use crate::fs::AsyncFs;
 use crate::hashsum::{self, HashSum};
-use crate::util::{get_pkg_name, NalaRegex};
+use crate::util::{get_pkg_name, DOMAIN, MIRROR};
 
 pub async fn add_domain(domain: String, domains: &mut Arc<Mutex<HashMap<String, u8>>>) -> bool {
 	let mut lock = domains.lock().await;
@@ -55,12 +54,12 @@ impl Uri {
 	pub async fn from_version<'a>(
 		downloader: &mut Downloader,
 		version: &'a Version<'a>,
-		config: &Config,
+		archive: &Path,
 	) -> Result<Uri> {
-		let uris = downloader.filter.uris(version, config).await?;
+		let uris = downloader.filter.uris(version, archive).await?;
 		let size = version.size() as usize;
 		let filename = get_pkg_name(version);
-		let hash = hashsum::get_hash(config, version)?;
+		let hash = hashsum::get_hash(version)?;
 		Ok(Self::new(downloader, uris, size, filename, Some(hash)))
 	}
 
@@ -110,11 +109,7 @@ impl Uri {
 		bail!("Checksum did not match for {}", &self.filename);
 	}
 
-	pub async fn download(
-		mut self,
-		mut domains: Arc<Mutex<HashMap<String, u8>>>,
-		regex: Regex,
-	) -> Result<Uri> {
+	pub async fn download(mut self, mut domains: Arc<Mutex<HashMap<String, u8>>>) -> Result<Uri> {
 		// First check if the file already exists on disk.
 		if self.archive.exists() {
 			if let Some(hash) = &self.hash {
@@ -138,7 +133,7 @@ impl Uri {
 		// This is the string URL passed to the http client
 		while let Some(url) = self.uris.pop_front() {
 			self.retries = 0;
-			let Some(domain) = regex
+			let Some(domain) = DOMAIN
 				.captures(&url)
 				.and_then(|c| c.get(1).map(|m| m.as_str()))
 			else {
@@ -224,7 +219,6 @@ impl Uri {
 
 pub struct UriFilter {
 	mirrors: HashMap<String, String>,
-	pub regex: NalaRegex,
 	pub untrusted: HashSet<String>,
 }
 
@@ -232,13 +226,13 @@ impl UriFilter {
 	pub fn new() -> UriFilter {
 		UriFilter {
 			mirrors: HashMap::new(),
-			regex: NalaRegex::new(),
 			untrusted: HashSet::new(),
 		}
 	}
 
-	pub fn add_untrusted(&mut self, config: &Config, item: &str) {
-		self.untrusted.insert(config.color(Theme::Error, item));
+	pub fn add_untrusted(&mut self, item: &str) {
+		self.untrusted
+			.insert(color::color!(Theme::Error, item).to_string());
 	}
 
 	/// Filter Uris from a package version.
@@ -247,7 +241,7 @@ impl UriFilter {
 	async fn uris<'a>(
 		&mut self,
 		version: &'a Version<'a>,
-		config: &Config,
+		archive: &Path,
 	) -> Result<VecDeque<String>> {
 		let mut filtered = VecDeque::new();
 
@@ -261,7 +255,7 @@ impl UriFilter {
 			// Make sure the File is trusted.
 			if !pf.index_file().is_trusted() {
 				// Erroring is handled later if there are any untrusted URIs
-				self.add_untrusted(config, version.parent().name());
+				self.add_untrusted(version.parent().name());
 			}
 
 			let uri = pf.index_file().archive_uri(&vf.lookup().filename());
@@ -271,13 +265,12 @@ impl UriFilter {
 				let Some(filename) = path.file_name() else {
 					bail!("{path:?} Does not have a valid filename!")
 				};
-				path.cp(&config.get_path(&Paths::Archive).join(filename))
-					.await?;
+				path.cp(archive.join(filename)).await?;
 			}
 
 			// We should probably consolidate this. And maybe test if mirror: works.
 			if uri.starts_with("mirror+file:") || uri.starts_with("mirror:") {
-				if let Some(file_match) = self.regex.mirror().captures(&uri) {
+				if let Some(file_match) = MIRROR.captures(&uri) {
 					let filename = file_match.get(1).unwrap().as_str();
 					if !self.mirrors.contains_key(filename) {
 						self.add_to_mirrors(&uri, filename).await?;

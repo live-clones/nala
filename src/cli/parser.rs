@@ -120,6 +120,9 @@ pub struct Show {
 
 	#[clap(short = 'a', long, action)]
 	pub all_versions: bool,
+
+	#[clap(short = 'm', long, action)]
+	pub machine: bool,
 }
 
 /// Removes the local archive of downloaded package files.

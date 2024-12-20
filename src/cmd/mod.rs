@@ -7,19 +7,22 @@ macro_rules! define_modules {
 	};
 }
 
-define_modules!(show, update, upgrade, list, install, history, fetch, clean);
+define_modules!(show, update, upgrade, install, history, fetch, clean);
+
+mod list;
 use anyhow::Result;
 // TODO: These should maybe be part of like a libnala?
 pub use history::{get_history, HistoryEntry, HistoryPackage};
-pub use list::search;
-use regex::{Regex, RegexBuilder};
+use indexmap::IndexMap;
+pub use list::list_packages;
 use rust_apt::records::RecordField;
-use rust_apt::{DepType, Package, Version};
+use rust_apt::{DepType, Version};
 use serde::{Deserialize, Serialize};
 use show::{format_local, show_dependency};
-pub use upgrade::{apt_hook_with_pkgs, ask, auto_remover, run_scripts};
+pub use upgrade::{apt_hook_with_pkgs, ask, run_scripts};
 
-use crate::config::{Config, Theme};
+use crate::config::{color, Config, Theme};
+use crate::util::URL;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Operation {
@@ -77,128 +80,126 @@ impl std::fmt::Display for Operation {
 	}
 }
 
-pub fn build_regex(pattern: &str) -> Result<Regex> {
-	Ok(RegexBuilder::new(pattern).case_insensitive(true).build()?)
+const RECORDS: [&str; 13] = [
+	RecordField::Package,
+	RecordField::Version,
+	RecordField::Architecture,
+	RecordField::Priority,
+	RecordField::Essential,
+	RecordField::Section,
+	RecordField::Source,
+	RecordField::InstalledSize,
+	RecordField::Size,
+	RecordField::Maintainer,
+	RecordField::OriginalMaintainer,
+	RecordField::Homepage,
+	RecordField::SHA256,
+];
+
+fn print_info(header: &str, value: &str) {
+	let sep = color::highlight!(":");
+	let header = color::highlight!(header);
+	println!("{header}{sep} {value}")
 }
 
-/// The show command
-pub fn show_version<'a>(
-	config: &Config,
-	pkg: &'a Package,
-	ver: &'a Version,
-	pacstall_regex: &Regex,
-	url_regex: &Regex,
-) -> Vec<(&'static str, std::string::String)> {
-	let mut version_map: Vec<(&str, String)> = vec![
-		("Package", config.color(Theme::Primary, &pkg.fullname(true))),
-		("Version", config.color(Theme::Secondary, ver.version())),
-		("Architecture", ver.arch().to_string()),
-		("Installed", ver.is_installed().to_string()),
-		("Priority", ver.priority_str().unwrap_or("Unknown").into()),
-		("Essential", pkg.is_essential().to_string()),
-		("Section", ver.section().unwrap_or("Unknown").to_string()),
-		("Source", ver.source_name().to_string()),
-		("Installed-Size", config.unit_str(ver.installed_size())),
-		("Download-Size", config.unit_str(ver.size())),
-		(
-			"Maintainer",
-			ver.get_record(RecordField::Maintainer)
-				.unwrap_or("Unknown".to_string()),
-		),
-		(
-			"Original-Maintainer",
-			ver.get_record(RecordField::OriginalMaintainer)
-				.unwrap_or("Unknown".to_string()),
-		),
-		(
-			"Homepage",
-			ver.get_record(RecordField::Homepage)
-				.unwrap_or("Unknown".to_string()),
-		),
-	];
+struct ShowVersion<'a> {
+	ver: Version<'a>,
+	records: IndexMap<&'static str, String>,
+}
 
-	// Package File Section
-	if let Some(pkg_file) = ver.package_files().next() {
-		version_map.push(("Origin", pkg_file.origin().unwrap_or("Unknown").to_string()));
+impl ShowVersion<'_> {
+	pub fn new(ver: Version) -> ShowVersion {
+		let records = IndexMap::from_iter(RECORDS.iter().copied().map(|key| {
+			(
+				key,
+				ver.get_record(key).unwrap_or_else(|| "Unknown".to_string()),
+			)
+		}));
+		ShowVersion { ver, records }
+	}
 
-		// Check if source is local, pacstall or from a repo
-		let mut source = String::new();
-		if let Some(archive) = pkg_file.archive() {
-			if archive == "now" {
-				source += &format_local(pkg, config, pacstall_regex);
-			} else {
-				let uri = ver.uris().next().unwrap();
-				source += url_regex.find(&uri).unwrap().as_str();
-				source += &format!(
-					" {}/{} {} Packages",
-					pkg_file.codename().unwrap(),
-					pkg_file.component().unwrap(),
-					pkg_file.arch().unwrap()
-				);
-			}
-			version_map.push(("APT-Sources", source));
+	pub fn pretty_map(&self) -> IndexMap<&str, String> {
+		let mut map = IndexMap::new();
+
+		for (key, value) in &self.records {
+			map.insert(*key, value.to_string());
 		}
-	}
 
-	// If there are provides then show them!
-	// TODO: Add has_provides method to version
-	// Package has it right now.
-	let providers: Vec<String> = ver
-		.provides()
-		.map(|p| config.color(Theme::Primary, p.name()))
-		.collect();
-
-	if !providers.is_empty() {
-		version_map.push(("Provides", providers.join(" ")));
-	}
-
-	// TODO: Once we get down to the ol translations we need to figure out
-	// If we will be able to use as_ref for the headers. Or get the translation
-	// From libapt-pkg
-	let dependencies = [
-		("Depends", DepType::Depends),
-		("Recommends", DepType::Recommends),
-		("Suggests", DepType::Suggests),
-		("Replaces", DepType::Replaces),
-		("Conflicts", DepType::Conflicts),
-		("Breaks", DepType::DpkgBreaks),
-	];
-
-	for (header, deptype) in dependencies {
-		if let Some(depends) = ver.get_depends(&deptype) {
-			// Dedupe dependencies as they have duplicates sometimes
-			// Believed to be due to multi arch
-			let mut depend_names = vec![];
-			let mut deduped_depends = vec![];
-
-			for dep in depends {
-				let name = dep.first().name();
-				if !depend_names.contains(&name) {
-					depend_names.push(name);
-					deduped_depends.push(dep);
-				}
-			}
-
+		for kind in DepType::iter() {
+			let Some(deps) = self.ver.get_depends(kind) else {
+				continue;
+			};
 			// These Dependency types will be colored red
-			let red = if matches!(deptype, DepType::Conflicts | DepType::DpkgBreaks) {
+			let red = if matches!(kind, DepType::Conflicts | DepType::DpkgBreaks) {
 				Theme::Error
 			} else {
 				Theme::Primary
 			};
 
-			version_map.push((
-				header,
-				show_dependency(config, &deduped_depends, red)
-					.trim_end()
-					.to_string(),
-			));
+			map.insert(
+				kind.to_str(),
+				show_dependency(deps, red).trim_end().to_string(),
+			);
 		}
+
+		// Package File Section
+		if let Some(pkg_file) = self.ver.package_files().next() {
+			map.insert("Origin", pkg_file.origin().unwrap_or("Unknown").to_string());
+
+			// Check if source is local, pacstall or from a repo
+			let mut source = String::new();
+			if let Some(archive) = pkg_file.archive() {
+				if archive == "now" {
+					source += &format_local(self.ver.parent().name());
+				} else {
+					let uri = self.ver.uris().next().unwrap();
+					source += URL.find(&uri).unwrap().as_str();
+					source += &format!(
+						" {}/{} {} Packages",
+						pkg_file.codename().unwrap(),
+						pkg_file.component().unwrap(),
+						pkg_file.arch().unwrap()
+					);
+				}
+				map.insert("APT-Sources", source);
+			}
+		}
+
+		// If there are provides then show them!
+		// TODO: Add has_provides method to version
+		// Package has it right now.
+		let providers: Vec<String> = self
+			.ver
+			.provides()
+			.map(|p| color::primary!(p.name()).into())
+			.collect();
+
+		if !providers.is_empty() {
+			map.insert("Provides", providers.join(" "));
+		}
+
+		map.insert(
+			"Description",
+			self.ver
+				.description()
+				.unwrap_or_else(|| "Unknown".to_string()),
+		);
+
+		map
 	}
 
-	version_map.push((
-		"Description",
-		ver.description().unwrap_or_else(|| "Unknown".to_string()) + "\n",
-	));
+	pub fn show(&self, config: &Config) -> Result<()> {
+		if config.get_bool("machine", false) {
+			println!("{}", self.to_json()?);
+			return Ok(());
+		}
 
-	version_map
+		for (key, value) in &self.pretty_map() {
+			print_info(key, value);
+		}
+
+		Ok(())
+	}
+
+	pub fn to_json(&self) -> Result<String> { Ok(serde_json::to_string_pretty(&self.ver)?) }
 }

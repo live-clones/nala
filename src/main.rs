@@ -4,7 +4,8 @@ use std::process::ExitCode;
 use anyhow::{bail, Result};
 use clap::{ArgMatches, CommandFactory, FromArgMatches};
 use cli::Commands;
-use config::{Paths, Theme};
+use config::logger::LogOptions;
+use config::{Level, Paths};
 use deb::DebFile;
 use rust_apt::error::AptErrors;
 use rust_apt::{new_cache, PackageSort};
@@ -18,13 +19,14 @@ mod dpkg;
 mod fs;
 mod glob;
 mod hashsum;
+mod libnala;
 mod summary;
 mod table;
 mod tui;
 mod util;
 
 use crate::cli::NalaParser;
-use crate::cmd::{clean, fetch, history, install, list, search, show, update, upgrade};
+use crate::cmd::{clean, fetch, history, install, list_packages, show, update, upgrade};
 use crate::config::Config;
 use crate::download::download;
 
@@ -49,17 +51,16 @@ fn main() -> ExitCode {
 		// Guard clause in cause it is not AptErrors
 		// In this case just print it nicely
 		let Some(apt_errors) = err.downcast_ref::<AptErrors>() else {
-			config.stderr(Theme::Error, &format!("{err:?}"));
+			error!("{err:?}");
 			return ExitCode::FAILURE;
 		};
 
 		for error in apt_errors.iter() {
-			let (theme, msg) = if error.is_error {
-				(Theme::Error, error.msg.replace("E: ", ""))
+			if error.is_error {
+				error!("{}", error.msg.replace("E: ", ""));
 			} else {
-				(Theme::Warning, error.msg.replace("W: ", ""))
+				warn!("{}", error.msg.replace("W: ", ""));
 			};
-			config.stderr(theme, &msg);
 		}
 		return ExitCode::FAILURE;
 	}
@@ -172,9 +173,36 @@ fn main_nala(args: ArgMatches, derived: NalaParser, config: &mut Config) -> Resu
 	if let (Some((name, cmd)), Some(command)) = (args.subcommand(), derived.command) {
 		config.command = name.to_string();
 		config.load_args(cmd);
+
+		let options = LogOptions::new(Level::Info, Box::new(std::io::stderr()));
+		let logger = crate::config::setup_logger(options);
+
+		if config.verbose() {
+			logger
+				.blocking_lock()
+				.set_level(crate::config::Level::Verbose);
+		}
+
+		if config.debug() {
+			logger
+				.blocking_lock()
+				.set_level(crate::config::Level::Debug);
+		}
+
 		match command {
-			Commands::List(_) => list(config)?,
-			Commands::Search(_) => search(config)?,
+			Commands::List(_) | Commands::Search(_) => {
+				let cache = new_cache!()?;
+				list_packages(
+					config,
+					if config.command == "search" {
+						glob::regex_pkgs(config, &cache)?.only_pkgs()
+					} else if config.pkg_names().is_ok() {
+						glob::pkgs_with_modifiers(config, &cache)?.only_pkgs()
+					} else {
+						cache.packages(&glob::get_sorter(config)).collect()
+					},
+				)?;
+			},
 			Commands::Show(_) => show(config)?,
 			Commands::Clean(_) => clean(config)?,
 			Commands::Download(_) => download(config)?,

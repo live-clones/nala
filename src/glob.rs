@@ -7,8 +7,9 @@ use rust_apt::raw::IntoRawIter;
 use rust_apt::{Cache, Package, PackageSort, Version};
 
 use crate::cmd::Operation;
-use crate::config::{Config, Theme};
-use crate::dprint;
+use crate::config::{color, Config, Theme};
+use crate::libnala::NalaPkg;
+use crate::{debug, error};
 
 #[derive(Debug)]
 pub enum Matcher {
@@ -69,17 +70,16 @@ impl<'a> CliPackages<'a> {
 		self.0.iter().flat_map(|p| &p.pkgs).collect()
 	}
 
-	pub fn check_not_found(&self, config: &Config) -> Result<()> {
-		dprint!(config, "{:#?}", self.found_as_ref());
+	pub fn check_not_found(&self) -> Result<()> {
+		debug!("{:#?}", self.found_as_ref());
 		let mut bail = false;
 		for cli in &self.0 {
 			if !cli.pkgs.is_empty() {
 				continue;
 			}
-
-			config.stderr(
-				Theme::Error,
-				&format!("'{}' was not found", config.color(Theme::Notice, &cli.name)),
+			error!(
+				"'{}' was not found",
+				color::color!(Theme::Notice, &cli.name)
 			);
 			bail = true;
 		}
@@ -186,7 +186,7 @@ fn split_version(cli_str: String) -> (String, Option<String>) {
 
 pub fn get_sorter(config: &Config) -> PackageSort {
 	// Configure sorter for list and search
-	let mut sort = PackageSort::default();
+	let mut sort = PackageSort::default().include_virtual();
 
 	// set up our sorting parameters
 	if config.get_bool("installed", false) {
@@ -196,16 +196,12 @@ pub fn get_sorter(config: &Config) -> PackageSort {
 	if config.get_bool("upgradable", false) {
 		sort = sort.upgradable();
 	}
-
-	if config.get_bool("virtual", false) {
-		sort = sort.only_virtual();
-	}
 	sort
 }
 
 pub fn pkgs_with_modifiers<'a>(config: &Config, cache: &'a Cache) -> Result<CliPackages<'a>> {
 	let cli_pkgs = config.pkg_names()?;
-	dprint!(config, "Start Globbing cli_pkgs {cli_pkgs:#?}");
+	debug!("Start Globbing cli_pkgs {cli_pkgs:#?}");
 	let mut globs = CliPackages::new();
 	for mut pkg in cli_pkgs {
 		let mut modifier = None;
@@ -217,7 +213,7 @@ pub fn pkgs_with_modifiers<'a>(config: &Config, cache: &'a Cache) -> Result<CliP
 		}
 
 		let (name, version) = split_version(pkg.to_string());
-		dprint!(config, "split_version: '{name}' '{version:?}'");
+		debug!("split_version: '{name}' '{version:?}'");
 		let mut glob = CliPackage::new_glob(name)?.modifier(modifier);
 		if let Some(ver_str) = version {
 			glob.set_ver(ver_str);
@@ -225,9 +221,12 @@ pub fn pkgs_with_modifiers<'a>(config: &Config, cache: &'a Cache) -> Result<CliP
 		globs.push(glob);
 	}
 
-	let arches = config.apt.get_architectures();
+	debug!("{globs:#?}");
+
+	let arches = config.arches();
 	for pkg in cache.packages(&get_sorter(config)) {
-		if !arches.iter().any(|s| s == pkg.arch()) {
+		let arch = pkg.arch();
+		if !arches.iter().any(|s| s == arch) {
 			continue;
 		}
 
@@ -235,12 +234,12 @@ pub fn pkgs_with_modifiers<'a>(config: &Config, cache: &'a Cache) -> Result<CliP
 			continue;
 		};
 
+		let pkg = pkg.filter_virtual()?;
 		let version = cli.get_version(&pkg)?;
 		cli.add_pkg(pkg, version, cli.modifier);
-		continue;
 	}
 
-	globs.check_not_found(config)?;
+	globs.check_not_found()?;
 	globs.sort_by_name();
 
 	Ok(globs)
@@ -253,6 +252,7 @@ pub fn regex_pkgs<'a>(config: &Config, cache: &'a Cache) -> Result<CliPackages<'
 		.map(CliPackage::new_regex)
 		.collect::<Result<CliPackages, _>>()?;
 
+	let names_only = config.get_bool("names_only", false);
 	let arches = config.apt.get_architectures();
 	// Map packages into (Pkg, Version, DescFile)
 	// Gather these so it can be sorted by the index of the DescFile
@@ -277,7 +277,7 @@ pub fn regex_pkgs<'a>(config: &Config, cache: &'a Cache) -> Result<CliPackages<'
 			continue;
 		}
 
-		if config.get_bool("names_only", false) {
+		if names_only {
 			continue;
 		};
 
@@ -291,7 +291,7 @@ pub fn regex_pkgs<'a>(config: &Config, cache: &'a Cache) -> Result<CliPackages<'
 		}
 	}
 
-	cli_pkgs.check_not_found(config)?;
+	cli_pkgs.check_not_found()?;
 
 	Ok(cli_pkgs)
 }

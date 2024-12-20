@@ -1,15 +1,17 @@
-pub mod colors;
+pub mod color;
 pub mod configuration;
+pub mod logger;
 pub mod paths;
 
-pub use colors::Theme;
+pub use color::Theme;
 pub use configuration::Config;
+pub use logger::{setup_logger, Level};
 pub use paths::Paths;
 use serde::{Deserialize, Serialize};
 
 use crate::tui::UnitStr;
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
 pub enum Switch {
 	Always,
 	Never,

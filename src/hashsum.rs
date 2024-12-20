@@ -8,10 +8,10 @@ use sha2::{Digest, Sha256, Sha512};
 use tokio::fs;
 use tokio::io::AsyncReadExt;
 
-use crate::config::{Config, Theme};
+use crate::config::{color, Theme};
 
 /// Return the hash_type and the hash_value to be used.
-pub fn get_hash(config: &Config, version: &Version) -> Result<HashSum> {
+pub fn get_hash(version: &Version) -> Result<HashSum> {
 	// From Debian's requirements we are not to use these for security checking.
 	// https://wiki.debian.org/DebianRepository/Format#MD5Sum.2C_SHA1.2C_SHA256
 	// Clients may not use the MD5Sum and SHA1 fields for security purposes,
@@ -26,8 +26,8 @@ pub fn get_hash(config: &Config, version: &Version) -> Result<HashSum> {
 
 	bail!(
 		"{} {} can't be checked for integrity.\nThere are no hashes available for this package.",
-		config.color(Theme::Notice, version.parent().name()),
-		config.color(Theme::Notice, version.version()),
+		color::color!(Theme::Notice, version.parent().name()),
+		color::color!(Theme::Notice, version.version()),
 	);
 }
 

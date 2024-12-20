@@ -16,10 +16,10 @@ use rust_apt::{new_cache, Cache, Package, Version};
 use serde::{Deserialize, Serialize};
 use tokio::sync::OnceCell;
 
-use crate::config::{Config, Paths, Theme};
+use crate::config::{color, Config, Paths, Theme};
 use crate::fs::AsyncFs;
-use super::{build_regex, show_version, Operation};
-use crate::{dprint, table, tui, util};
+use super::{Operation, ShowVersion};
+use crate::{debug, error, table, tui, util};
 
 #[derive(Serialize, Deserialize)]
 pub struct HistoryFile {
@@ -99,6 +99,7 @@ impl HistoryPackage {
 		}
 	}
 
+	// TODO: Can probably use CliPackage here?
 	pub fn get_pkg<'a>(&self, cache: &'a Cache) -> Result<Package<'a>> {
 		if let Some(pkg) = cache.get(&self.name) {
 			return Ok(pkg);
@@ -131,14 +132,14 @@ impl HistoryPackage {
 			let secondary = config.rat_style(self.operation.theme());
 			let primary = config.rat_style(Theme::Regular);
 
-			let colored = config.color(self.operation.theme(), &self.name);
+			let colored = color::color!(self.operation.theme(), &self.name).to_string();
 			let mut items = vec![tui::summary::Item::left(secondary, colored)];
 
 			if let Some(old) = &self.old_version {
 				items.push(tui::summary::Item::center(primary, old.to_string()));
 				items.push(tui::summary::Item::center(
 					primary,
-					util::version_diff(config, old, self.version.to_string()),
+					util::version_diff(old, self.version.to_string()),
 				));
 			} else {
 				items.push(tui::summary::Item::center(
@@ -194,25 +195,16 @@ impl HistoryPackage {
 		config: &Config,
 		terminal: &mut tui::Term,
 	) -> Result<()> {
-		let pkg = self.get_pkg(cache)?;
-		let pacstall_regex = build_regex(r#"_remoterepo="(.*?)""#)?;
-		let url_regex = build_regex("(https?://.*?/.*?/)")?;
 		// Maybe we will show both versions if available?
-		let show = show_version(
-			config,
-			&pkg,
-			&self.get_version(cache)?,
-			&pacstall_regex,
-			&url_regex,
-		);
+		let show = ShowVersion::new(self.get_version(cache)?);
 		terminal.clear()?;
 
 		let mut lines: Vec<Text> = vec![];
-		for (head, info) in &show {
+		for (head, info) in show.pretty_map() {
 			let mut split = info.split('\n');
 			if let Some(first) = split.next() {
 				lines.push(
-					format!("{}: {first}", config.color(Theme::Highlight, head)).into_text()?,
+					format!("{}: {first}", color::highlight!(head)).into_text()?,
 				);
 				for line in split {
 					let line = line.to_string();
@@ -271,13 +263,12 @@ pub async fn get_history(config: &Config) -> Result<Vec<HistoryEntry>> {
 			}
 
 			let filename = path.file_name()?.to_str()?;
-			dprint!(config, "File '{filename}' found");
+			debug!("File '{filename}' found");
 			let id = match filename.split('.').next()?.parse::<u64>() {
 				Ok(num) => num,
 				Err(e) => {
-					config.stderr(
-						Theme::Error,
-						&format!("{:?}", anyhow!(e).context("Filename is not an int.")),
+					error!(
+						"{:?}", anyhow!(e).context("Filename is not an int.")
 					);
 					return None;
 				},
@@ -311,7 +302,6 @@ pub async fn history(config: &Config) -> Result<()> {
 	let cache = new_cache!()?;
 
 	let mut table = table::get_table(
-		config,
 		&["ID", "Command", "Date and Time", "Requested-By", "Altered"],
 	);
 

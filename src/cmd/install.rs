@@ -2,17 +2,18 @@ use anyhow::{bail, Result};
 use rust_apt::new_cache;
 use rust_apt::util::show_broken_pkg;
 
-use crate::config::{Config, Theme};
+use crate::config::Config;
 use crate::deb::DebFile;
 use crate::download::Downloader;
 use crate::glob::CliPackage;
 use crate::cmd::Operation;
 use crate::util::sudo_check;
-use crate::{dprint, glob};
+use crate::{debug, glob, info};
+use crate::config::color;
 
 #[tokio::main]
 pub async fn install(config: &Config) -> Result<()> {
-	dprint!(config, "Install");
+	debug!("Install");
 	sudo_check(config)?;
 
 	let mut http_pkgs = vec![];
@@ -49,7 +50,7 @@ pub async fn install(config: &Config) -> Result<()> {
 	let uris = if !http_pkgs.is_empty() {
 		let mut downloader = Downloader::new(config)?;
 		for pkg in http_pkgs {
-			downloader.add_from_cmdline(config, &pkg).await?;
+			downloader.add_from_cmdline(&pkg).await?;
 		}
 		downloader.run(config, true).await?
 	} else {
@@ -100,14 +101,10 @@ pub async fn install(config: &Config) -> Result<()> {
 
 				if let Some(inst) = pkg.installed() {
 					if inst == cand {
-						let pkg_name = config.color(Theme::Primary, pkg.name());
-						let ver = config.color_ver(cand.version());
-
-						config.stderr(
-							Theme::Notice,
-							&format!(
-								"{pkg_name}{ver} is already installed and at the latest version"
-							),
+						info!(
+							"{}{} is already installed and at the latest version",
+							color::primary!(pkg.name()),
+							color::ver!(cand.version())
 						);
 						continue;
 					}
@@ -118,7 +115,7 @@ pub async fn install(config: &Config) -> Result<()> {
 			},
 			Operation::Remove => {
 				let Some(_inst) = pkg.installed() else {
-					config.stderr(Theme::Notice, &format!("{} is not installed", pkg.name()));
+					info!("{} is not installed", pkg.name());
 					continue;
 				};
 
@@ -129,7 +126,7 @@ pub async fn install(config: &Config) -> Result<()> {
 				// Pkg->SelectedState = pkgCache::State::Hold;
 
 				// TODO: Configure so we can purge >:)
-				dprint!(config, "Mark Delete: {pkg}");
+				debug!("Mark Delete: {pkg}");
 				cache.resolver().clear(pkg);
 				cache.resolver().protect(pkg);
 				pkg.mark_delete(false);

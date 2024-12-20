@@ -1,7 +1,14 @@
 use core::fmt;
+use std::borrow::Cow;
 use std::cell::OnceCell;
+use std::collections::HashMap;
+use std::sync::OnceLock;
 
+use crossterm::tty::IsTty;
 use serde::{Deserialize, Serialize};
+
+use super::logger::Level;
+use super::Switch;
 
 pub type RatStyle = ratatui::style::Style;
 pub type RatColor = ratatui::style::Color;
@@ -9,6 +16,88 @@ pub type RatMod = ratatui::style::Modifier;
 
 /// Default Modifier for Serde
 fn bold() -> RatMod { RatMod::BOLD }
+
+static COLOR: OnceLock<Color> = OnceLock::new();
+
+pub fn setup_color(color: Color) -> &'static Color { COLOR.get_or_init(|| color) }
+
+pub fn get_color() -> &'static Color { COLOR.get().unwrap() }
+
+#[macro_export]
+macro_rules! color {
+	($theme:expr, $string:expr) => {{
+		$crate::config::color::get_color().color($theme, &$string)
+	}};
+}
+
+#[macro_export]
+macro_rules! primary {
+	($string:expr) => {{
+		$crate::color!($crate::config::color::Theme::Primary, $string)
+	}};
+}
+
+#[macro_export]
+macro_rules! secondary {
+	($string:expr) => {{
+		$crate::color!($crate::config::color::Theme::Secondary, $string)
+	}};
+}
+
+/// Hightlights the string according to configuration.
+#[macro_export]
+macro_rules! highlight {
+	($string:expr) => {{
+		$crate::color!($crate::config::color::Theme::Highlight, $string)
+	}};
+}
+
+/// Color the version according to configuration.
+#[macro_export]
+macro_rules! ver {
+	($string:expr) => {{
+		let res = format!(
+			"{}{}{}",
+			$crate::highlight!("("),
+			$crate::color!($crate::config::color::Theme::Secondary, $string),
+			$crate::highlight!(")"),
+		);
+		res
+	}};
+}
+
+pub use {color, highlight, primary, secondary, ver};
+
+pub struct Color {
+	switch: Switch,
+	map: HashMap<Theme, Style>,
+}
+
+unsafe impl Sync for Color {}
+
+impl Color {
+	pub fn new(switch: Switch, map: HashMap<Theme, Style>) -> Color { Color { switch, map } }
+
+	pub fn can_color(&self) -> bool {
+		match self.switch {
+			Switch::Always => true,
+			Switch::Never => false,
+			Switch::Auto => std::io::stdout().is_tty(),
+		}
+	}
+
+	pub fn color<'a, D: AsRef<str> + ?Sized>(&self, theme: Theme, string: &'a D) -> Cow<'a, str> {
+		let string = string.as_ref();
+
+		if self.can_color() {
+			if let Some(style) = self.map.get(&theme) {
+				return Cow::Owned(format!("{style}{string}\x1b[0m"));
+			}
+		}
+
+		Cow::Borrowed(string)
+	}
+}
 
 #[derive(Serialize, Deserialize, Debug, Hash, Eq, PartialEq, Copy, Clone)]
 pub enum Theme {
@@ -41,7 +130,18 @@ impl Theme {
 	}
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+impl From<Level> for Theme {
+	fn from(value: Level) -> Self {
+		match value {
+			Level::Error => Theme::Error,
+			Level::Notice => Theme::Notice,
+			Level::Warning => Theme::Warning,
+			Level::Info | Level::Verbose | Level::Debug => Theme::Primary,
+		}
+	}
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Style {
 	fg: RatColor,
 	bg: Option<RatColor>,

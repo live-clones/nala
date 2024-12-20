@@ -11,35 +11,11 @@ use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::{close, dup2, execv, fork, pipe, ForkResult};
 use rust_apt::cache::Upgrade;
 use rust_apt::raw::quote_string;
-use rust_apt::{new_cache, Cache, Package, PkgCurrentState, Version};
+use rust_apt::{new_cache, Package, PkgCurrentState, Version};
 
 use crate::config::Paths;
 use crate::util::{get_pkg_name, sudo_check};
-use crate::{dprint, Config};
-
-pub fn auto_remover(cache: &Cache) -> Vec<Version> {
-	let mut marked_remove = vec![];
-	for package in cache.iter() {
-		if !package.is_installed() {
-			continue;
-		}
-		if !package.is_auto_removable() {
-			continue;
-		}
-
-		if package.current_state() != PkgCurrentState::ConfigFiles {
-			package.mark_delete(false);
-			if let Some(inst) = package.installed() {
-				marked_remove.push(inst);
-			}
-		} else {
-			package.mark_keep();
-		}
-	}
-	// There is more code in private-install.cc DoAutomaticremove
-	// If there are auto_remove bugs consider implementing that.
-	marked_remove
-}
+use crate::{debug, Config};
 
 #[tokio::main]
 pub async fn upgrade(config: &Config) -> Result<()> {
@@ -55,7 +31,7 @@ pub async fn upgrade(config: &Config) -> Result<()> {
 		Upgrade::Upgrade
 	};
 
-	dprint!(config, "Running Upgrade: {upgrade_type:?}");
+	debug!("Running Upgrade: {upgrade_type:?}");
 	cache.upgrade(upgrade_type)?;
 
 	crate::summary::commit(cache, config).await
@@ -63,7 +39,7 @@ pub async fn upgrade(config: &Config) -> Result<()> {
 
 pub fn run_scripts(config: &Config, key: &str) -> Result<()> {
 	for hook in config.apt.find_vector(key) {
-		dprint!(config, "Running {hook}");
+		debug!("Running {hook}");
 		let mut child = Command::new("sh").arg("-c").arg(hook).spawn()?;
 
 		let exit = child.wait()?;
@@ -186,7 +162,7 @@ fn write_config_info<W: Write>(w: &mut W, config: &Config, hook_ver: i32) -> Res
 					quote_string(&tag, "=\"\n".to_string()),
 					quote_string(&value, "\n".to_string())
 				);
-				dprint!(config, "{tag_value}");
+				debug!("{tag_value}");
 				writeln!(w, "{tag_value}",)?;
 				w.flush()?;
 			}
@@ -212,7 +188,7 @@ pub fn apt_hook_with_pkgs(config: &Config, pkgs: &Vec<Package>, key: &str) -> Re
 			.apt
 			.int(&format!("DPkg::Tools::Options::{prog}::InfoFD"), 0);
 
-		dprint!(config, "{prog} is version {hook_ver} on fd {info_fd}");
+		debug!("{prog} is version {hook_ver} on fd {info_fd}");
 
 		let mut hook_strings: Vec<String> = vec![];
 
@@ -237,7 +213,7 @@ pub fn apt_hook_with_pkgs(config: &Config, pkgs: &Vec<Package>, key: &str) -> Re
 			hook_strings.push(format!("{}\n", filename.display()))
 		}
 
-		dprint!(config, "Forking Child for '{hook}'");
+		debug!("Forking Child for '{hook}'");
 		let (statusfd, writefd) = pipe()?;
 
 		match unsafe { fork()? } {
@@ -245,14 +221,14 @@ pub fn apt_hook_with_pkgs(config: &Config, pkgs: &Vec<Package>, key: &str) -> Re
 				close(writefd.as_raw_fd())?;
 				dup2(statusfd.as_raw_fd(), info_fd)?;
 
-				dprint!(config, "From Child");
+				debug!("From Child");
 				env::set_var("APT_HOOK_INFO_FD", info_fd.to_string());
 
 				let mut args_cstr: Vec<CString> = vec![];
 				for arg in ["/bin/sh", "-c", &hook] {
 					args_cstr.push(CString::new(arg)?)
 				}
-				dprint!(config, "Exec {args_cstr:?}");
+				debug!("Exec {args_cstr:?}");
 				execv(&args_cstr[0], &args_cstr)?;
 
 				// Ensure exit after execv if it fails
@@ -265,9 +241,9 @@ pub fn apt_hook_with_pkgs(config: &Config, pkgs: &Vec<Package>, key: &str) -> Re
 					write_config_info(&mut w, config, hook_ver)?;
 				}
 
-				dprint!(config, "Writing data into child");
+				debug!("Writing data into child");
 				for pkg in hook_strings {
-					dprint!(config, "{pkg}");
+					debug!("{pkg}");
 					write!(w, "{pkg}")?;
 					w.flush()?;
 				}
@@ -275,7 +251,7 @@ pub fn apt_hook_with_pkgs(config: &Config, pkgs: &Vec<Package>, key: &str) -> Re
 				drop(w);
 				// Forget the file descriptor as we just closed it with drop
 				std::mem::forget(writefd);
-				dprint!(config, "Waiting for Child");
+				debug!("Waiting for Child");
 
 				// Wait for the child process to finish and get its exit code
 				let wait_status = waitpid(child, None)?;

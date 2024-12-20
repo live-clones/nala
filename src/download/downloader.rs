@@ -1,5 +1,5 @@
 use std::collections::{HashMap, VecDeque};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -9,10 +9,10 @@ use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinSet;
 
 use super::{proxy, Uri, UriFilter};
-use crate::config::{Config, Paths, Theme};
+use crate::config::{color, Config, Paths, Theme};
 use crate::fs::AsyncFs;
 use crate::hashsum::HashSum;
-use crate::{dprint, dprog, tui};
+use crate::{debug, dprog, info, tui, warn};
 
 #[tokio::main]
 pub async fn download(config: &Config) -> Result<()> {
@@ -23,32 +23,30 @@ pub async fn download(config: &Config) -> Result<()> {
 	let mut not_found = vec![];
 
 	let cache = new_cache!()?;
-	for name in &config.pkg_names()? {
+	let pkg_names = config.pkg_names()?;
+	let archive = config.get_path(&Paths::Archive);
+	for name in &pkg_names {
 		if let Some(pkg) = cache.get(name) {
 			let versions: Vec<Version> = pkg.versions().collect();
 			for version in &versions {
 				if version.is_downloadable() {
-					downloader.add_version(version, config).await?;
+					downloader.add_version(version, &archive).await?;
 					break;
 				}
-				// Version wasn't downloadable
-				config.stderr(
-					Theme::Warning,
-					&format!(
-						"Can't find a source to download version '{}' of '{}'",
-						version.version(),
-						pkg.fullname(false)
-					),
+				warn!(
+					"Can't find a source to download version '{}' of '{}'",
+					version.version(),
+					pkg.fullname(false)
 				);
 			}
 		} else {
-			not_found.push(config.color(Theme::Notice, name));
+			not_found.push(color::color!(Theme::Notice, name).to_string());
 		}
 	}
 
 	if !not_found.is_empty() {
 		for pkg in &not_found {
-			config.color(Theme::Error, &format!("{pkg} not found"));
+			color::color!(Theme::Error, &format!("{pkg} not found"));
 		}
 		bail!("Some packages were not found.");
 	}
@@ -59,8 +57,8 @@ pub async fn download(config: &Config) -> Result<()> {
 	for uri in finished {
 		println!(
 			"  {} was written to {}",
-			config.color(Theme::Primary, &uri.filename),
-			config.color(Theme::Primary, &uri.archive.display().to_string()),
+			color::primary!(&uri.filename),
+			color::primary!(&uri.archive.to_string_lossy()),
 		)
 	}
 
@@ -76,25 +74,17 @@ pub fn untrusted_error(config: &Config, untrusted: Vec<String>) -> Result<()> {
 	if untrusted.is_empty() {
 		return Ok(());
 	}
-
-	config.stderr(
-		Theme::Warning,
-		"The Following packages cannot be authenticated!",
-	);
-
+	warn!("The Following packages cannot be authenticated!");
 	eprintln!("  {}", untrusted.join(", "));
 
 	if !config.apt.bool("APT::Get::AllowUnauthenticated", false) {
 		bail!(format!(
 			"Some packages were unable to be authenticated.\n  If you're sure use {}",
-			config.color(Theme::Notice, "--allow-unauthenticated")
+			color::color!(Theme::Notice, "--allow-unauthenticated")
 		));
 	}
 
-	config.stderr(
-		Theme::Notice,
-		"Configuration is set to allow installation of unauthenticated packages.",
-	);
+	info!("Configuration is set to allow installation of unauthenticated packages.");
 	Ok(())
 }
 
@@ -152,15 +142,15 @@ impl Downloader {
 	pub async fn add_version<'a>(
 		&mut self,
 		version: &'a Version<'a>,
-		config: &Config,
+		archive: &Path,
 	) -> Result<()> {
-		let uri = Uri::from_version(self, version, config).await?;
+		let uri = Uri::from_version(self, version, archive).await?;
 		self.uris.push(uri);
 		Ok(())
 	}
 
 	/// This method ingests URLs from the command line to download
-	pub async fn add_from_cmdline(&mut self, config: &Config, cli_uri: &str) -> Result<()> {
+	pub async fn add_from_cmdline(&mut self, cli_uri: &str) -> Result<()> {
 		let mut parser = cli_uri.split_terminator(":");
 
 		let Some(protocol) = parser.next() else {
@@ -181,7 +171,7 @@ impl Downloader {
 		let hash = if let Some(hashsum) = parser.next() {
 			Some(HashSum::from_str_len(hashsum.len(), hashsum.to_string())?)
 		} else {
-			config.stderr(Theme::Warning, &format!("No Hash Found for '{uri}'"));
+			warn!("No Hash Found for '{uri}'");
 			None
 		};
 
@@ -190,7 +180,7 @@ impl Downloader {
 		// Check headers for the size of the download
 		let headers = response.headers();
 
-		dprint!(config, "URL Headers for {uri} {headers:#?}");
+		debug!("URL Headers for {uri} {headers:#?}");
 		let Some(content_len) = response.headers().get("content-length") else {
 			bail!("content-length does not exist in {headers:#?}");
 		};
@@ -218,8 +208,7 @@ impl Downloader {
 		self.partial_dir.mkdir().await?;
 
 		while let Some(uri) = self.uris.pop() {
-			let regex = self.filter.regex.domain().clone();
-			self.set.spawn(uri.download(self.domains.clone(), regex));
+			self.set.spawn(uri.download(self.domains.clone()));
 		}
 
 		Ok(())
@@ -241,7 +230,7 @@ impl Downloader {
 	pub async fn run(mut self, config: &Config, rm_partial: bool) -> Result<Vec<Uri>> {
 		if config.debug() {
 			for uri in self.uris() {
-				dprint!(config, "{}", uri.to_json()?);
+				debug!("{}", uri.to_json()?);
 			}
 		}
 		// TODO: This is correct, but it is also likely very inefficient.
@@ -256,7 +245,7 @@ impl Downloader {
 			.collect::<Vec<_>>()
 			.into_iter()
 			// Add all the filenames without hashes into the filter
-			.for_each(|filename| self.filter.add_untrusted(config, &filename));
+			.for_each(|filename| self.filter.add_untrusted(&filename));
 
 		if !self.filter.untrusted.is_empty() {
 			untrusted_error(config, self.filter.untrusted.iter().cloned().collect())?;
@@ -314,7 +303,7 @@ impl Downloader {
 			if tui::poll_exit_event()? {
 				progress.clean_up()?;
 				self.set.shutdown().await;
-				config.stderr(Theme::Notice, "Exiting at user request");
+				info!("Exiting at user request");
 				return Ok(vec![]);
 			}
 

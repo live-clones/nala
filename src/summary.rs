@@ -1,103 +1,17 @@
 use std::collections::HashMap;
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 use chrono::Utc;
 use rust_apt::util::DiskSpace;
-use rust_apt::{Cache, Marked};
+use rust_apt::Cache;
 
 use crate::cmd::{
-	self, apt_hook_with_pkgs, ask, auto_remover, run_scripts, HistoryEntry, HistoryPackage,
-	Operation,
+	self, apt_hook_with_pkgs, ask, run_scripts, HistoryEntry, HistoryPackage, Operation,
 };
-use crate::config::Config;
+use crate::config::{color, Config, Paths};
 use crate::download::Downloader;
-use crate::{dpkg, dprint, table, tui};
-
-/// Run the autoremover and then get the changes from the cache.
-pub fn get_changes(
-	cache: &Cache,
-	config: &Config,
-) -> Result<HashMap<Operation, Vec<HistoryPackage>>> {
-	dprint!(config, "Running auto_remover");
-	let auto_remove = auto_remover(cache);
-
-	let mut pkg_set: HashMap<Operation, Vec<HistoryPackage>> = HashMap::new();
-
-	dprint!(config, "Calculating changes");
-	let changed = cache.get_changes(true).collect::<Vec<_>>();
-	if changed.is_empty() {
-		return Ok(pkg_set);
-	}
-
-	for pkg in &changed {
-		let (op, ver) = match pkg.marked() {
-			mark @ (Marked::NewInstall | Marked::Install | Marked::ReInstall) => {
-				let Some(cand) = pkg.install_version() else {
-					continue;
-				};
-				let op = match mark {
-					Marked::ReInstall => Operation::Reinstall,
-					_ => Operation::Install,
-				};
-				(op, cand)
-			},
-			Marked::Remove | Marked::Purge => {
-				let Some(inst) = pkg.installed() else {
-					continue;
-				};
-
-				if auto_remove.contains(&inst) {
-					continue;
-				}
-
-				let op = if pkg.marked_purge() { Operation::Purge } else { Operation::Remove };
-				(op, inst)
-			},
-			mark @ (Marked::Upgrade | Marked::Downgrade) => {
-				if let (Some(inst), Some(cand)) = (pkg.installed(), pkg.candidate()) {
-					let op = match mark {
-						Marked::Upgrade => Operation::Upgrade,
-						_ => Operation::Downgrade,
-					};
-
-					pkg_set
-						.entry(op)
-						.or_default()
-						.push(HistoryPackage::from_version(op, &cand, &Some(inst)));
-				}
-				continue;
-			},
-			// TODO: See if pkg is held for phasing and show percent
-			// pkgDepCache::PhasingApplied
-			// VerIterator::PhasedUpdatePercentage
-			Marked::Held => {
-				let Some(cand) = pkg.candidate() else {
-					continue;
-				};
-				(Operation::Held, cand)
-			},
-			Marked::Keep => continue,
-			Marked::None => bail!("{pkg} not marked, this should be impossible"),
-		};
-
-		pkg_set
-			.entry(op)
-			.or_default()
-			.push(HistoryPackage::from_version(op, &ver, &None));
-	}
-
-	if !auto_remove.is_empty() {
-		pkg_set.insert(
-			Operation::AutoRemove,
-			auto_remove
-				.into_iter()
-				.map(|v| HistoryPackage::from_version(Operation::AutoRemove, &v, &None))
-				.collect(),
-		);
-	}
-
-	Ok(pkg_set)
-}
+use crate::libnala::NalaCache;
+use crate::{dpkg, table, tui};
 
 /// TODO: Implement a simple summary that is very short for serial/console users
 pub async fn display_summary(
@@ -114,14 +28,11 @@ pub async fn display_summary(
 		let mut tables = vec![];
 
 		for (op, pkgs) in pkg_set {
-			let mut table = table::get_table(
-				config,
-				if pkgs[0].items(config).len() > 3 {
-					&["Package:", "Old Version:", "New Version:", "Size:"]
-				} else {
-					&["Package:", "Version:", "Size:"]
-				},
-			);
+			let mut table = table::get_table(if pkgs[0].items(config).len() > 3 {
+				&["Package:", "Old Version:", "New Version:", "Size:"]
+			} else {
+				&["Package:", "Version:", "Size:"]
+			});
 
 			table.add_rows(pkgs.iter().map(|p| p.items(config)));
 			tables.push((op, table));
@@ -132,7 +43,7 @@ pub async fn display_summary(
 
 		for (op, pkgs) in tables {
 			println!("{sep}");
-			println!(" {}", config.highlight(op.as_str()));
+			println!(" {}", color::highlight!(op.as_str()));
 			println!("{sep}");
 
 			println!("{pkgs}");
@@ -170,7 +81,7 @@ pub async fn display_summary(
 }
 
 pub async fn commit(cache: Cache, config: &Config) -> Result<()> {
-	let pkg_set = crate::summary::get_changes(&cache, config)?;
+	let pkg_set = cache.sort_changes()?;
 	if pkg_set.is_empty() {
 		println!("Nothing to do.");
 		return Ok(());
@@ -183,8 +94,9 @@ pub async fn commit(cache: Cache, config: &Config) -> Result<()> {
 		.collect::<Vec<_>>();
 
 	let mut downloader = Downloader::new(config)?;
+	let archive = config.get_path(&Paths::Archive);
 	for ver in &versions {
-		downloader.add_version(ver, config).await?;
+		downloader.add_version(ver, &archive).await?;
 	}
 
 	if config.get_bool("print_uris", false) {
