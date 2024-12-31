@@ -1,3 +1,9 @@
+nala (0.15.4~bpo12+1) bookworm-backports; urgency=medium
+
+  * Rebuild for bookworm-backports.*
+
+ -- Blake Lee <blake@volian.org>  Mon, 30 Dec 2024 22:16:59 +0000
+
 nala (0.15.4) unstable; urgency=medium
 
   [ Bug Fixes ]
