@@ -268,7 +268,7 @@ async fn score_handler(
 	let mut score = vec![];
 	while let Some(res) = set.join_next().await {
 		if let Ok(Ok(response)) = res {
-			pb.msg = vec!["Finished: ".to_string(), response.0.to_string()];
+			pb.dg.push_str("Finished: ", response.0.to_string());
 			score.push(response)
 		}
 		pb.indicatif.inc(1);

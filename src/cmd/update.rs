@@ -48,8 +48,19 @@ pub async fn update(config: &Config) -> Result<()> {
 					progress.print(&msg)?
 				};
 			},
-			Message::Messages(msg) => {
-				progress.msg = msg;
+			Message::Messages(msgs) => {
+				if !msgs.is_empty() {
+					let mut iter = msgs.into_iter();
+
+					// First string is the header and always there
+					let mut msg = tui::progress::Message::empty(iter.next().unwrap()).regular();
+
+					for line in iter {
+						msg.add(line);
+					}
+
+					progress.dg.clear().push(msg);
+				}
 				progress.render()?;
 			},
 		}

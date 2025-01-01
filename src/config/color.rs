@@ -7,7 +7,6 @@ use std::sync::OnceLock;
 use crossterm::tty::IsTty;
 use serde::{Deserialize, Serialize};
 
-use super::logger::Level;
 use super::Switch;
 
 pub type RatStyle = ratatui::style::Style;
@@ -86,11 +85,15 @@ impl Color {
 		}
 	}
 
-	pub fn color<'a, D: AsRef<str> + ?Sized>(&self, theme: Theme, string: &'a D) -> Cow<'a, str> {
+	pub fn color<'a, T: AsRef<Theme>, D: AsRef<str> + ?Sized>(
+		&self,
+		theme: T,
+		string: &'a D,
+	) -> Cow<'a, str> {
 		let string = string.as_ref();
 
 		if self.can_color() {
-			if let Some(style) = self.map.get(&theme) {
+			if let Some(style) = self.map.get(theme.as_ref()) {
 				return Cow::Owned(format!("{style}{string}\x1b[0m"));
 			}
 		}
@@ -130,15 +133,8 @@ impl Theme {
 	}
 }
 
-impl From<Level> for Theme {
-	fn from(value: Level) -> Self {
-		match value {
-			Level::Error => Theme::Error,
-			Level::Notice => Theme::Notice,
-			Level::Warning => Theme::Warning,
-			Level::Info | Level::Verbose | Level::Debug => Theme::Primary,
-		}
-	}
+impl AsRef<Theme> for Theme {
+	fn as_ref(&self) -> &Theme { self }
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]

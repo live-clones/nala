@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Context, Result};
 use clap::parser::ValueSource;
 use clap::ArgMatches;
+use ratatui::style::Styled;
 use rust_apt::config::Config as AptConfig;
 use serde::{Deserialize, Serialize};
 
@@ -97,8 +98,15 @@ impl Config {
 		}
 	}
 
-	pub fn rat_style(&self, theme: Theme) -> RatStyle {
-		self.theme.get(&theme).unwrap_or(&Style::default()).to_rat()
+	pub fn rat_style<T: AsRef<Theme>>(&self, theme: T) -> RatStyle {
+		self.theme
+			.get(theme.as_ref())
+			.unwrap_or(&Style::default())
+			.to_rat()
+	}
+
+	pub fn rat_reset<T: AsRef<Theme>>(&self, theme: T) -> RatStyle {
+		RatStyle::reset().set_style(self.rat_style(theme))
 	}
 
 	/// Read and Return the entire toml configuration file
@@ -114,6 +122,12 @@ impl Config {
 
 	/// Load configuration with the command line arguments
 	pub fn load_args(&mut self, args: &ArgMatches) {
+		for alias in [("full-upgrade", "full"), ("safe-upgrade", "safe")] {
+			if std::env::args().any(|arg| arg == alias.0) {
+				self.map.insert(alias.1.to_string(), OptType::Bool(true));
+			}
+		}
+
 		for id in args.ids() {
 			let key = id.as_str().to_string();
 			// Don't do anything if the option wasn't specifically passed

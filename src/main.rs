@@ -177,16 +177,13 @@ fn main_nala(args: ArgMatches, derived: NalaParser, config: &mut Config) -> Resu
 		let options = LogOptions::new(Level::Info, Box::new(std::io::stderr()));
 		let logger = crate::config::setup_logger(options);
 
-		if config.verbose() {
-			logger
-				.blocking_lock()
-				.set_level(crate::config::Level::Verbose);
-		}
-
-		if config.debug() {
-			logger
-				.blocking_lock()
-				.set_level(crate::config::Level::Debug);
+		for (config, level) in [
+			(config.verbose(), crate::config::Level::Verbose),
+			(config.debug(), crate::config::Level::Debug),
+		] {
+			if config {
+				logger.lock().unwrap().set_level(level);
+			}
 		}
 
 		match command {

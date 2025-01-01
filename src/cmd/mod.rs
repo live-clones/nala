@@ -10,6 +10,7 @@ macro_rules! define_modules {
 define_modules!(show, update, upgrade, install, history, fetch, clean);
 
 mod list;
+pub mod traits;
 use anyhow::Result;
 // TODO: These should maybe be part of like a libnala?
 pub use history::{get_history, HistoryEntry, HistoryPackage};
@@ -18,7 +19,8 @@ pub use list::list_packages;
 use rust_apt::records::RecordField;
 use rust_apt::{DepType, Version};
 use serde::{Deserialize, Serialize};
-use show::{format_local, show_dependency};
+use show::format_local;
+use traits::ShowFormat;
 pub use upgrade::{apt_hook_with_pkgs, ask, run_scripts};
 
 use crate::config::{color, Config, Theme};
@@ -50,8 +52,20 @@ impl Operation {
 			Self::Downgrade,
 		]
 	}
+}
 
-	pub fn as_str(&self) -> &'static str {
+impl Operation {
+	pub fn as_str(&self) -> &str { self.as_ref() }
+}
+
+impl std::fmt::Display for Operation {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", AsRef::<str>::as_ref(self))
+	}
+}
+
+impl AsRef<str> for Operation {
+	fn as_ref(&self) -> &str {
 		match self {
 			Operation::Remove => "Remove",
 			Operation::AutoRemove => "AutoRemove",
@@ -64,21 +78,31 @@ impl Operation {
 			Operation::Held => "Held",
 		}
 	}
+}
 
-	pub fn theme(&self) -> Theme {
+impl AsRef<Theme> for Operation {
+	fn as_ref(&self) -> &Theme {
 		match self {
-			Self::Remove | Self::AutoRemove | Self::Purge | Self::AutoPurge => Theme::Error,
-			Self::Install | Self::Upgrade => Theme::Secondary,
-			Self::Reinstall | Self::Downgrade | Self::Held => Theme::Notice,
+			Self::Remove | Self::AutoRemove | Self::Purge | Self::AutoPurge => &Theme::Error,
+			Self::Install | Self::Upgrade => &Theme::Secondary,
+			Self::Reinstall | Self::Downgrade | Self::Held => &Theme::Notice,
 		}
 	}
 }
 
-impl std::fmt::Display for Operation {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", self.as_str())
-	}
-}
+const DEP_ITER: &[DepType] = {
+	&[
+		DepType::Depends,
+		DepType::PreDepends,
+		DepType::Suggests,
+		DepType::Recommends,
+		DepType::Conflicts,
+		DepType::Replaces,
+		DepType::Obsoletes,
+		DepType::DpkgBreaks,
+		DepType::Enhances,
+	]
+};
 
 const RECORDS: [&str; 13] = [
 	RecordField::Package,
@@ -118,28 +142,81 @@ impl ShowVersion<'_> {
 		ShowVersion { ver, records }
 	}
 
-	pub fn pretty_map(&self) -> IndexMap<&str, String> {
+	pub fn map(&self) -> IndexMap<&str, String> {
 		let mut map = IndexMap::new();
 
 		for (key, value) in &self.records {
 			map.insert(*key, value.to_string());
 		}
 
-		for kind in DepType::iter() {
-			let Some(deps) = self.ver.get_depends(kind) else {
-				continue;
-			};
-			// These Dependency types will be colored red
-			let red = if matches!(kind, DepType::Conflicts | DepType::DpkgBreaks) {
-				Theme::Error
-			} else {
-				Theme::Primary
-			};
+		// Package File Section
+		if let Some(pkg_file) = self.ver.package_files().next() {
+			for (key, option) in [
+				("Archive", pkg_file.archive()),
+				("Origin", pkg_file.origin()),
+				("Codename", pkg_file.codename()),
+				("Component", pkg_file.component()),
+			] {
+				if let Some(value) = option {
+					map.insert(key, value.to_string());
+				}
+			}
+		}
 
-			map.insert(
-				kind.to_str(),
-				show_dependency(deps, red).trim_end().to_string(),
-			);
+		map.insert("Provides", self.ver.provides().collect::<Vec<_>>().format());
+		if let Some(desc) = self.ver.description() {
+			map.insert("Description", desc);
+		}
+
+		let pkg = self.ver.parent();
+		let mut attrs = vec![];
+		if let Some(installed) = pkg.installed() {
+			attrs.push("Installed".into());
+
+			// Version isn't downloadable, consider it locally installed
+			if !self.ver.is_downloadable() {
+				attrs.push("Local".into());
+			}
+
+			if pkg.is_auto_removable() {
+				attrs.push("Auto-Removable".into());
+			}
+
+			if pkg.is_auto_installed() {
+				attrs.push("Automatic".into());
+			}
+
+			if let Some(candidate) = pkg.candidate() {
+				// Version is installed, check if it's upgradable
+				if self.ver == installed && self.ver < candidate {
+					attrs.push(format!(
+						"Upgradable to: {}",
+						color::ver!(candidate.version())
+					));
+				}
+
+				// This Version isn't installed, see if it's the candidate
+				if self.ver == candidate && self.ver > installed {
+					attrs.push(format!(
+						"Upgradable from: {}",
+						color::ver!(installed.version())
+					));
+				}
+			}
+		}
+
+		map.insert("Attributes", format!("[{}]", attrs.join(", ")));
+
+		map
+	}
+
+	pub fn pretty_map(&self) -> IndexMap<&str, String> {
+		let mut map = self.map();
+
+		for kind in DEP_ITER {
+			if let Some(deps) = self.ver.get_depends(kind) {
+				map.insert(kind.as_ref(), deps.format());
+			}
 		}
 
 		// Package File Section
@@ -154,37 +231,11 @@ impl ShowVersion<'_> {
 				} else {
 					let uri = self.ver.uris().next().unwrap();
 					source += URL.find(&uri).unwrap().as_str();
-					source += &format!(
-						" {}/{} {} Packages",
-						pkg_file.codename().unwrap(),
-						pkg_file.component().unwrap(),
-						pkg_file.arch().unwrap()
-					);
+					source += &pkg_file.format();
 				}
 				map.insert("APT-Sources", source);
 			}
 		}
-
-		// If there are provides then show them!
-		// TODO: Add has_provides method to version
-		// Package has it right now.
-		let providers: Vec<String> = self
-			.ver
-			.provides()
-			.map(|p| color::primary!(p.name()).into())
-			.collect();
-
-		if !providers.is_empty() {
-			map.insert("Provides", providers.join(" "));
-		}
-
-		map.insert(
-			"Description",
-			self.ver
-				.description()
-				.unwrap_or_else(|| "Unknown".to_string()),
-		);
-
 		map
 	}
 
@@ -198,6 +249,44 @@ impl ShowVersion<'_> {
 			print_info(key, value);
 		}
 
+		Ok(())
+	}
+
+	/// List a single version of a package
+	pub fn list(&self, config: &Config) -> Result<()> {
+		if config.get_bool("machine", false) {
+			println!("{}", self.to_json()?);
+			return Ok(());
+		}
+
+		let mut string = self.ver.format();
+		if let Some(pkg_file) = self.ver.package_files().next() {
+			string += &pkg_file.format();
+		}
+
+		string += self.map().get("Attributes").unwrap();
+
+		let description = config.get_bool("description", false);
+		let summary = config.get_bool("summary", false);
+
+		let desc = if description {
+			self.ver
+				.description()
+				.unwrap_or_else(|| "No Description".to_string())
+		} else if summary {
+			self.ver
+				.summary()
+				.unwrap_or_else(|| "No Summary".to_string())
+		} else {
+			"".to_string()
+		};
+
+		if description || summary {
+			string += "\n";
+			string += &desc;
+		}
+
+		println!("{string}");
 		Ok(())
 	}
 

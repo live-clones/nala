@@ -97,6 +97,9 @@ pub struct List {
 	/// Only include virtual packages
 	#[clap(short = 'V', long, action)]
 	pub r#virtual: bool,
+
+	#[clap(short = 'm', long, action)]
+	pub machine: bool,
 }
 
 /// Like `List`, but uses regex and searches package descriptions.
@@ -187,6 +190,7 @@ pub struct Update {}
 
 /// Upgrade packages.
 #[derive(Args, Debug)]
+#[clap(visible_aliases = ["full-upgrade", "safe-upgrade"])]
 pub struct Upgrade {
 	/// Prints the URIs in json and does not perform an upgrade.
 	#[clap(long, action)]

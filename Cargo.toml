@@ -8,8 +8,8 @@ readme = "README.rst"
 description = "Commandline frontend for the APT package manager"
 
 [dependencies]
-# rust-apt = { git = "https://gitlab.com/volian/rust-apt" }
-rust-apt = { path = "../rust-apt" }
+rust-apt = { git = "https://gitlab.com/volian/rust-apt", features = ["serde"] }
+# rust-apt = { path = "../rust-apt", features = ["serde"] }
 tokio = { version = "1", features = ["fs", "macros", "rt-multi-thread"] }
 nix = { version = "0.29", features = ["fs", "process", "term", "ioctl", "signal"] }
 async-compression = { version = "0.4", features = ["tokio", "all-algorithms"] }

@@ -1,7 +1,7 @@
 use std::io::Write;
+// use tokio::sync::Mutex;
+use std::sync::Mutex;
 use std::sync::OnceLock;
-
-use tokio::sync::Mutex;
 
 use crate::config::{color, Theme};
 
@@ -18,7 +18,8 @@ macro_rules! log {
 	($level:path, $($arg: tt)*) => {{
 		let string = std::fmt::format(std::format_args!($($arg)*));
 		$crate::config::logger::get_logger()
-			.blocking_lock()
+			.lock()
+			.unwrap()
 			.log($level, &string);
 	}};
 }
@@ -87,7 +88,13 @@ pub enum Level {
 }
 
 impl Level {
-	pub fn as_str(&self) -> &'static str {
+	pub fn as_str(&self) -> &str { self.as_ref() }
+
+	pub fn as_theme(&self) -> &Theme { self.as_ref() }
+}
+
+impl AsRef<str> for Level {
+	fn as_ref(&self) -> &str {
 		match self {
 			Self::Error => "Error:",
 			Self::Notice => "Notice:",
@@ -97,15 +104,17 @@ impl Level {
 			Self::Debug => "Debug:",
 		}
 	}
+}
 
-	pub fn as_theme(&self) -> Theme {
+impl AsRef<Theme> for Level {
+	fn as_ref(&self) -> &Theme {
 		match self {
-			Self::Error => Theme::Error,
-			Self::Notice => Theme::Notice,
-			Self::Warning => Theme::Warning,
-			Self::Info => Theme::Highlight,
-			Self::Verbose => Theme::Highlight,
-			Self::Debug => Theme::Highlight,
+			Self::Error => &Theme::Error,
+			Self::Notice => &Theme::Notice,
+			Self::Warning => &Theme::Warning,
+			Self::Info => &Theme::Highlight,
+			Self::Verbose => &Theme::Highlight,
+			Self::Debug => &Theme::Highlight,
 		}
 	}
 }
@@ -134,7 +143,7 @@ impl Logger {
 		writeln!(
 			self.0.out,
 			"{} {msg}",
-			color::color!(level.into(), level.as_str())
+			color::color!(level.as_theme(), level.as_str())
 		)
 		.unwrap();
 	}

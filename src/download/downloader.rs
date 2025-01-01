@@ -308,13 +308,12 @@ impl Downloader {
 			}
 
 			if tick.elapsed() >= tick_rate {
-				let domains = format!(" {:?}", self.domains.lock().await);
-				progress.msg = vec![
-					"Total Packages:".to_string(),
-					format!(" {current}/{total}, "),
-					"Connections:".to_string(),
-					domains,
-				];
+				progress
+					.dg
+					.clear()
+					.push_str("Packages:", format!(" {current}/{total}"))
+					.push_str("Connections:", format!(" {:?}", self.domains.lock().await));
+
 				progress.render()?;
 				tick = Instant::now();
 			}

@@ -1,72 +1,13 @@
 use std::fs;
 
 use anyhow::Result;
-use rust_apt::{new_cache, BaseDep, Dependency};
+use rust_apt::new_cache;
 
 use crate::config::{color, Config, Theme};
 use crate::{glob, info};
 use crate::util::PACSTALL;
 
 use super::ShowVersion;
-
-pub fn format_dependency(base_dep: &BaseDep, theme: Theme) -> String {
-	if let Some(comp) = base_dep.comp_type() {
-		return format!(
-			// libgnutls30 (>= 3.7.5)
-			"{} {}{comp} {}{}",
-			// There's a compare operator in the dependency.
-			// Dang better have a version smh my head.
-			color::color!(theme, base_dep.target_package().name()),
-			color::highlight!("("),
-			color::ver!(base_dep.version().unwrap()),
-			color::highlight!(")"),
-		);
-	}
-	color::color!(theme, base_dep.target_package().name()).into()
-}
-
-pub fn dependency_footer(total_deps: usize, index: usize) -> &'static str {
-	if total_deps > 4 {
-		return "\n    ";
-	}
-
-	// Only add the comma if it isn't the last.
-	if index + 1 != total_deps {
-		return ", ";
-	}
-
-	" "
-}
-
-pub fn show_dependency(depends: &[Dependency], theme: Theme) -> String {
-	let mut depends_string = String::new();
-	// Get total deps number to include Or Dependencies
-	let total_deps = depends.len();
-
-	// If there are more than 4 deps format with multiple lines
-	if total_deps > 4 {
-		depends_string += "\n    ";
-	}
-
-	for (i, dep) in depends.iter().enumerate() {
-		// Or Deps need to be formatted slightly different.
-		if dep.is_or() {
-			for (j, base_dep) in dep.iter().enumerate() {
-				depends_string += &format_dependency(base_dep, theme);
-				if j + 1 != dep.len() {
-					depends_string += " | ";
-				}
-			}
-			depends_string += dependency_footer(total_deps, i);
-			continue;
-		}
-
-		// Regular dependencies are more simple than Or
-		depends_string += &format_dependency(dep.first(), theme);
-		depends_string += dependency_footer(total_deps, i);
-	}
-	depends_string
-}
 
 pub fn format_local(pkg_name: &str) -> String {
 	// Check if this could potentially be a Pacstall Package.

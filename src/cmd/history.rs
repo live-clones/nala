@@ -129,10 +129,10 @@ impl HistoryPackage {
 
 	pub fn items(&self, config: &Config) -> &Vec<tui::summary::Item> {
 		self.items.get_or_init(|| {
-			let secondary = config.rat_style(self.operation.theme());
+			let secondary = config.rat_style(self.operation);
 			let primary = config.rat_style(Theme::Regular);
 
-			let colored = color::color!(self.operation.theme(), &self.name).to_string();
+			let colored = color::color!(self.operation, &self.name).to_string();
 			let mut items = vec![tui::summary::Item::left(secondary, colored)];
 
 			if let Some(old) = &self.old_version {
