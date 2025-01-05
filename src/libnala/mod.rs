@@ -203,7 +203,7 @@ impl NalaCache for Cache {
 				continue;
 			}
 
-			if pkg.config_state() {
+			if !pkg.config_state() {
 				pkg.mark_delete(purge);
 				set.insert(pkg);
 			} else {
