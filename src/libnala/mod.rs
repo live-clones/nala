@@ -191,8 +191,8 @@ impl NalaCache for Cache {
 		debug!("Auto Remover:");
 		let _ = unsafe { self.depcache().action_group() };
 		for pkg in self.iter() {
-			// TODO: Should we have --remove-config, or just do it like apt does and match on state?
-			// apt purge ~c is the equivalent.
+			// TODO: Should we have --remove-config, or just do it like apt does and match
+			// on state? apt purge ~c is the equivalent.
 			if !pkg.is_installed() && pkg.config_state() && remove_config && purge {
 				pkg.mark_delete(purge);
 				set.insert(pkg);

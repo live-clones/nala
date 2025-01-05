@@ -24,7 +24,7 @@ impl ShowFormat for BaseDep<'_> {
 				// Dang better have a version smh my head.
 				color::color!(theme, self.target_package().name()),
 				color::highlight!("("),
-				color::ver!(self.version().unwrap()),
+				color::color!(Theme::Secondary, self.version().unwrap()),
 				color::highlight!(")"),
 			);
 		}
