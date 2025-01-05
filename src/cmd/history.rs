@@ -296,7 +296,6 @@ pub async fn get_history(config: &Config) -> Result<Vec<HistoryEntry>> {
 	Ok(parsed)
 }
 
-#[tokio::main]
 pub async fn history(config: &Config) -> Result<()> {
 	let history_file = get_history(config).await?;
 	let cache = new_cache!()?;

@@ -121,8 +121,13 @@ impl Config {
 	}
 
 	/// Load configuration with the command line arguments
-	pub fn load_args(&mut self, args: &ArgMatches) {
-		for alias in [("full-upgrade", "full"), ("safe-upgrade", "safe")] {
+	pub fn load_args(&mut self, args: &ArgMatches) -> Result<()> {
+		for alias in [
+			("full-upgrade", "full"),
+			("safe-upgrade", "safe"),
+			("autopurge", "purge"),
+			("purge", "purge"),
+		] {
 			if std::env::args().any(|arg| arg == alias.0) {
 				self.map.insert(alias.1.to_string(), OptType::Bool(true));
 			}
@@ -167,10 +172,20 @@ impl Config {
 
 		setup_color(Color::new(switch, self.theme.clone()));
 
+		if let Some(options) = self.get_vec("option") {
+			for raw_opt in options {
+				let Some((key, value)) = raw_opt.split_once("=") else {
+					bail!("Option '{raw_opt}' is not supported");
+				};
+				self.apt.set(key, value);
+			}
+		}
+
 		// If Debug is there we can print the whole thing.
 		if self.debug() {
 			dbg!(&self);
 		}
+		Ok(())
 	}
 
 	/// Get a bool from the configuration.
@@ -201,6 +216,13 @@ impl Config {
 	/// Get a Vec of Strings from the configuration.
 	pub fn get_vec(&self, key: &str) -> Option<&Vec<String>> {
 		if let OptType::VecString(vec) = self.map.get(key)? {
+			return Some(vec);
+		}
+		None
+	}
+
+	pub fn get_mut_vec(&mut self, key: &str) -> Option<&mut Vec<String>> {
+		if let OptType::VecString(vec) = self.map.get_mut(key)? {
 			return Some(vec);
 		}
 		None
@@ -276,6 +298,11 @@ impl Config {
 			return value.str(unit);
 		}
 		UnitStr::new(0, NumSys::Binary).str(unit)
+	}
+
+	pub fn allow_unauthenticated(&self) -> bool {
+		self.get_bool("allow_unauthenticated", false)
+			|| self.apt.bool("APT::Get::AllowUnauthenticated", false)
 	}
 
 	/// Return true if debug is enabled

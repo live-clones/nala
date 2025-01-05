@@ -1,21 +1,24 @@
 use std::collections::{HashMap, HashSet};
 
 use anyhow::{bail, Result};
-use rust_apt::{Cache, Marked, Package, PkgCurrentState, Version};
+use rust_apt::{Cache, Marked, Package, PkgCurrentState};
 
 use crate::cmd::{HistoryPackage, Operation};
 use crate::config::color;
 use crate::{debug, info, warn};
 
-type SortedChanges = HashMap<Operation, Vec<HistoryPackage>>;
+type SortedChanges<'a> = (Vec<Package<'a>>, HashMap<Operation, Vec<HistoryPackage>>);
 
+// Package is not really mutable in the way clippy thinks.
+#[allow(clippy::mutable_key_type)]
 pub trait NalaCache {
-	fn sort_changes(&self) -> Result<SortedChanges>;
-	fn auto_remove(&self) -> Vec<Version>;
+	fn sort_changes<'a>(&'a self, auto: HashSet<Package<'a>>) -> Result<SortedChanges<'a>>;
+	fn auto_remove(&self, remove_config: bool, purge: bool) -> HashSet<Package<'_>>;
 }
 
 pub trait NalaPkg<'a> {
 	fn filter_virtual(self) -> Result<Package<'a>>;
+	fn config_state(&self) -> bool;
 }
 
 impl<'a> NalaPkg<'a> for Package<'a> {
@@ -74,23 +77,26 @@ impl<'a> NalaPkg<'a> for Package<'a> {
 		}
 		bail!("You should select just one.")
 	}
+
+	fn config_state(&self) -> bool { self.current_state() == PkgCurrentState::ConfigFiles }
 }
 
 impl NalaCache for Cache {
 	/// Run the autoremover and then get the changes from the cache.
-	fn sort_changes(&self) -> Result<SortedChanges> {
-		debug!("Running auto_remover");
-
-		let auto_remove = self.auto_remove();
+	fn sort_changes<'a>(&'a self, auto: HashSet<Package<'a>>) -> Result<SortedChanges<'a>> {
 		let mut pkg_set: HashMap<Operation, Vec<HistoryPackage>> = HashMap::new();
+		let mut pkgs: Vec<Package> = vec![];
 
 		debug!("Calculating changes");
 		let changed = self.get_changes(true).collect::<Vec<_>>();
 		if changed.is_empty() {
-			return Ok(pkg_set);
+			return Ok((vec![], pkg_set));
 		}
 
-		for pkg in &changed {
+		for pkg in changed {
+			debug!("{pkg}:");
+			debug!("  Marked::{:?}", pkg.marked());
+
 			let (op, ver) = match pkg.marked() {
 				mark @ (Marked::NewInstall | Marked::Install | Marked::ReInstall) => {
 					let Some(cand) = pkg.install_version() else {
@@ -102,16 +108,38 @@ impl NalaCache for Cache {
 					};
 					(op, cand)
 				},
-				Marked::Remove | Marked::Purge => {
-					let Some(inst) = pkg.installed() else {
+				mark @ (Marked::Remove | Marked::Purge) => {
+					let inst = if let Some(inst) = pkg.installed() {
+						inst
+					// If the pkg is in config_state and not installed
+					// It can still be purged, but technically it's not
+					// installed. TODO: For now just choose the first
+					// version available. This can panic on real situations
+					// so it needs to be fixed. For example if you remove a
+					// package and it's config files stick around
+					// And then for whatever reason that package is no longer
+					// available from the cache this will panic when trying
+					// to purge it. We need to be able to send no version
+					// into the summary I guess.
+					} else if pkg.config_state() {
+						pkg.versions().next().unwrap()
+					} else {
 						continue;
 					};
 
-					if auto_remove.contains(&inst) {
-						continue;
-					}
-
-					let op = if pkg.marked_purge() { Operation::Purge } else { Operation::Remove };
+					let op = if auto.contains(&pkg) {
+						match mark {
+							Marked::Remove => Operation::AutoRemove,
+							Marked::Purge => Operation::AutoPurge,
+							_ => unreachable!(),
+						}
+					} else {
+						match mark {
+							Marked::Remove => Operation::Remove,
+							Marked::Purge => Operation::Purge,
+							_ => unreachable!(),
+						}
+					};
 					(op, inst)
 				},
 				mark @ (Marked::Upgrade | Marked::Downgrade) => {
@@ -121,10 +149,13 @@ impl NalaCache for Cache {
 							_ => Operation::Downgrade,
 						};
 
+						debug!("  Operation::{op:?}");
 						pkg_set
 							.entry(op)
 							.or_default()
 							.push(HistoryPackage::from_version(op, &cand, &Some(inst)));
+
+						pkgs.push(pkg)
 					}
 					continue;
 				},
@@ -141,46 +172,46 @@ impl NalaCache for Cache {
 				Marked::None => bail!("{pkg} not marked, this should be impossible"),
 			};
 
+			debug!("  Operation::{op:?}");
 			pkg_set
 				.entry(op)
 				.or_default()
 				.push(HistoryPackage::from_version(op, &ver, &None));
+
+			pkgs.push(pkg);
 		}
 
-		if !auto_remove.is_empty() {
-			pkg_set.insert(
-				Operation::AutoRemove,
-				auto_remove
-					.into_iter()
-					.map(|v| HistoryPackage::from_version(Operation::AutoRemove, &v, &None))
-					.collect(),
-			);
-		}
-
-		Ok(pkg_set)
+		Ok((pkgs, pkg_set))
 	}
 
-	fn auto_remove(&self) -> Vec<Version> {
-		let mut marked_remove = vec![];
-		for package in self.iter() {
-			if !package.is_installed() {
-				continue;
-			}
-			if !package.is_auto_removable() {
+	fn auto_remove(&self, remove_config: bool, purge: bool) -> HashSet<Package<'_>> {
+		// Package is not really mutable in the way clippy thinks.
+		#[allow(clippy::mutable_key_type)]
+		let mut set = HashSet::new();
+		debug!("Auto Remover:");
+		let _ = unsafe { self.depcache().action_group() };
+		for pkg in self.iter() {
+			// TODO: Should we have --remove-config, or just do it like apt does and match on state?
+			// apt purge ~c is the equivalent.
+			if !pkg.is_installed() && pkg.config_state() && remove_config && purge {
+				pkg.mark_delete(purge);
+				set.insert(pkg);
 				continue;
 			}
 
-			if package.current_state() != PkgCurrentState::ConfigFiles {
-				package.mark_delete(false);
-				if let Some(inst) = package.installed() {
-					marked_remove.push(inst);
-				}
+			if !pkg.is_auto_removable() || pkg.marked_delete() {
+				continue;
+			}
+
+			if pkg.config_state() {
+				pkg.mark_delete(purge);
+				set.insert(pkg);
 			} else {
-				package.mark_keep();
+				pkg.mark_keep();
 			}
 		}
 		// There is more code in private-install.cc DoAutomaticremove
 		// If there are auto_remove bugs consider implementing that.
-		marked_remove
+		set
 	}
 }

@@ -24,30 +24,43 @@ pub struct NalaParser {
 	pub config: Option<PathBuf>,
 
 	/// Turn on tui if it's disabled in the config.
-	#[clap(global = true, short, long, action)]
+	#[clap(global = true, long, action)]
 	pub tui: bool,
 
 	/// Turn the tui off. Takes precedence over other options
-	#[clap(global = true, short, long, action)]
+	#[clap(global = true, long, action)]
 	pub no_tui: bool,
 
 	/// Only download packages.
-	#[clap(long, action)]
+	#[clap(global = true, long, action)]
 	pub download_only: bool,
 
-	/// TODO: Copy from Python Nala and maybe reword.
-	#[clap(short = 'o', long, action)]
-	pub dpkg_option: Vec<String>,
-
-	#[clap(subcommand)]
-	pub command: Option<Commands>,
+	/// Passthrough Apt configurations
+	#[clap(global = true, short = 'o', long, action)]
+	pub option: Vec<String>,
 
 	/// Allow Nala to install packages that can't be hashsum verified
 	#[clap(global = true, long, action)]
 	pub allow_unauthenticated: bool,
+
+	/// Additionally remove unnecessary packages.
+	#[clap(global = true, long, action)]
+	pub auto_remove: bool,
+
+	/// Do NOT remove unnecessary packages.
+	#[clap(global = true, long, action)]
+	pub no_auto_remove: bool,
+
+	/// Remove config files for any package set to be removed.
+	#[clap(global = true, long, action)]
+	pub purge: bool,
+
+	#[clap(subcommand)]
+	pub command: Option<Commands>,
 }
 
 #[derive(Subcommand, Debug)]
+#[clap(rename_all = "lower")]
 pub enum Commands {
 	List(List),
 	Search(Search),
@@ -59,6 +72,8 @@ pub enum Commands {
 	Update(Update),
 	Upgrade(Upgrade),
 	Install(Install),
+	Remove(Remove),
+	AutoRemove(AutoRemove),
 	System(System),
 }
 
@@ -211,10 +226,34 @@ pub struct Upgrade {
 }
 
 #[derive(Args, Debug)]
+/// Install Packages
 pub struct Install {
 	/// Package names to install
 	#[clap(required = false)]
 	pub pkg_names: Vec<String>,
+}
+
+#[derive(Args, Debug)]
+#[clap(visible_alias = "purge")]
+/// Remove Packages
+///
+/// Using the alias `purge` is the same as running
+/// `nala remove --purge`
+pub struct Remove {
+	/// Package names to install
+	pub pkg_names: Vec<String>,
+}
+
+#[derive(Args, Debug)]
+#[clap(visible_alias = "autopurge")]
+/// Automatically remove unnecessary packages
+///
+/// Using the alias `autopurge` is the same as running
+/// `nala autoremove --purge`
+pub struct AutoRemove {
+	/// Additionally, when purging, remove pkgs in config state
+	#[clap(long, action)]
+	pub remove_config: bool,
 }
 
 /// Experimental, use at own risk

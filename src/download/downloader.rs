@@ -14,7 +14,6 @@ use crate::fs::AsyncFs;
 use crate::hashsum::HashSum;
 use crate::{debug, dprog, info, tui, warn};
 
-#[tokio::main]
 pub async fn download(config: &Config) -> Result<()> {
 	// Set download directory to the cwd.
 	config.apt.set(Paths::Archive.path(), "./");
@@ -77,7 +76,7 @@ pub fn untrusted_error(config: &Config, untrusted: Vec<String>) -> Result<()> {
 	warn!("The Following packages cannot be authenticated!");
 	eprintln!("  {}", untrusted.join(", "));
 
-	if !config.apt.bool("APT::Get::AllowUnauthenticated", false) {
+	if !config.allow_unauthenticated() {
 		bail!(format!(
 			"Some packages were unable to be authenticated.\n  If you're sure use {}",
 			color::color!(Theme::Notice, "--allow-unauthenticated")
@@ -214,7 +213,7 @@ impl Downloader {
 		Ok(())
 	}
 
-	pub async fn finish(mut self, rm_partial: bool) -> Result<Vec<Uri>> {
+	async fn finish(mut self, rm_partial: bool) -> Result<Vec<Uri>> {
 		// Finally remove the partial directory
 		if rm_partial {
 			self.partial_dir.remove_recurse().await?;

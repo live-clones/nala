@@ -22,7 +22,6 @@ pub async fn update_thread(acquire: NalaAcquireProgress) -> Result<()> {
 	Ok(())
 }
 
-#[tokio::main]
 pub async fn update(config: &Config) -> Result<()> {
 	// Setup channel to talk between threads
 	let (tx, mut rx) = mpsc::unbounded_channel();

@@ -1,17 +1,17 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use chrono::Utc;
 use rust_apt::util::DiskSpace;
-use rust_apt::Cache;
+use rust_apt::{Cache, Package};
 
 use crate::cmd::{
 	self, apt_hook_with_pkgs, ask, run_scripts, HistoryEntry, HistoryPackage, Operation,
 };
-use crate::config::{color, Config, Paths};
+use crate::config::{color, Config, Paths, Theme};
 use crate::download::Downloader;
 use crate::libnala::NalaCache;
-use crate::{dpkg, table, tui};
+use crate::{dpkg, error, table, tui, warn};
 
 /// TODO: Implement a simple summary that is very short for serial/console users
 pub async fn display_summary(
@@ -26,7 +26,6 @@ pub async fn display_summary(
 			.await
 	} else {
 		let mut tables = vec![];
-
 		for (op, pkgs) in pkg_set {
 			let mut table = table::get_table(if pkgs[0].items(config).len() > 3 {
 				&["Package:", "Old Version:", "New Version:", "Size:"]
@@ -80,21 +79,63 @@ pub async fn display_summary(
 	}
 }
 
+fn check_essential(config: &Config, pkgs: &Vec<Package>) -> Result<()> {
+	let essential = pkgs
+		.iter()
+		.filter(|p| p.is_essential() && p.marked_delete())
+		.collect::<Vec<_>>();
+
+	if essential.is_empty() {
+		return Ok(());
+	}
+
+	warn!("The following packages are essential!");
+	eprintln!(
+		"  {}",
+		essential
+			.iter()
+			.map(|p| p.name())
+			.collect::<Vec<_>>()
+			.join(", ")
+	);
+
+	if config.get_bool("remove_essential", false) {
+		return Ok(());
+	}
+
+	error!("You have attempted to remove essential packages");
+
+	let switch = color::color!(Theme::Warning, "--remove-essential");
+	bail!("Use '{switch}' if you are sure.")
+}
+
 pub async fn commit(cache: Cache, config: &Config) -> Result<()> {
-	let pkg_set = cache.sort_changes()?;
+	// Package is not really mutable in the way clippy thinks.
+	#[allow(clippy::mutable_key_type)]
+	let auto = if config.get_no_bool("auto_remove", true) {
+		let purge = config.get_bool("purge", false);
+		let remove_config = config.get_bool("remove_config", false);
+		cache.auto_remove(remove_config, purge)
+	} else {
+		HashSet::new()
+	};
+
+	let (pkgs, pkg_set) = cache.sort_changes(auto)?;
+	check_essential(config, &pkgs)?;
+
 	if pkg_set.is_empty() {
 		println!("Nothing to do.");
 		return Ok(());
 	}
 
-	let changed = cache.get_changes(true).collect::<Vec<_>>();
-	let versions = changed
+	let versions = pkgs
 		.iter()
-		.filter_map(|pkg| pkg.install_version())
+		.filter_map(|p| p.install_version())
 		.collect::<Vec<_>>();
 
 	let mut downloader = Downloader::new(config)?;
 	let archive = config.get_path(&Paths::Archive);
+
 	for ver in &versions {
 		downloader.add_version(ver, &archive).await?;
 	}
@@ -143,7 +184,7 @@ pub async fn commit(cache: Cache, config: &Config) -> Result<()> {
 	// Either way but we'll know that it failed.
 
 	run_scripts(config, "DPkg::Pre-Invoke")?;
-	apt_hook_with_pkgs(config, &changed, "DPkg::Pre-Install-Pkgs")?;
+	apt_hook_with_pkgs(config, &pkgs, "DPkg::Pre-Install-Pkgs")?;
 
 	config.apt.set("Dpkg::Use-Pty", "0");
 

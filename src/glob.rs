@@ -9,7 +9,7 @@ use rust_apt::{Cache, Package, PackageSort, Version};
 use crate::cmd::Operation;
 use crate::config::{color, Config, Theme};
 use crate::libnala::NalaPkg;
-use crate::{debug, error};
+use crate::{debug, error, info};
 
 #[derive(Debug)]
 pub enum Matcher {
@@ -30,7 +30,7 @@ pub struct CliPackage<'a> {
 	pub pkgs: Vec<FoundPackage<'a>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct FoundPackage<'a> {
 	pub pkg: Package<'a>,
 	// I suspect we will want the selected version at some point
@@ -67,8 +67,10 @@ impl<'a> CliPackages<'a> {
 	}
 
 	pub fn found_as_ref(&self) -> Vec<&FoundPackage<'a>> {
-		self.0.iter().flat_map(|p| &p.pkgs).collect()
+		self.iter().flat_map(|p| &p.pkgs).collect()
 	}
+
+	pub fn iter(&self) -> impl Iterator<Item = &CliPackage<'a>> { self.0.iter() }
 
 	pub fn check_not_found(&self) -> Result<()> {
 		debug!("{:#?}", self.found_as_ref());
@@ -86,6 +88,53 @@ impl<'a> CliPackages<'a> {
 
 		if bail {
 			bail!("Some packages were not found in the cache")
+		}
+
+		Ok(())
+	}
+
+	pub fn mark(self, cache: &Cache, operation: Operation, purge: bool) -> Result<()> {
+		let _ = unsafe { cache.depcache().action_group() };
+		for found in self.found() {
+			let pkg = &found.pkg;
+			match found.modifier.unwrap_or(operation) {
+				Operation::Install => {
+					let Some(cand) = pkg.candidate() else {
+						bail!("{} has no install candidate", pkg.name())
+					};
+
+					if let Some(inst) = pkg.installed() {
+						if inst == cand {
+							info!(
+								"{}{} is already installed and at the latest version",
+								color::primary!(pkg.name()),
+								color::ver!(cand.version())
+							);
+							continue;
+						}
+					}
+					cache.resolver().clear(pkg);
+					cache.resolver().protect(pkg);
+					pkg.mark_install(true, true);
+				},
+				Operation::Remove => {
+					let Some(_inst) = pkg.installed() else {
+						info!("{} is not installed", pkg.name());
+						continue;
+					};
+
+					// TODO: Apt has this, I think we need to bind this in rust-apt though
+					// Potentially can call it pkg.mark_hold()?
+					//
+					// MarkInstall refuses to install packages on hold
+					// Pkg->SelectedState = pkgCache::State::Hold;
+					debug!("Mark Delete: {pkg}");
+					cache.resolver().clear(pkg);
+					cache.resolver().protect(pkg);
+					pkg.mark_delete(purge);
+				},
+				_ => todo!(),
+			}
 		}
 
 		Ok(())
@@ -199,8 +248,11 @@ pub fn get_sorter(config: &Config) -> PackageSort {
 	sort
 }
 
-pub fn pkgs_with_modifiers<'a>(config: &Config, cache: &'a Cache) -> Result<CliPackages<'a>> {
-	let cli_pkgs = config.pkg_names()?;
+pub fn pkgs_with_modifiers<'a>(
+	cli_pkgs: Vec<String>,
+	config: &Config,
+	cache: &'a Cache,
+) -> Result<CliPackages<'a>> {
 	debug!("Start Globbing cli_pkgs {cli_pkgs:#?}");
 	let mut globs = CliPackages::new();
 	for mut pkg in cli_pkgs {

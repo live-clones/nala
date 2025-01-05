@@ -4,11 +4,14 @@ use std::process::ExitCode;
 use anyhow::{bail, Result};
 use clap::{ArgMatches, CommandFactory, FromArgMatches};
 use cli::Commands;
+use cmd::Operation;
 use config::logger::LogOptions;
 use config::{Level, Paths};
 use deb::DebFile;
+use rust_apt::cache::Upgrade;
 use rust_apt::error::AptErrors;
 use rust_apt::{new_cache, PackageSort};
+use util::sudo_check;
 
 mod cli;
 mod cmd;
@@ -26,7 +29,7 @@ mod tui;
 mod util;
 
 use crate::cli::NalaParser;
-use crate::cmd::{clean, fetch, history, install, list_packages, show, update, upgrade};
+use crate::cmd::{clean, fetch, history, list_packages, mark_cli_pkgs, show, update, upgrade};
 use crate::config::Config;
 use crate::download::download;
 
@@ -50,17 +53,16 @@ fn main() -> ExitCode {
 	if let Err(err) = main_nala(args, derived, &mut config) {
 		// Guard clause in cause it is not AptErrors
 		// In this case just print it nicely
-		let Some(apt_errors) = err.downcast_ref::<AptErrors>() else {
+		if let Some(apt_errors) = err.downcast_ref::<AptErrors>() {
+			for error in apt_errors.iter() {
+				if error.is_error {
+					error!("{}", error.msg.replace("E: ", ""));
+				} else {
+					warn!("{}", error.msg.replace("W: ", ""));
+				};
+			}
+		} else {
 			error!("{err:?}");
-			return ExitCode::FAILURE;
-		};
-
-		for error in apt_errors.iter() {
-			if error.is_error {
-				error!("{}", error.msg.replace("E: ", ""));
-			} else {
-				warn!("{}", error.msg.replace("W: ", ""));
-			};
 		}
 		return ExitCode::FAILURE;
 	}
@@ -87,7 +89,6 @@ fn get_config() -> Result<(ArgMatches, NalaParser, Config)> {
 	Ok((args, derived, config))
 }
 
-#[tokio::main]
 pub async fn system(config: &Config) -> Result<()> {
 	// This downloads all of the pkgs into the archives directory
 	// let cache = rust_apt::new_cache!()?;
@@ -164,18 +165,19 @@ pub async fn system(config: &Config) -> Result<()> {
 	Ok(())
 }
 
-fn main_nala(args: ArgMatches, derived: NalaParser, config: &mut Config) -> Result<()> {
+#[tokio::main]
+async fn main_nala(args: ArgMatches, derived: NalaParser, config: &mut Config) -> Result<()> {
 	if derived.license {
 		println!("Not Yet Implemented.");
 		return Ok(());
 	}
 
+	let options = LogOptions::new(Level::Info, Box::new(std::io::stderr()));
+	let logger = crate::config::setup_logger(options);
+
 	if let (Some((name, cmd)), Some(command)) = (args.subcommand(), derived.command) {
 		config.command = name.to_string();
-		config.load_args(cmd);
-
-		let options = LogOptions::new(Level::Info, Box::new(std::io::stderr()));
-		let logger = crate::config::setup_logger(options);
+		config.load_args(cmd)?;
 
 		for (config, level) in [
 			(config.verbose(), crate::config::Level::Verbose),
@@ -194,7 +196,7 @@ fn main_nala(args: ArgMatches, derived: NalaParser, config: &mut Config) -> Resu
 					if config.command == "search" {
 						glob::regex_pkgs(config, &cache)?.only_pkgs()
 					} else if config.pkg_names().is_ok() {
-						glob::pkgs_with_modifiers(config, &cache)?.only_pkgs()
+						glob::pkgs_with_modifiers(config.pkg_names()?, config, &cache)?.only_pkgs()
 					} else {
 						cache.packages(&glob::get_sorter(config)).collect()
 					},
@@ -202,13 +204,31 @@ fn main_nala(args: ArgMatches, derived: NalaParser, config: &mut Config) -> Resu
 			},
 			Commands::Show(_) => show(config)?,
 			Commands::Clean(_) => clean(config)?,
-			Commands::Download(_) => download(config)?,
-			Commands::History(_) => history(config)?,
+			Commands::Download(_) => download(config).await?,
+			Commands::History(_) => history(config).await?,
 			Commands::Fetch(_) => fetch(config)?,
-			Commands::Update(_) => update(config)?,
-			Commands::Upgrade(_) => upgrade(config)?,
-			Commands::Install(_) => install(config)?,
-			Commands::System(_) => system(config)?,
+			Commands::Update(_) => update(config).await?,
+			Commands::Upgrade(_) => {
+				upgrade(
+					config,
+					// SafeUpgrade takes precedence.
+					if config.get_bool("safe", false) {
+						Upgrade::SafeUpgrade
+					} else if config.get_no_bool("full", false) {
+						Upgrade::FullUpgrade
+					} else {
+						Upgrade::Upgrade
+					},
+				)
+				.await?
+			},
+			Commands::Install(_) => mark_cli_pkgs(config, Operation::Install).await?,
+			Commands::Remove(_) => mark_cli_pkgs(config, Operation::Remove).await?,
+			Commands::AutoRemove(_) => {
+				sudo_check(config)?;
+				crate::summary::commit(new_cache!()?, config).await?;
+			},
+			Commands::System(_) => system(config).await?,
 		}
 	} else {
 		NalaParser::command().print_help()?;

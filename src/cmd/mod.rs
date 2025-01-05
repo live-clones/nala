@@ -7,14 +7,17 @@ macro_rules! define_modules {
 	};
 }
 
-define_modules!(show, update, upgrade, install, history, fetch, clean);
+define_modules!(show, update, upgrade, history, fetch, clean);
 
+pub mod install;
 mod list;
 pub mod traits;
+
 use anyhow::Result;
 // TODO: These should maybe be part of like a libnala?
 pub use history::{get_history, HistoryEntry, HistoryPackage};
 use indexmap::IndexMap;
+pub use install::mark_cli_pkgs;
 pub use list::list_packages;
 use rust_apt::records::RecordField;
 use rust_apt::{DepType, Version};

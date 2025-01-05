@@ -17,19 +17,9 @@ use crate::config::Paths;
 use crate::util::{get_pkg_name, sudo_check};
 use crate::{debug, Config};
 
-#[tokio::main]
-pub async fn upgrade(config: &Config) -> Result<()> {
+pub async fn upgrade(config: &Config, upgrade_type: Upgrade) -> Result<()> {
 	sudo_check(config)?;
 	let cache = new_cache!()?;
-
-	// SafeUpgrade takes precedence.
-	let upgrade_type = if config.get_bool("safe", false) {
-		Upgrade::SafeUpgrade
-	} else if config.get_no_bool("full", false) {
-		Upgrade::FullUpgrade
-	} else {
-		Upgrade::Upgrade
-	};
 
 	debug!("Running Upgrade: {upgrade_type:?}");
 	cache.upgrade(upgrade_type)?;
