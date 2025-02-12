@@ -10,6 +10,7 @@ use tar::Archive as Tarchive;
 use tokio::io::AsyncWriteExt;
 
 use super::{Decompress, Reader};
+use crate::debug;
 use crate::fs::AsyncFs;
 use crate::tui::progress::ProgressItem;
 
@@ -81,7 +82,7 @@ impl DebFile {
 				if path_str.ends_with("/") {
 					continue;
 				}
-				if path_str == "./control" {
+				if path_str.contains("control") {
 					control.push(
 						tagfile::parse_tagfile(&entry.read_string()?)?
 							.into_iter()
@@ -110,12 +111,14 @@ impl DebFile {
 			}
 		}
 
-		Ok(DebFile {
+		let debfile = DebFile {
 			path,
 			map,
 			control,
 			hash,
-		})
+		};
+		debug!("{:#?}", debfile);
+		Ok(debfile)
 	}
 
 	// pub fn path(&self) -> &Path { Path::new(&self.path) }
