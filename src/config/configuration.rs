@@ -181,10 +181,6 @@ impl Config {
 			}
 		}
 
-		// If Debug is there we can print the whole thing.
-		if self.debug() {
-			dbg!(&self);
-		}
 		Ok(())
 	}
 

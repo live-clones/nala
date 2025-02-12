@@ -187,6 +187,8 @@ async fn main_nala(args: ArgMatches, derived: NalaParser, config: &mut Config) -
 				logger.lock().unwrap().set_level(level);
 			}
 		}
+		// It's only possible to properly print the config after the log level is set.
+		debug!("{:#?}", config);
 
 		match command {
 			Commands::List(_) | Commands::Search(_) => {
