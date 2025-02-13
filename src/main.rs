@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::process::ExitCode;
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 use clap::{ArgMatches, CommandFactory, FromArgMatches};
 use cli::Commands;
 use cmd::Operation;
@@ -172,13 +172,14 @@ async fn main_nala(args: ArgMatches, derived: NalaParser, config: &mut Config) -
 		return Ok(());
 	}
 
+	// Load colors before the logger
+	config.load_colors();
 	let options = LogOptions::new(Level::Info, Box::new(std::io::stderr()));
 	let logger = crate::config::setup_logger(options);
 
 	if let (Some((name, cmd)), Some(command)) = (args.subcommand(), derived.command) {
 		config.command = name.to_string();
 		config.load_args(cmd)?;
-
 		for (config, level) in [
 			(config.verbose(), crate::config::Level::Verbose),
 			(config.debug(), crate::config::Level::Debug),
@@ -187,8 +188,6 @@ async fn main_nala(args: ArgMatches, derived: NalaParser, config: &mut Config) -
 				logger.lock().unwrap().set_level(level);
 			}
 		}
-		// It's only possible to properly print the config after the log level is set.
-		debug!("{:#?}", config);
 
 		match command {
 			Commands::List(_) | Commands::Search(_) => {
@@ -234,7 +233,6 @@ async fn main_nala(args: ArgMatches, derived: NalaParser, config: &mut Config) -
 		}
 	} else {
 		NalaParser::command().print_help()?;
-		bail!("Subcommand not found")
 	}
 	Ok(())
 }

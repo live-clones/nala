@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use super::color::{setup_color, Color};
 use super::{OptType, Paths, Switch};
 use crate::config::color::{RatStyle, Style, Theme};
+use crate::debug;
 use crate::tui::progress::{NumSys, UnitStr};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -120,8 +121,23 @@ impl Config {
 		Ok(config)
 	}
 
+	pub fn load_colors(&mut self) {
+		let switch = match self
+			.map
+			.get("color")
+			.unwrap_or(&OptType::Switch(Switch::Auto))
+		{
+			OptType::Switch(switch) => *switch,
+			_ => Switch::Auto,
+		};
+
+		setup_color(Color::new(switch, self.theme.clone()));
+	}
+
 	/// Load configuration with the command line arguments
 	pub fn load_args(&mut self, args: &ArgMatches) -> Result<()> {
+		self.load_colors();
+
 		for alias in [
 			("full-upgrade", "full"),
 			("safe-upgrade", "safe"),
@@ -161,17 +177,6 @@ impl Config {
 			}
 		}
 
-		let switch = match self
-			.map
-			.get("color")
-			.unwrap_or(&OptType::Switch(Switch::Auto))
-		{
-			OptType::Switch(switch) => *switch,
-			_ => Switch::Auto,
-		};
-
-		setup_color(Color::new(switch, self.theme.clone()));
-
 		if let Some(options) = self.get_vec("option") {
 			for raw_opt in options {
 				let Some((key, value)) = raw_opt.split_once("=") else {
@@ -181,6 +186,8 @@ impl Config {
 			}
 		}
 
+		// If Debug is there we can print the whole thing.
+		debug!("{:#?}", self);
 		Ok(())
 	}
 
