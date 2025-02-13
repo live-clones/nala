@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::process::ExitCode;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::{ArgMatches, CommandFactory, FromArgMatches};
 use cli::Commands;
 use cmd::Operation;
@@ -61,7 +61,7 @@ fn main() -> ExitCode {
 					warn!("{}", error.msg.replace("W: ", ""));
 				};
 			}
-		} else {
+		} else if format!("{err:?}") != "NoSubcommand" {
 			error!("{err:?}");
 		}
 		return ExitCode::FAILURE;
@@ -233,6 +233,8 @@ async fn main_nala(args: ArgMatches, derived: NalaParser, config: &mut Config) -
 		}
 	} else {
 		NalaParser::command().print_help()?;
+		debug!("Subcommand not supplied");
+		bail!("NoSubcommand")
 	}
 	Ok(())
 }
