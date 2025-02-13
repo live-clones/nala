@@ -176,18 +176,18 @@ async fn main_nala(args: ArgMatches, derived: NalaParser, config: &mut Config) -
 	config.load_colors();
 	let options = LogOptions::new(Level::Info, Box::new(std::io::stderr()));
 	let logger = crate::config::setup_logger(options);
+	for (config, level) in [
+		(config.verbose(), crate::config::Level::Verbose),
+		(config.debug(), crate::config::Level::Debug),
+	] {
+		if config {
+			logger.lock().unwrap().set_level(level);
+		}
+	}
 
 	if let (Some((name, cmd)), Some(command)) = (args.subcommand(), derived.command) {
 		config.command = name.to_string();
 		config.load_args(cmd)?;
-		for (config, level) in [
-			(config.verbose(), crate::config::Level::Verbose),
-			(config.debug(), crate::config::Level::Debug),
-		] {
-			if config {
-				logger.lock().unwrap().set_level(level);
-			}
-		}
 
 		match command {
 			Commands::List(_) | Commands::Search(_) => {
