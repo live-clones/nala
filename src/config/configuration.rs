@@ -12,7 +12,6 @@ use serde::{Deserialize, Serialize};
 use super::color::{setup_color, Color};
 use super::{OptType, Paths, Switch};
 use crate::config::color::{RatStyle, Style, Theme};
-use crate::debug;
 use crate::tui::progress::{NumSys, UnitStr};
 
 #[derive(Serialize, Deserialize, Debug)]
