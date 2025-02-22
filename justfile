@@ -41,8 +41,8 @@ release:
 # Build release and install the binary
 install:
 	cargo build --release
-	sudo mv target/release/nala /usr/bin/nala
-	sudo mv target/release/build/nala-*/out/nala.bash /usr/share/bash-completion/completions/nala
+	sudo cp target/release/nala /usr/bin/nala
+	sudo cp target/release/build/nala-*/out/nala.bash /usr/share/bash-completion/completions/nala
 
 # Run the tests
 test +ARGS="":
