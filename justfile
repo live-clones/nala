@@ -1,5 +1,9 @@
 #!/usr/bin/env just --justfile
 
+[private]
+default:
+    @just --list
+
 # Setup the development environment
 setup-dev:
 	@echo Installing required packages from apt
@@ -37,7 +41,8 @@ release:
 # Build release and install the binary
 install:
 	cargo build --release
-	sudo mv target/release/nala /usr/bin/nala
+	sudo cp target/release/nala /usr/bin/nala
+	sudo cp target/release/build/nala-*/out/nala.bash /usr/share/bash-completion/completions/nala
 
 # Run the tests
 test +ARGS="":

@@ -61,7 +61,7 @@ fn main() -> ExitCode {
 					warn!("{}", error.msg.replace("W: ", ""));
 				};
 			}
-		} else {
+		} else if format!("{err:?}") != "NoSubcommand" {
 			error!("{err:?}");
 		}
 		return ExitCode::FAILURE;
@@ -172,22 +172,28 @@ async fn main_nala(args: ArgMatches, derived: NalaParser, config: &mut Config) -
 		return Ok(());
 	}
 
+	// Load args from subcommands into the configuration
+	let args = if let Some((name, args)) = args.subcommand() {
+		config.command = name.to_string();
+		args
+	} else {
+		&args
+	};
+	config.load_args(args)?;
+
 	let options = LogOptions::new(Level::Info, Box::new(std::io::stderr()));
 	let logger = crate::config::setup_logger(options);
 
-	if let (Some((name, cmd)), Some(command)) = (args.subcommand(), derived.command) {
-		config.command = name.to_string();
-		config.load_args(cmd)?;
-
-		for (config, level) in [
-			(config.verbose(), crate::config::Level::Verbose),
-			(config.debug(), crate::config::Level::Debug),
-		] {
-			if config {
-				logger.lock().unwrap().set_level(level);
-			}
+	for (config, level) in [
+		(config.verbose(), crate::config::Level::Verbose),
+		(config.debug(), crate::config::Level::Debug),
+	] {
+		if config {
+			logger.lock().unwrap().set_level(level);
 		}
-
+	}
+	debug!("{:#?}", config);
+	if let Some(command) = derived.command {
 		match command {
 			Commands::List(_) | Commands::Search(_) => {
 				let cache = new_cache!()?;
@@ -232,7 +238,8 @@ async fn main_nala(args: ArgMatches, derived: NalaParser, config: &mut Config) -
 		}
 	} else {
 		NalaParser::command().print_help()?;
-		bail!("Subcommand not found")
+		debug!("Subcommand not supplied");
+		bail!("NoSubcommand")
 	}
 	Ok(())
 }
