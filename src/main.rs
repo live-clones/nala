@@ -193,53 +193,53 @@ async fn main_nala(args: ArgMatches, derived: NalaParser, config: &mut Config) -
 		}
 	}
 	debug!("{:#?}", config);
-
-	match derived.command {
-		Some(Commands::List(_)) | Some(Commands::Search(_)) => {
-			let cache = new_cache!()?;
-			list_packages(
-				config,
-				if config.command == "search" {
-					glob::regex_pkgs(config, &cache)?.only_pkgs()
-				} else if config.pkg_names().is_ok() {
-					glob::pkgs_with_modifiers(config.pkg_names()?, config, &cache)?.only_pkgs()
-				} else {
-					cache.packages(&glob::get_sorter(config)).collect()
-				},
-			)?;
-		},
-		Some(Commands::Show(_)) => show(config)?,
-		Some(Commands::Clean(_)) => clean(config)?,
-		Some(Commands::Download(_)) => download(config).await?,
-		Some(Commands::History(_)) => history(config).await?,
-		Some(Commands::Fetch(_)) => fetch(config)?,
-		Some(Commands::Update(_)) => update(config).await?,
-		Some(Commands::Upgrade(_)) => {
-			upgrade(
-				config,
-				// SafeUpgrade takes precedence.
-				if config.get_bool("safe", false) {
-					Upgrade::SafeUpgrade
-				} else if config.get_no_bool("full", false) {
-					Upgrade::FullUpgrade
-				} else {
-					Upgrade::Upgrade
-				},
-			)
-			.await?
-		},
-		Some(Commands::Install(_)) => mark_cli_pkgs(config, Operation::Install).await?,
-		Some(Commands::Remove(_)) => mark_cli_pkgs(config, Operation::Remove).await?,
-		Some(Commands::AutoRemove(_)) => {
-			sudo_check(config)?;
-			crate::summary::commit(new_cache!()?, config).await?;
-		},
-		Some(Commands::System(_)) => system(config).await?,
-		None => {
-			NalaParser::command().print_help()?;
-			debug!("Subcommand not supplied");
-			bail!("NoSubcommand")
-		},
+	if let Some(command) = derived.command {
+		match command {
+			Commands::List(_) | Commands::Search(_) => {
+				let cache = new_cache!()?;
+				list_packages(
+					config,
+					if config.command == "search" {
+						glob::regex_pkgs(config, &cache)?.only_pkgs()
+					} else if config.pkg_names().is_ok() {
+						glob::pkgs_with_modifiers(config.pkg_names()?, config, &cache)?.only_pkgs()
+					} else {
+						cache.packages(&glob::get_sorter(config)).collect()
+					},
+				)?;
+			},
+			Commands::Show(_) => show(config)?,
+			Commands::Clean(_) => clean(config)?,
+			Commands::Download(_) => download(config).await?,
+			Commands::History(_) => history(config).await?,
+			Commands::Fetch(_) => fetch(config)?,
+			Commands::Update(_) => update(config).await?,
+			Commands::Upgrade(_) => {
+				upgrade(
+					config,
+					// SafeUpgrade takes precedence.
+					if config.get_bool("safe", false) {
+						Upgrade::SafeUpgrade
+					} else if config.get_no_bool("full", false) {
+						Upgrade::FullUpgrade
+					} else {
+						Upgrade::Upgrade
+					},
+				)
+				.await?
+			},
+			Commands::Install(_) => mark_cli_pkgs(config, Operation::Install).await?,
+			Commands::Remove(_) => mark_cli_pkgs(config, Operation::Remove).await?,
+			Commands::AutoRemove(_) => {
+				sudo_check(config)?;
+				crate::summary::commit(new_cache!()?, config).await?;
+			},
+			Commands::System(_) => system(config).await?,
+		}
+	} else {
+		NalaParser::command().print_help()?;
+		debug!("Subcommand not supplied");
+		bail!("NoSubcommand")
 	}
 	Ok(())
 }
