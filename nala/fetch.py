@@ -705,23 +705,6 @@ def range_from_str(string: str, count: int) -> Iterable[int]:
 	return {int(num) for num in re.split(r",|\s", string) if num}
 
 
-def format_component(url: str, component: str, release: str, non_free: bool) -> str:
-	"""Add non-free-firmware repository if applicable."""
-	# Starting with bookworm there is an additional component, non-free-firmware.
-	# The best way to do this is just check if it exists for the mirror.
-	if not non_free:
-		return component
-	try:
-		get(
-			f"{url}/dists/{release}/non-free-firmware/",
-			timeout=15,
-			follow_redirects=True,
-		).raise_for_status()
-	except HTTPError:
-		return component
-	return f"{component} non-free-firmware"
-
-
 def build_sources(  # pylint: disable=too-many-arguments
 	distro: str,
 	release: str,
