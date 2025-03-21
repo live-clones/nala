@@ -747,21 +747,25 @@ def filter_local_repo(pkgs: Iterable[Package]) -> list[URLSet]:
 	"""
 	file_uris: list[str] = []
 	untrusted: list[str] = []
+	to_download: list[Version] = []
 	for pkg in pkgs:
 		# At this point anything that makes it will have a candidate
-		if not pkg.candidate or pkg.marked_delete:
+		if not (cand := pkg.candidate) or pkg.marked_delete:
 			continue
 
 		# Check through the uris and see if there are any file paths
 		for uri in pkg.candidate.uris:
-			if not uri.startswith("file:"):
-				continue
+			if uri.startswith("file:"):
+				file_uris.append(uri)
+			elif uri.startswith("http"):
+				to_download.append(cand)
+
 			# We must check trust at this point
-			if not check_trusted(uri, pkg.candidate):
-				untrusted.append(pkg.candidate.filename)
-			# All was well so append our uri and break for the next pkg
-			file_uris.append(uri)
-			break
+			if not check_trusted(uri, cand):
+				untrusted.append(cand.filename)
+
+			# All unhandled protocols do not get downloaded
+			# python-apt will handle these
 
 	# Exit with an error if there are unauthenticated packages
 	# This can proceed if overridden by configuration
@@ -781,14 +785,7 @@ def filter_local_repo(pkgs: Iterable[Package]) -> list[URLSet]:
 			dprint(f"{src} => {shutil.copy2(src, dest)}")
 
 	# Return the list of packages that should be downloaded
-	return versions_to_urls(
-		pkg.candidate
-		for pkg in pkgs
-		# Don't download packages that already exist
-		if pkg.candidate
-		and not pkg.marked_delete
-		and not pre_download_check(URL.from_version(pkg.candidate))
-	)
+	return versions_to_urls(to_download)
 
 
 def versions_to_urls(versions: Iterable[Version]) -> list[URLSet]:
@@ -800,16 +797,19 @@ def versions_to_urls(versions: Iterable[Version]) -> list[URLSet]:
 		url_set = URLSet()
 		for uri in filter_uris(version, mirrors, untrusted):
 			hash_type, hashsum = get_hash(version)
-			url_set.append(
-				URL(
-					uri,
-					version.size,
-					# Have to run the filename through a path to get the last section
-					ARCHIVE_DIR / get_pkg_name(version),
-					hash_type=hash_type,
-					hash=hashsum,
-				)
+
+			url = URL(
+				uri,
+				version.size,
+				# Have to run the filename through a path to get the last section
+				ARCHIVE_DIR / get_pkg_name(version),
+				hash_type=hash_type,
+				hash=hashsum,
 			)
+
+			if pre_download_check(url):
+				url_set.append(url)
+
 		urls.append(url_set)
 
 	if untrusted:
