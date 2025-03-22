@@ -810,7 +810,8 @@ def versions_to_urls(versions: Iterable[Version]) -> list[URLSet]:
 			if pre_download_check(url):
 				url_set.append(url)
 
-		urls.append(url_set)
+		if len(url_set) > 0:
+			urls.append(url_set)
 
 	if untrusted:
 		untrusted_error(untrusted)
