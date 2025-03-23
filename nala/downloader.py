@@ -745,7 +745,6 @@ def filter_local_repo(pkgs: Iterable[Package]) -> list[URLSet]:
 	Lastly it will checksum all packages that exist on the system
 	and return a list of packages that need to be downloaded.
 	"""
-	file_uris: list[str] = []
 	untrusted: list[str] = []
 	to_download: list[Version] = []
 	for pkg in pkgs:
@@ -753,36 +752,41 @@ def filter_local_repo(pkgs: Iterable[Package]) -> list[URLSet]:
 		if not (cand := pkg.candidate) or pkg.marked_delete:
 			continue
 
-		# Check through the uris and see if there are any file paths
-		for uri in pkg.candidate.uris:
-			if uri.startswith("file:"):
-				file_uris.append(uri)
-			elif uri.startswith("http"):
-				to_download.append(cand)
+		if untrusted := [uri for uri in cand.uris if not check_trusted(uri, cand)]:
+			untrusted_error(untrusted)
 
-			# We must check trust at this point
-			if not check_trusted(uri, cand):
-				untrusted.append(cand.filename)
+		# Handle local files
+		if files := [uri for uri in cand.uris if uri.startswith("file")]:
+			for uri in files:
+				if uri.startswith("file"):
+					continue
 
-			# All unhandled protocols do not get downloaded
-			# python-apt will handle these
+				dprint("Moving files from local repository")
+				src = Path(uri.lstrip("file:"))
+				dest = ARCHIVE_DIR / src.name
+				# Make sure that the source exists and the destination does not
+				if src.is_file() and not dest.is_file():
+					# Move the file to the archive directory.
+					# We're allowed to do this silently because hashsum comes later
+					dprint(f"{src} => {shutil.copy2(src, dest)}")
+
+			# Continue to next package, Do Not download http/s versions
+			continue
+
+		# Check for http uris to download
+		for uri in cand.uris:
+			if not uri.startswith("http"):
+				continue
+
+			to_download.append(cand)
+
+	# All unhandled protocols do not get downloaded
+	# python-apt will handle these
 
 	# Exit with an error if there are unauthenticated packages
 	# This can proceed if overridden by configuration
 	if untrusted:
 		untrusted_error(untrusted)
-
-	# Copy the local repo debs into the archive directory
-	# This is a must so `apt` knows about it and we can check the hash
-	for file in file_uris:
-		dprint("Moving files from local repository")
-		src = Path(file.lstrip("file:"))
-		dest = ARCHIVE_DIR / src.name
-		# Make sure that the source exists and the destination does not
-		if src.is_file() and not dest.is_file():
-			# Move the file to the archive directory.
-			# We're allowed to do this silently because hashsum comes later
-			dprint(f"{src} => {shutil.copy2(src, dest)}")
 
 	# Return the list of packages that should be downloaded
 	return versions_to_urls(to_download)
