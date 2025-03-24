@@ -172,8 +172,12 @@ class URL:  # pylint: disable=too-many-instance-attributes
 	@staticmethod
 	def from_version(version: Version) -> URL:
 		"""Return a URL from an Apt Version."""
+		return URL.new(version.uri or "", version)
+
+	@staticmethod
+	def new(uri: str, version: Version) -> URL:
 		return URL(
-			version.uri or "",
+			uri,
 			version.size,
 			# Have to run the filename through a path to get the last section
 			ARCHIVE_DIR / get_pkg_name(version),
@@ -736,6 +740,23 @@ def get_hash(version: Version) -> tuple[str, str]:
 	sys.exit(_("There are no hashes available for this package."))
 
 
+def file_exists(cand: Version, uris: list[str]) -> None | str:
+	for uri in uris:
+		if uri.startswith("file"):
+			src = Path(uri.lstrip("file:"))
+			dest = ARCHIVE_DIR / src.name
+			# Make sure that the source exists and the destination does not
+			if src.is_file() and not dest.is_file():
+				# Move the file to the archive directory.
+				# We're allowed to do this silently because hashsum comes later
+				dprint(f"{src} => {shutil.copy2(src, dest)}")
+
+				# pre_download_check needs to happen for hash checking
+				if pre_download_check(URL.new(uri, cand)):
+					return True
+	return False
+
+
 def filter_local_repo(pkgs: Iterable[Package]) -> list[URLSet]:
 	"""Filter any local repository packages.
 
@@ -747,94 +768,51 @@ def filter_local_repo(pkgs: Iterable[Package]) -> list[URLSet]:
 	and return a list of packages that need to be downloaded.
 	"""
 	untrusted: list[str] = []
-	to_download: list[Version] = []
+	mirrors: dict[str, list[str]] = {}
+	urls: list[URLSet] = []
 	for pkg in pkgs:
 		# At this point anything that makes it will have a candidate
 		if not (cand := pkg.candidate) or pkg.marked_delete:
 			continue
 
-		if untrusted := [uri for uri in cand.uris if not check_trusted(uri, cand)]:
+		uris = filter_uris(cand, mirrors)
+		# Check trust of all potentially used sources
+		for uri in uris:
+			if not check_trusted(uri, cand):
+				untrusted.append(color(cand.package.name, "RED"))
+
+		# Exit with an error if there are unauthenticated packages
+		# This can proceed if overridden by configuration
+		if untrusted:
 			untrusted_error(untrusted)
 
-		# Handle local files
-		if files := [uri for uri in cand.uris if uri.startswith("file")]:
-			for uri in files:
-				if uri.startswith("file"):
-					continue
-
-				dprint("Moving files from local repository")
-				src = Path(uri.lstrip("file:"))
-				dest = ARCHIVE_DIR / src.name
-				# Make sure that the source exists and the destination does not
-				if src.is_file() and not dest.is_file():
-					# Move the file to the archive directory.
-					# We're allowed to do this silently because hashsum comes later
-					dprint(f"{src} => {shutil.copy2(src, dest)}")
-
-			# Continue to next package, Do Not download http/s versions
+		if file_exists(cand, uris):
 			continue
 
 		# Check for http uris to download
-		for uri in cand.uris:
+		url_set = URLSet()
+		for uri in uris:
 			if not uri.startswith("http"):
 				continue
 
-			to_download.append(cand)
-
-	# All unhandled protocols do not get downloaded
-	# python-apt will handle these
-
-	# Exit with an error if there are unauthenticated packages
-	# This can proceed if overridden by configuration
-	if untrusted:
-		untrusted_error(untrusted)
-
-	# Return the list of packages that should be downloaded
-	return versions_to_urls(to_download)
-
-
-def versions_to_urls(versions: Iterable[Version]) -> list[URLSet]:
-	"""Convert Apt Versions into urls for the downloader."""
-	urls: list[URLSet] = []
-	untrusted: list[str] = []
-	mirrors: dict[str, list[str]] = {}
-	for version in versions:
-		url_set = URLSet()
-		for uri in filter_uris(version, mirrors, untrusted):
-			hash_type, hashsum = get_hash(version)
-
-			url = URL(
-				uri,
-				version.size,
-				# Have to run the filename through a path to get the last section
-				ARCHIVE_DIR / get_pkg_name(version),
-				hash_type=hash_type,
-				hash=hashsum,
-			)
-
+			url = URL.new(uri, cand)
 			if pre_download_check(url):
 				url_set.append(url)
 
 		if len(url_set) > 0:
 			urls.append(url_set)
 
-	if untrusted:
-		untrusted_error(untrusted)
-
+	# Return the list of packages that should be downloaded
 	return urls
 
 
 def filter_uris(
-	candidate: Version, mirrors: dict[str, list[str]], untrusted: list[str]
+	candidate: Version, mirrors: dict[str, list[str]]
 ) -> Generator[str, None, None]:
 	"""Filter uris into usable urls."""
 	for uri in candidate.uris:
-		# Sending a file path through the downloader will cause it to lock up
-		# These have already been handled before the downloader runs.
 		if uri.startswith("file:"):
 			continue
-		if not check_trusted(uri, candidate):
-			untrusted.append(color(candidate.package.name, "RED"))
 		# Regex to check if we're using mirror://
 		if regex := MIRROR_PATTERN.search(uri):
 			set_mirrors_txt(domain := regex.group(1), mirrors)
