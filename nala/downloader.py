@@ -176,6 +176,7 @@ class URL:  # pylint: disable=too-many-instance-attributes
 
 	@staticmethod
 	def new(uri: str, version: Version) -> URL:
+		"""Return a Specific URL with an Apt Version."""
 		return URL(
 			uri,
 			version.size,
@@ -740,7 +741,8 @@ def get_hash(version: Version) -> tuple[str, str]:
 	sys.exit(_("There are no hashes available for this package."))
 
 
-def file_exists(cand: Version, uris: list[str]) -> None | str:
+def file_exists(cand: Version, uris: Iterable[str]) -> bool:
+	"""Check if the file exists and move it if so, and hash check."""
 	for uri in uris:
 		if uri.startswith("file"):
 			src = Path(uri.lstrip("file:"))
