@@ -338,7 +338,7 @@ class Downloader:  # pylint: disable=too-many-instance-attributes
 				# If direct or false, disable the proxy
 				if value.lower() in ("direct", "false"):
 					value = None
-				self.proxy[f"{proto}://{key}"] = value
+				self.proxy[f"{proto}://{key}"] = AsyncHTTPTransport(proxy=value)
 
 	async def _check_count(self, url: str) -> str:
 		"""Check the url count and return if Nala should continue."""
