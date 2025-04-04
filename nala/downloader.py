@@ -303,7 +303,7 @@ class Downloader:  # pylint: disable=too-many-instance-attributes
 			if common_proxy := config.find(f"Acquire::{proto}::Proxy"):
 				# If the proxy is set to direct or false we disable it
 				if common_proxy.lower() not in ("direct", "false"):
-					self.proxy[f"{proto}://"] = AsyncHTTPTransport(proxy=common_proxy)
+					self.proxy[f"{proto}://"] = AsyncHTTPTransport(proxy=common_proxy)  # type: ignore[arg-type]
 
 			# The remainder of code is for proxying specific repos. Such a configuration may look like
 			# Acquire::http::Proxy::deb.volian.org "xxx:8087"
@@ -337,7 +337,7 @@ class Downloader:  # pylint: disable=too-many-instance-attributes
 				# If direct or false, disable the proxy
 				if value.lower() in ("direct", "false"):
 					value = None
-				self.proxy[f"{proto}://{key}"] = AsyncHTTPTransport(proxy=value)
+				self.proxy[f"{proto}://{key}"] = AsyncHTTPTransport(proxy=value)  # type: ignore[arg-type]
 
 	async def _check_count(self, url: str) -> str:
 		"""Check the url count and return if Nala should continue."""
