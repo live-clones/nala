@@ -1,11 +1,11 @@
-:title: nala-clean
+:title: nala-clean111111111
 
 NAME
 ====
 
 nala-clean - Clear out the local archive of downloaded package files
 
-SYNOPSIS
+SYNOPSIS hfghfgh hb
 ========
 
 **nala clean** [*--options*]
