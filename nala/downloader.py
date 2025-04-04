@@ -46,7 +46,6 @@ from anyio import open_file
 from apt.package import Package, Version
 from apt_pkg import Configuration, config
 from httpx import (
-	URL as HttpxUrl,
 	AsyncClient,
 	AsyncHTTPTransport,
 	ConnectError,
@@ -271,7 +270,7 @@ class Downloader:  # pylint: disable=too-many-instance-attributes
 		self.count: int = 0
 		self.live: Live
 		self.last_completed: str = ""
-		self.proxy: dict[HttpxUrl | str, HttpxUrl | str | AsyncHTTPTransport | None] = {}
+		self.proxy: dict[str, AsyncHTTPTransport] = {}
 		self.failed: list[str] = []
 		self.current: Counter[str] = Counter()
 		self.fatal: bool = False
