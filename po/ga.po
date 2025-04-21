@@ -1,0 +1,1632 @@
+# Translations template for nala.
+# Copyright (C) 2025 Blake Lee
+# This file is distributed under the same license as the nala project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2025.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: nala 0.15.4\n"
+"Report-Msgid-Bugs-To: https://gitlab.com/volian/nala/-/issues\n"
+"POT-Creation-Date: 2025-04-04 01:39-0500\n"
+"PO-Revision-Date: 2025-04-21 12:51+0100\n"
+"Last-Translator: Aindriú Mac Giolla Eoin <aindriu80@gmail.com>\n"
+"Language-Team: \n"
+"Language: ga\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.17.0\n"
+"X-Generator: Poedit 3.4.4\n"
+
+#: nala/downloader.py:86
+msgid "Starting Downloads"
+msgstr "Íoslódálacha á dtosú"
+
+#: nala/downloader.py:88
+msgid "Starting Download:"
+msgstr "Íosluchtú á thosú:"
+
+#. "Starting Download: http://deb.debian.org/debian 3MB"
+#. "Starting Download:" will be colored blue
+#: nala/downloader.py:91
+#, python-brace-format
+msgid "{starting_download} {url} {size}"
+msgstr "{starting_download} {url} {size}"
+
+#: nala/downloader.py:93
+msgid "Download Complete:"
+msgstr "Íoslódáil Críochnaithe:"
+
+#. "Download Complete: http://deb.debian.org/debian"
+#. "Download Complete:" will be colored green
+#: nala/downloader.py:96
+#, python-brace-format
+msgid "{download_complete} {url}"
+msgstr "{download_complete} {url}"
+
+#: nala/downloader.py:98
+msgid "Total Packages:"
+msgstr "Pacáistí Iomlána:"
+
+#. "Total Packages: 30/100"
+#. "Starting Download:" will be colored green
+#: nala/downloader.py:101
+#, python-brace-format
+msgid "{total_packages} {current}/{total}"
+msgstr "{total_packages} {current}/{total}"
+
+#: nala/downloader.py:103
+msgid "Last Completed:"
+msgstr "Críochnaithe go Deireanach:"
+
+#: nala/downloader.py:104
+#, python-brace-format
+msgid "{last_completed} {package}"
+msgstr "{last_completed} {package}"
+
+#: nala/downloader.py:107
+#, python-brace-format
+msgid "{notice} Nala has removed {filename}"
+msgstr "{notice} Tá {filename} bainte ag Nala"
+
+#: nala/downloader.py:109
+#, python-brace-format
+msgid "{error} Failed to move archive file, {str_err}: '{file1}' -> '{file2}'"
+msgstr "{error} Theip ar bhogadh comhad cartlainne, {str_err}: '{file1}' -> '{file2}'"
+
+#: nala/downloader.py:111
+#, python-brace-format
+msgid "{error} {filename} does not exist!"
+msgstr "{error} Níl {filename} ann!"
+
+#: nala/downloader.py:113
+#, python-brace-format
+msgid ""
+"{error} Hash Sum does not match: {filename}\n"
+"  Expected Hash: {expected}\n"
+"  Received Hash: {received}"
+msgstr ""
+"{error} Ní mheaitseálann an Hash Sum: {filename}\n"
+"  Hash Ionchasach: {expected}\n"
+"  Hash Faighte: {received}"
+
+#: nala/downloader.py:118
+#, python-brace-format
+msgid ""
+"{error} File has unexpected size: {filename}\n"
+"  Expected Size: {expected}\n"
+"  Received Size: {received}"
+msgstr ""
+"{error} Tá méid gan choinne ag an gcomhad: {filename}\n"
+"  Méid Ionchasach: {expected}\n"
+"  Méid Faighte: {received}"
+
+#: nala/downloader.py:237
+#, python-brace-format
+msgid ""
+"{error} Improper Hash Syntax\n"
+"  Try '{url}:sha256:510b0c4f8fc3e7bd7182b53c0b81c1a113bea9fd3c18219eac0e18e601dc8d17'"
+msgstr ""
+"{error} Comhréir Hash Míchuí\n"
+"  Bain triail as '{url}:"
+"sha256:510b0c4f8fc3e7bd7182b53c0b81c1a113bea9fd3c18219eac0e18e601dc8d17'"
+
+#: nala/downloader.py:255 nala/install.py:709
+#, python-brace-format
+msgid ""
+"{error} No content length in response from {url}\n"
+"  Ensure the URL points to a Debian Package"
+msgstr ""
+"{error} Níl aon fhad ábhair mar fhreagra ó {url}\n"
+"  Cinntigh go bhfuil an URL ag díriú ar Phacáiste Debian"
+
+#: nala/downloader.py:302
+#, python-brace-format
+msgid "Exiting due to {signal}"
+msgstr "Ag scoir mar gheall ar {signal}"
+
+#: nala/downloader.py:334
+#, python-brace-format
+msgid "{error} Using SOCKS proxy, but the 'socksio' package is not installed."
+msgstr ""
+"{error} Ag baint úsáide as seachfhreastalaí SOCKS, ach níl an pacáiste 'socksio' "
+"suiteáilte."
+
+#: nala/downloader.py:339
+#, python-brace-format
+msgid "{error} Install using 'nala install python3-socksio'"
+msgstr "{error} Suiteáil ag baint úsáide as 'nala install python3-socksio'"
+
+#: nala/downloader.py:388
+msgid "Downloading"
+msgstr "Á Íosluchtú"
+
+#: nala/downloader.py:515
+#, python-brace-format
+msgid "{error} No more mirrors available for {filename}"
+msgstr "{error} Níl níos mó scátháin ar fáil le haghaidh {filename}"
+
+#: nala/downloader.py:531
+#, python-brace-format
+msgid "{notice} Trying next url: {url}"
+msgstr "{notice} Ag triail an chéad url eile: {url}"
+
+#: nala/downloader.py:540
+#, python-brace-format
+msgid "{warning} The following packages cannot be authenticated!"
+msgstr "{warning} Ní féidir na pacáistí seo a leanas a fhíordheimhniú!"
+
+#: nala/downloader.py:547
+#, python-brace-format
+msgid "{error} Some packages were unable to be authenticated"
+msgstr "{error} Níorbh fhéidir roinnt pacáistí a fhíordheimhniú"
+
+#: nala/downloader.py:553
+#, python-brace-format
+msgid "{notice} Configuration is set to allow installation of unauthenticated packages."
+msgstr ""
+"{notice} Tá an chumraíocht socraithe chun pacáistí neamhfhíordheimhnithe a shuiteáil."
+
+#: nala/downloader.py:562
+#, python-brace-format
+msgid "{error} {url} timed out"
+msgstr "{error} {url} teorainn ama"
+
+#: nala/downloader.py:657
+msgid "Failed to check hash"
+msgstr "Theip ar hash a sheiceáil"
+
+#: nala/downloader.py:736
+#, python-brace-format
+msgid "{error} {filename} can't be checked for integrity."
+msgstr "{error} Ní féidir {filename} a sheiceáil le haghaidh ionracais."
+
+#: nala/downloader.py:740
+msgid "There are no hashes available for this package."
+msgstr "Níl aon hashes ar fáil don phacáiste seo."
+
+#: nala/downloader.py:861
+#, python-brace-format
+msgid "{error} unable to connect to {url}"
+msgstr "Ní féidir {error} ceangal le {url}"
+
+#: nala/downloader.py:882
+msgid "Download complete and in download only mode."
+msgstr "Íoslódáil iomlán agus i mód íoslódála amháin."
+
+#: nala/downloader.py:887
+#, python-brace-format
+msgid "{error} Download failure. The following downloads failed:"
+msgstr "{error} Teip íoslódála. Theip ar na híoslódálacha seo a leanas:"
+
+#: nala/downloader.py:896
+msgid "In download only mode. Not falling back to apt_pkg."
+msgstr "I mód íoslódála amháin. Gan titim ar ais go apt_pkg."
+
+#: nala/downloader.py:899
+#, python-brace-format
+msgid "{warning} Falling back to apt_pkg. The following downloads failed:"
+msgstr ""
+"{warning} Ag titim ar ais go dtí apt_pkg. Theip ar na híoslódálacha seo a leanas:"
+
+#: nala/history.py:86
+#, python-brace-format
+msgid ""
+"{error} '{command}' for operations other than install or remove are not currently "
+"supported"
+msgstr ""
+"{error} Ní thacaítear le '{command}' faoi láthair le haghaidh oibríochtaí seachas "
+"suiteáil nó baint"
+
+#: nala/history.py:90
+msgid ""
+"Show transaction history.\n"
+"\n"
+"Running `nala history` with no subcommands prints an overview of all transactions."
+msgstr ""
+"Taispeáin stair an idirbhirt.\n"
+"\n"
+"Má ritheann tú 'stair nala' gan aon fho-ordaithe, priontáiltear forbhreathnú ar gach "
+"idirbheart."
+
+#: nala/history.py:105
+#, python-brace-format
+msgid "{error} History file seems corrupt. You should try removing {file}"
+msgstr ""
+"{error} Is cosúil go bhfuil an comhad staire truaillithe. Ba chóir duit iarracht a "
+"bhaint {file}"
+
+#: nala/history.py:123 nala/history.py:321 nala/history.py:342
+#, python-brace-format
+msgid "{error} No history exists."
+msgstr "{error} Níl aon stair ann."
+
+#: nala/history.py:127
+#, python-brace-format
+msgid "{error} Transaction {num} doesn't exist."
+msgstr "{error} Níl an t-idirbheart {num} ann."
+
+#: nala/history.py:294
+msgid "Transaction number"
+msgstr "Uimhir an idirbhirt"
+
+#: nala/history.py:306
+msgid "Show packages that were explicitly installed with Nala"
+msgstr "Taispeáin pacáistí a suiteáladh go sainráite le Nala"
+
+#: nala/history.py:360
+msgid "Show information about a specific transaction."
+msgstr "Taispeáin faisnéis faoi idirbheart ar leith."
+
+#: nala/history.py:400
+msgid "Nala needs root to clear history"
+msgstr "Teastaíonn fréamh ó Nala chun an stair a ghlanadh"
+
+#: nala/history.py:402
+msgid "Nala needs root to redo history"
+msgstr "Teastaíonn fréamh ó Nala chun an stair a athdhéanamh"
+
+#: nala/history.py:403
+msgid "Nala needs root to undo history"
+msgstr "Teastaíonn fréamh ó Nala chun an stair a chealú"
+
+#: nala/history.py:417
+msgid "History has been cleared"
+msgstr "Tá an stair glanta"
+
+#: nala/history.py:421
+msgid "Clear a transaction or the entire history."
+msgstr "Glan idirbheart nó an stair iomlán."
+
+#: nala/history.py:426
+msgid "Clear the entire history."
+msgstr "Glan an stair ar fad."
+
+#: nala/history.py:435
+msgid "No history exists to clear"
+msgstr "Níl aon stair ann le glanadh"
+
+#: nala/history.py:440
+#, python-brace-format
+msgid "{error} ID: {hist_id} does not exist in the history"
+msgstr "{error} ID: Níl {hist_id} ann sa stair"
+
+#: nala/history.py:455
+msgid "History has been altered"
+msgstr "Tá an stair athraithe"
+
+#: nala/history.py:458
+msgid "Undo a transaction."
+msgstr "Déan idirbheart a chealú."
+
+#: nala/history.py:459
+msgid "Redo a transaction."
+msgstr "Déan idirbheart arís."
+
+#: nala/history.py:502
+#, python-brace-format
+msgid "{warning} This history entry was a purge."
+msgstr "{warning} Bhí an iontráil staire seo ina purge."
+
+#: nala/history.py:506
+msgid "Do you want to continue with purge enabled?"
+msgstr "An bhfuil fonn ort leanúint ar aghaidh le glanadh cumasaithe?"
+
+#: nala/options.py:61
+#, python-brace-format
+msgid "{notice} Unable to read config file: {filename}. Using defaults"
+msgstr ""
+"{notice} Ní féidir comhad cumraíochta a léamh: {filename}. Réamhshocruithe á n-úsáid"
+
+#: nala/options.py:73
+#, python-brace-format
+msgid "{error} Config key '{key}' should be a bool not {value}"
+msgstr ""
+"{error} Ba chóir go mbeadh an eochair chumraíochta '{key}' ina bool seachas {value}"
+
+#: nala/options.py:350
+#, python-brace-format
+msgid "{error} Option {option}: Configuration item must have a '='"
+msgstr "{error} Rogha {option}: Ní mór '=' a bheith ag mír chumraíochta"
+
+#: nala/options.py:394
+msgid ""
+"It seems the system has no license file\n"
+"The full GPLv3 can be found at:\n"
+"https://www.gnu.org/licenses/gpl-3.0.txt"
+msgstr ""
+"Dealraíonn sé nach bhfuil aon chomhad ceadúnais ag an gcóras\n"
+"Is féidir an GPLv3 iomlán a fháil ag:\n"
+"https://www.gnu.org/licenses/gpl-3.0.txt"
+
+#: nala/options.py:433
+msgid "Show program's version number and exit."
+msgstr "Taispeáin uimhir leagain an chláir agus scoir."
+
+#: nala/options.py:441
+msgid "Reads the GPLv3 which Nala is licensed under."
+msgstr "Léann an GPLv3 a bhfuil Nala ceadúnaithe faoi."
+
+#: nala/options.py:450
+msgid "Disable scrolling text and print extra information."
+msgstr "Díchumasaigh téacs scrollaigh agus priontáil faisnéis bhreise."
+
+#: nala/options.py:458
+msgid "Logs extra information for debugging."
+msgstr "Logálann eolas breise le haghaidh dífhabhtaithe."
+
+#: nala/options.py:466
+msgid "Toggle autoremoving packages."
+msgstr "Scoránaigh pacáistí a bhaint go huathoibríoch."
+
+#: nala/options.py:473
+msgid "Toggle installing recommended packages."
+msgstr "Scoránaigh pacáistí molta a shuiteáil."
+
+#: nala/options.py:480
+msgid "Toggle installing suggested packages."
+msgstr "Scoránaigh pacáistí molta a shuiteáil."
+
+#: nala/options.py:488
+msgid "Set the default release to install packages from."
+msgstr "Socraigh an scaoileadh réamhshocraithe chun pacáistí a shuiteáil uaidh."
+
+#: nala/options.py:495
+msgid "Toggle full-upgrade"
+msgstr "Scoránaigh uasghrádú iomlán"
+
+#: nala/options.py:502
+msgid "Force color or no color."
+msgstr "Fórsa dath nó gan dath."
+
+#: nala/options.py:508
+msgid "Toggle updating the package list."
+msgstr "Scoránaigh nuashonrú liosta na bpacáistí."
+
+#: nala/options.py:515
+msgid "Toggle a more condensed transaction summary."
+msgstr "Scoránaigh achoimre idirbhirt níos comhdhlúite."
+
+#: nala/options.py:523
+msgid "Purge any packages that would be removed."
+msgstr "Glan aon phacáistí a bhainfí."
+
+#: nala/options.py:529
+msgid "Purge packages not installed that have config files."
+msgstr "Glan pacáistí nach bhfuil suiteáilte a bhfuil comhaid chumraíochta iontu."
+
+#: nala/options.py:537
+msgid "Allow the removal of essential packages."
+msgstr "Ceadaigh pacáistí riachtanacha a bhaint."
+
+#: nala/options.py:546
+msgid "Toggle fix broken packages."
+msgstr "Deisigh pacáistí briste."
+
+#: nala/options.py:555
+msgid "Assume 'yes' or 'no' to all prompts."
+msgstr "Glac leis go bhfuil 'tá' nó 'níl' do gach leid."
+
+#: nala/options.py:564
+msgid "Set options like Dpkg::Options::=\"--force-confnew\"."
+msgstr "Socraigh roghanna cosúil le Dpkg::Options::=\"--force-confnew\"."
+
+#: nala/options.py:572
+msgid "Skips all formatting and you get raw dpkg output."
+msgstr "Scipeáil gach formáidiú agus gheobhaidh tú aschur dpkg amh."
+
+#: nala/options.py:581
+msgid "Show all versions of a package."
+msgstr "Taispeáin gach leagan de phacáiste."
+
+#: nala/options.py:590
+msgid "Show all architectures of a package."
+msgstr "Taispeáin ailtireacht uile phacáiste."
+
+#: nala/options.py:599
+msgid "Packages are only retrieved, not unpacked or installed."
+msgstr ""
+"Ní dhéantar pacáistí a aisghabháil, ní dhéantar iad a dhíphacáil ná a shuiteáil."
+
+#: nala/options.py:608
+msgid "Search only package names."
+msgstr "Cuardaigh ainmneacha pacáistí amháin."
+
+#: nala/options.py:617
+msgid "Only installed packages."
+msgstr "Pacáistí suiteáilte amháin."
+
+#: nala/options.py:625
+msgid "Only packages explicitly installed with Nala."
+msgstr "Níl ach pacáistí suiteáilte go sainráite le Nala."
+
+#: nala/options.py:634
+msgid "Only upgradable packages."
+msgstr "Pacáistí in-uasghrádaithe amháin."
+
+#: nala/options.py:651
+msgid "Only virtual packages."
+msgstr "Pacáistí fíorúla amháin."
+
+#: nala/options.py:659
+msgid "Print the full description of each package."
+msgstr "Priontáil an cur síos iomlán ar gach pacáiste."
+
+#: nala/options.py:665
+msgid "Remove package lists located in `/var/lib/apt/lists/`."
+msgstr "Bain liostaí pacáistí atá suite i '/var/lib/apt/lists/'."
+
+#: nala/options.py:671
+msgid "Remove `nala-sources.list`."
+msgstr "Bain 'nala-sources.list'."
+
+#: nala/options.py:675
+msgid "Run fetch uninteractively. Will still prompt for overwrite"
+msgstr "Rith fetch neamh-idirghníomhach. Iarrfaidh sé fós go ndéanfaí forscríobh"
+
+#: nala/options.py:684
+msgid "Show this message and exit."
+msgstr "Taispeáin an teachtaireacht seo agus scoir."
+
+#: nala/summary.py:40
+msgid "Package/Version/Size/Old Version/New Version/Either"
+msgstr "Pacáiste / Leagan / Méid / Seanleagan / Leagan nua / Ceachtar acu"
+
+#. Verb Tenses are [ "Present/Present Participle/Past" ]
+#. This ends up looking like [ "Auto-Purge 20 Packages" ]
+#: nala/summary.py:45
+msgid "Auto-Purge/Auto-Purging/Auto-Purged"
+msgstr "Auto-Purge / Auto-Purging / Auto-Purged"
+
+#. Verb Tenses are [ "Present/Present Participle/Past" ]
+#. This ends up looking like [ "Auto-Remove 20 Packages" ]
+#: nala/summary.py:50
+msgid "Auto-Remove/Auto-Removing/Auto-Removed"
+msgstr "Baint go huathoibríoch / Baint go huathoibríoch / Baint go huathoibríoch"
+
+#. Verb Tenses are [ "Present/Present Participle/Past" ]
+#. This ends up looking like [ "Remove 20 Packages" ]
+#: nala/summary.py:55
+msgid "Remove/Removing/Removed"
+msgstr "Bain/Baint/Bainte"
+
+#. Verb Tenses are [ "Present/Present Participle/Past" ]
+#. This ends up looking like [ "Purge 20 Packages" ]
+#: nala/summary.py:60
+msgid "Purge/Purging/Purged"
+msgstr "Purge / Purging / Purged"
+
+#. Verb Tenses are [ "Present/Present Participle/Past" ]
+#. This ends up looking like [ "Install 20 Packages" ]
+#: nala/summary.py:65
+msgid "Install/Installing/Installed"
+msgstr "Suiteáil / Suiteáil / Suiteáilte"
+
+#. Verb Tenses are [ "Present/Present Participle/Past" ]
+#. This ends up looking like [ "Reinstall 20 Packages" ]
+#: nala/summary.py:70
+msgid "Reinstall/Reinstalling/Reinstalled"
+msgstr "Athshuiteáil/Athshuiteáil/Athshuiteáilte"
+
+#. Verb Tenses are [ "Present/Present Participle/Past" ]
+#. This ends up looking like [ "Upgrade 20 Packages" ]
+#: nala/summary.py:75
+msgid "Upgrade/Upgrading/Upgraded"
+msgstr "Uasghrádú / Uasghrádú / Uasghrádú"
+
+#. Verb Tenses are [ "Present/Present Participle/Past" ]
+#. This ends up looking like [ "Downgrade 20 Packages" ]
+#: nala/summary.py:80
+msgid "Downgrade/Downgrading/Downgraded"
+msgstr "Íosghrádú / Íosghrádú / Íosghrádú"
+
+#. Verb Tenses are [ "Present/Present Participle/Past" ]
+#. This ends up looking like [ "Configure 20 Packages" ]
+#: nala/summary.py:85
+msgid "Configure/Configuring/Configured"
+msgstr "Cumraigh / Cumraigh / Cumraithe"
+
+#: nala/summary.py:276 nala/summary.py:295
+msgid "Recommended, Will Not Be Installed"
+msgstr "Molta, ní bheidh sé suiteáilte"
+
+#: nala/summary.py:277 nala/summary.py:299
+msgid "Suggested, Will Not Be Installed"
+msgstr "Molta, ní bheidh sé suiteáilte"
+
+#: nala/summary.py:279 nala/summary.py:297
+msgid "Kept Back, Will Not Be Upgraded"
+msgstr "Coimeádta Ar Ais, Ní Uasghrádófar é"
+
+#: nala/summary.py:279 nala/summary.py:297
+msgid "Kept Back"
+msgstr "Coinníodh siar"
+
+#: nala/summary.py:281
+msgid "Auto-Removable, Will Not Be Removed"
+msgstr "Inbhainte go huathoibríoch, ní bhainfear é"
+
+#: nala/summary.py:373 nala/summary.py:484
+msgid "Summary"
+msgstr "Achoimre"
+
+#. This ends up looking like [ "Configure 20 Packages" ]
+#: nala/summary.py:386
+msgid "Packages"
+msgstr "Pacáistí"
+
+#: nala/summary.py:397 nala/summary.py:490
+msgid "Total download size"
+msgstr "Méid iomlán íoslódála"
+
+#: nala/summary.py:399 nala/summary.py:492
+msgid "Disk space to free"
+msgstr "Spás diosca le scaoileadh"
+
+#: nala/summary.py:401 nala/summary.py:494
+msgid "Disk space required"
+msgstr "Spás diosca ag teastáil"
+
+#: nala/summary.py:405 nala/summary.py:498
+msgid "Nala will only download the packages"
+msgstr "Ní íoslódálfaidh Nala ach na pacáistí"
+
+#: nala/install.py:129
+#, python-brace-format
+msgid "Purging configuration files for {package}"
+msgstr "Comhaid chumraíochta á nglanadh le haghaidh {package}"
+
+#: nala/install.py:209
+#, python-brace-format
+msgid "{notice} Selected packages cannot be excluded from upgrade safely."
+msgstr "{notice} Ní féidir pacáistí roghnaithe a eisiamh ó uasghrádú go sábháilte."
+
+#: nala/install.py:232
+#, python-brace-format
+msgid "{error} Unable to calculate how to protect the selected packages"
+msgstr "{error} Ní féidir a ríomh conas na pacáistí roghnaithe a chosaint"
+
+#: nala/error.py:581 nala/install.py:235 nala/nala.py:307
+#, python-brace-format
+msgid "{error} You have held broken packages"
+msgstr "{error} Tá pacáistí briste agat"
+
+#: nala/install.py:237
+#, python-brace-format
+msgid "{notice} The following packages need to be protected as well:"
+msgstr "{notice} Ní mór na pacáistí seo a leanas a chosaint chomh maith:"
+
+#: nala/install.py:433
+#, python-brace-format
+msgid "Log Started: [{date}]"
+msgstr "Logáil Tosaithe: [{date}]"
+
+#: nala/install.py:447
+#, python-brace-format
+msgid "Log Ended: [{date}]"
+msgstr "Logáil Críochnaithe: [{date}]"
+
+#: nala/install.py:510
+#, python-brace-format
+msgid "{error} Fetching packages has failed!"
+msgstr "{error} Theip ar phacáistí a fháil!"
+
+#: nala/install.py:513 nala/install.py:1181
+msgid "Exiting due to SIGINT"
+msgstr "Ag scoir de bharr SIGINT"
+
+#: nala/install.py:524
+#, python-brace-format
+msgid "{notice} A reboot is required."
+msgstr "{notice} Tá atosaigh ag teastáil."
+
+#: nala/install.py:525
+msgid "Finished Successfully"
+msgstr "Críochnaithe go rathúil"
+
+#: nala/install.py:602
+#, python-brace-format
+msgid "{notice} The following will be installed to satisfy {package}:"
+msgstr "{notice} Suiteálfar an méid seo a leanas chun {package} a shásamh:"
+
+#: nala/install.py:646
+#, python-brace-format
+msgid ""
+"{notice} Newer version {package} {version} exists in the cache.\n"
+"You should consider using `{command}`"
+msgstr ""
+"{notice} Tá leagan níos nuaí {package} {version} ann sa taisce.\n"
+"Ba chóir duit smaoineamh ar '{command}' a úsáid"
+
+#: nala/install.py:688
+#, python-brace-format
+msgid "{notice} {deb} has taken priority over {package} from the cache."
+msgstr "{notice} Tá tús áite glactha ag {deb} ar {package} ón taisce."
+
+#: nala/install.py:744
+#, python-brace-format
+msgid "{notice} {filename} can't be hashsum verified."
+msgstr "{notice} Ní féidir {filename} a fhíorú."
+
+#: nala/install.py:749 nala/install.py:1222
+msgid "Do you want to continue?"
+msgstr "An bhfuil fonn ort leanúint ar aghaidh?"
+
+#: nala/install.py:750 nala/install.py:1223
+msgid "Abort."
+msgstr "Ginmhilleadh."
+
+#: nala/install.py:793
+#, python-brace-format
+msgid "{error} Hash does not match the '{hash_type}' Length"
+msgstr "{error} Ní mheaitseálann Hash an Fad '{hash_type}'"
+
+#: nala/install.py:800
+#, python-brace-format
+msgid "{error} Hash Type '{hash_type}' specified with no hash"
+msgstr "{error} Cineál Hash '{hash_type}' sonraithe gan aon hash"
+
+#: nala/install.py:807
+#, python-brace-format
+msgid "{error} Hash Type '{hash_type}' is unsupported"
+msgstr "{error} Ní thacaítear le Cineál Hash '{hash_type}'"
+
+#: nala/install.py:965
+#, python-brace-format
+msgid "{error} Version {version} not found for package {package}"
+msgstr "{error} Níor aimsíodh leagan {version} le haghaidh pacáiste {package}"
+
+#: nala/install.py:1021 nala/install.py:1035
+msgid "Virtual Package"
+msgstr "Pacáiste Fíorúil"
+
+#: nala/install.py:1078
+#, python-brace-format
+msgid "{notice} {package} is not installed"
+msgstr "{notice} Níl {package} suiteáilte"
+
+#: nala/install.py:1093
+#, python-brace-format
+msgid "{package} is already at the latest version {version}"
+msgstr "Tá {package} cheana féin ag an leagan is déanaí {version}"
+
+#: nala/install.py:1147
+#, python-brace-format
+msgid "{notice} The following packages require a reboot."
+msgstr "{notice} Teastaíonn atosaigh ó na pacáistí seo a leanas."
+
+#: nala/install.py:1162
+msgid "Notices:"
+msgstr "Fógraí:"
+
+#: nala/install.py:1211
+#, python-brace-format
+msgid "{error} It can be dangerous to continue without a terminal. Use `--assume-yes`"
+msgstr ""
+"{error} D'fhéadfadh sé a bheith contúirteach leanúint ar aghaidh gan críochfort. Bain "
+"úsáid as '--assume-yes'"
+
+#: nala/install.py:1217
+#, python-brace-format
+msgid "{warning} Using {switch} can be very dangerous!"
+msgstr "{warning} Is féidir le {switch} a úsáid a bheith an-chontúirteach!"
+
+#: nala/cache.py:272 nala/install.py:1235
+msgid "All packages are up to date."
+msgstr "Tá gach pacáiste cothrom le dáta."
+
+#: nala/install.py:1238
+msgid "Nothing for Nala to do."
+msgstr "Níl aon rud le déanamh ag Nala."
+
+#: nala/install.py:1241
+msgid "Nothing for Nala to remove."
+msgstr "Níl aon rud le baint ag Nala."
+
+#: nala/install.py:1244
+msgid "Nothing for Nala to fix."
+msgstr "Níl aon rud le socrú ag Nala."
+
+#: nala/__main__.py:44
+msgid "Exiting at your request."
+msgstr "Ag éirí as ar d'iarratas."
+
+#: nala/__main__.py:50
+#, python-brace-format
+msgid "{error} No space left on device."
+msgstr "{error} Níl aon spás fágtha ar an bhfeiste."
+
+#: nala/search.py:109
+#, python-brace-format
+msgid "{package} [local]"
+msgstr "{package} [áitiúil]"
+
+#: nala/search.py:122
+#, python-brace-format
+msgid "is installed and upgradable to {version}"
+msgstr "suiteáilte agus in-uasghrádaithe go {version}"
+
+#. vim 2:8.2.4659-1 [Debian/sid main]
+#. ├── is upgradable from 2:8.2.3995-1+b2
+#. └── Vi IMproved - enhanced vi editor
+#: nala/search.py:130
+#, python-brace-format
+msgid "is upgradable from {version}"
+msgstr "is féidir é a uasghrádú ó {version}"
+
+#. vim 2:8.2.3995-1+b2 [Debian/sid main]
+#. ├── is installed
+#. └── Vi IMproved - enhanced vi editor
+#: nala/search.py:137
+msgid "is installed"
+msgstr "suiteáilte"
+
+#. vim 2:8.2.3995-1+b2 [Debian/sid main]
+#. ├── is installed
+#. └── No Description
+#: nala/search.py:152
+msgid "No Description"
+msgstr "Gan Cur Síos"
+
+#. Answers for the Question prompt "[Y/n]"
+#: nala/utils.py:66
+msgid "Y/y N/n"
+msgstr "Y/y N/n"
+
+#: nala/utils.py:128
+msgid "Terminal can't support dialog, falling back to readline"
+msgstr ""
+"Ní féidir leis an teirminéal tacú le dialóg, ag titim ar ais go dtí an líne "
+"léitheoireachta"
+
+#: nala/utils.py:313
+#, python-brace-format
+msgid ""
+"{command} is not a command\n"
+"Did you mean {correction}?"
+msgstr ""
+"Ní ordú é {command}\n"
+"An raibh i gceist agat {correction}?"
+
+#: nala/utils.py:347
+#, python-brace-format
+msgid ""
+"{error} Some packages are unable to be authenticated. Use '-o APT::Get::"
+"AllowUnauthenticated=true' with `--yes`"
+msgstr ""
+"{error} Ní féidir roinnt pacáistí a fhíordheimhniú. Bain úsáid as '-o APT::Get::"
+"AllowUnauthenticated=true' le '--yes'"
+
+#: nala/utils.py:362
+#, python-brace-format
+msgid "{error} failed regex compilation '{error_msg} at position {position}'"
+msgstr "Theip ar {error} tiomsú rialta '{error_msg} ag suíomh {position}'"
+
+#: nala/utils.py:372
+#, python-brace-format
+msgid "{error} Nala needs root to fix broken packages"
+msgstr "{error} Teastaíonn fréamh ó Nala chun pacáistí briste a shocrú"
+
+#: nala/utils.py:377
+#, python-brace-format
+msgid "{error} Nala needs root to {command}"
+msgstr "{error} Teastaíonn fréamh ó Nala go {command}"
+
+#: nala/utils.py:402
+#, python-brace-format
+msgid "{error} Nala is already running another instance {last_pid}"
+msgstr "{error} Tá Nala ag rith cás eile cheana féin {last_pid}"
+
+#: nala/utils.py:438
+#, python-brace-format
+msgid "Removing files in {dir}"
+msgstr "Comhaid á mbaint i {dir}"
+
+#: nala/utils.py:441
+#, python-brace-format
+msgid "Removed: {filename}"
+msgstr "Bainte: {filename}"
+
+#: nala/utils.py:459 nala/utils.py:477
+#, python-brace-format
+msgid "{error} can't find version for {package}"
+msgstr "Ní féidir le {error} leagan le haghaidh {package} a aimsiú"
+
+#: nala/nala.py:127
+msgid "There are broken packages that need to be fixed!"
+msgstr "Tá pacáistí briste ann a chaithfear a shocrú!"
+
+#: nala/nala.py:129
+#, python-brace-format
+msgid "You can use {switch} if you'd like to try without fixing them."
+msgstr ""
+"Is féidir leat {switch} a úsáid más mian leat triail a bhaint as gan iad a shocrú."
+
+#: nala/nala.py:174
+#, python-brace-format
+msgid "{error} Missing packages to install"
+msgstr "{error} Pacáistí in easnamh le suiteáil"
+
+#: nala/nala.py:235
+msgid "Update package list."
+msgstr "Nuashonraigh liosta na bpacáistí."
+
+#: nala/nala.py:253
+msgid "Upgrade the system by removing/installing/upgrading packages."
+msgstr "Uasghrádú an chórais trí phacáistí a bhaint/a shuiteáil/a uasghrádú."
+
+#: nala/nala.py:255
+msgid "Upgrade the system by upgrading packages only."
+msgstr "Uasghrádú an chórais trí phacáistí a uasghrádú amháin."
+
+#: nala/nala.py:260
+msgid "Specify packages to exclude during upgrade. Accepts glob*"
+msgstr "Sonraigh pacáistí le heisiamh le linn uasghrádú. Glacann sé le glob*"
+
+#: nala/nala.py:302
+msgid "Would you like us to protect these and try again?"
+msgstr "Ar mhaith leat go gcosnóimis iad seo agus iarracht a dhéanamh arís?"
+
+#: nala/nala.py:350
+msgid "Install packages."
+msgstr "Suiteáil pacáistí."
+
+#: nala/nala.py:356
+msgid "Package(s) to install"
+msgstr "Pacáiste(í) le suiteáil"
+
+#: nala/nala.py:381
+msgid "Remove packages."
+msgstr "Bain pacáistí."
+
+#: nala/nala.py:382
+msgid "Purge packages."
+msgstr "Pacáistí a ghlanadh."
+
+#: nala/nala.py:388
+msgid "Package(s) to remove/purge"
+msgstr "Pacáiste(í) le baint/glanadh"
+
+#: nala/nala.py:411
+msgid "Autoremove packages that are no longer needed."
+msgstr "Bain pacáistí nach bhfuil ag teastáil go huathoibríoch a thuilleadh."
+
+#: nala/nala.py:412
+msgid "Autopurge packages that are no longer needed."
+msgstr "Pacáistí uathghlanta nach bhfuil ag teastáil a thuilleadh."
+
+#: nala/nala.py:434
+#, python-brace-format
+msgid "{error} {config} must be used with either {autoremove} or {autopurge}."
+msgstr "{error} Ní mór {config} a úsáid le {autoremove} nó {autopurge}."
+
+#: nala/nala.py:448
+msgid "Show package details."
+msgstr "Taispeáin sonraí an phacáiste."
+
+#: nala/nala.py:453
+msgid "Package(s) to show"
+msgstr "Pacáiste(í) le taispeáint"
+
+#: nala/nala.py:485
+msgid "Search package names and descriptions."
+msgstr "Cuardaigh ainmneacha agus tuairiscí pacáistí."
+
+#: nala/nala.py:489
+msgid "Regex or word to search for"
+msgstr "Regex nó focal le cuardach"
+
+#: nala/nala.py:533
+#, python-brace-format
+msgid "{error} {regex} not found."
+msgstr "{error} {regex} gan aimsiú."
+
+#: nala/nala.py:540
+msgid "List packages based on package names."
+msgstr "Liostaigh pacáistí bunaithe ar ainmneacha pacáistí."
+
+#: nala/nala.py:544
+msgid "Package(s) to list."
+msgstr "Pacáiste(í) le liostú."
+
+#: nala/nala.py:594
+msgid "Nothing was found to list."
+msgstr "Níor aimsíodh aon rud le liostáil."
+
+#: nala/nala.py:597
+msgid "Clear out the local archive of downloaded package files."
+msgstr "Glan amach cartlann logánta na gcomhad pacáiste íoslódálacha."
+
+#: nala/nala.py:611
+msgid "Package lists have been cleaned"
+msgstr "Glanadh liostaí pacáistí"
+
+#: nala/nala.py:615
+msgid "Nala sources.list has been cleaned"
+msgstr "Tá Nala sources.list glanta"
+
+#: nala/nala.py:621
+#, python-brace-format
+msgid ""
+"Removing {cache}\n"
+"Removing {src_cache}"
+msgstr ""
+"{cache} á bhaint\n"
+"{src_cache} á bhaint"
+
+#: nala/nala.py:628
+msgid "Cache has been cleaned"
+msgstr "Tá an taisce glanta"
+
+#: nala/nala.py:631
+msgid "I beg, pls moo"
+msgstr "Impím, pls moo"
+
+#: nala/nala.py:639
+msgid "I can't moo for I'm a cat"
+msgstr "Ní féidir liom moo mar is cat mé"
+
+#: nala/nala.py:642
+msgid "What did you expect to update?"
+msgstr "Cad a bhí tú ag súil le nuashonrú?"
+
+#: nala/nala.py:646
+msgid "What did you expect no-update to do?"
+msgstr "Cad a bhí tú ag súil le gan nuashonrú a dhéanamh?"
+
+#: nala/constants.py:93
+msgid "Error:"
+msgstr "Earráid:"
+
+#: nala/constants.py:94
+msgid "Warning:"
+msgstr "Rabhadh:"
+
+#: nala/constants.py:95
+msgid "Notice:"
+msgstr "Fógra:"
+
+#: nala/fetch.py:83
+msgid ""
+"Nala will fetch mirrors with the lowest latency.\n"
+"\n"
+"For Debian https://mirror-master.debian.org/status/Mirrors.masterlist\n"
+"\n"
+"For Ubuntu https://launchpad.net/ubuntu/+archivemirrors-rss"
+msgstr ""
+"Gheobhaidh Nala scátháin leis an latency is ísle.\n"
+"\n"
+"Do Debian https://mirror-master.debian.org/status/Mirrors.masterlist\n"
+"\n"
+"Le haghaidh Ubuntu https://launchpad.net/ubuntu/+archivemirrors-rss"
+
+#: nala/fetch.py:290
+msgid "Are these mirrors okay?"
+msgstr "An bhfuil na scátháin seo ceart go leor?"
+
+#: nala/fetch.py:305
+#, python-brace-format
+msgid "Mirrors you want to keep, separated by space or comma {selection}:"
+msgstr "Scátháin is mian leat a choinneáil, scartha le spás nó camóg {selection}:"
+
+#: nala/fetch.py:326
+#, python-brace-format
+msgid "{error} Index {index} doesn't exist."
+msgstr "{error} Níl an t-innéacs {index} ann."
+
+#: nala/fetch.py:336
+#, python-brace-format
+msgid "{error} {value_error}"
+msgstr "{error} {value_error}"
+
+#: nala/fetch.py:346
+#, python-brace-format
+msgid "{error} Parser: {parser}"
+msgstr "{error} Parsálaí: {parser}"
+
+#: nala/fetch.py:377
+#, python-brace-format
+msgid "Fetching {distro} mirrors"
+msgstr "Scátháin {distro} á bhfaigheadh"
+
+#: nala/fetch.py:425
+#, python-brace-format
+msgid "{error} Internal Error. Distro detection must be broken"
+msgstr "{error} Earráid Inmheánach. Caithfear braite distro a bhriseadh"
+
+#: nala/fetch.py:440
+#, python-brace-format
+msgid "{error} unable to connect to {mirror}"
+msgstr "Ní féidir {error} ceangal le {mirror}"
+
+#: nala/fetch.py:456
+msgid "Parsing mirror list"
+msgstr "Liosta scátháin a pharsáil"
+
+#: nala/fetch.py:662
+msgid "Score is how many milliseconds it takes to download the Release file"
+msgstr ""
+"Is é an scór cé mhéad milleasoicind a thógann sé chun an comhad Scaoilte a íoslódáil"
+
+#: nala/fetch.py:753
+#, python-brace-format
+msgid "{notice} Nala was unable to fetch {num} mirrors."
+msgstr "{notice} Ní raibh Nala in ann {num} scátháin a fháil."
+
+#: nala/fetch.py:774
+#, python-brace-format
+msgid "Sources have been written to {file}"
+msgstr "Scríobhadh foinsí chuig {file}"
+
+#: nala/fetch.py:806
+#, python-brace-format
+msgid "{error} There was an issue detecting release."
+msgstr "{error} Bhí fadhb ann maidir le scaoileadh a bhrath."
+
+#: nala/fetch.py:813
+#, python-brace-format
+msgid "{error} {distro} {release} is unsupported."
+msgstr "{error} {distro} Níl tacaíocht ag {release}."
+
+#: nala/fetch.py:817
+msgid "You can specify Ubuntu or Debian manually."
+msgstr "Is féidir leat Ubuntu nó Debian a shonrú de láimh."
+
+#: nala/fetch.py:823
+msgid "Fetch fast mirrors to speed up downloads."
+msgstr "Faigh scátháin thapa chun íoslódálacha a bhrostú."
+
+#: nala/fetch.py:828
+msgid "Choose the Debian release."
+msgstr "Roghnaigh an scaoileadh Debian."
+
+#: nala/fetch.py:830
+msgid "Choose the Ubuntu release."
+msgstr "Roghnaigh an scaoileadh Ubuntu."
+
+#: nala/fetch.py:833
+msgid "Choose the Devuan release."
+msgstr "Roghnaigh an scaoileadh Devuan."
+
+#: nala/fetch.py:837
+msgid "Number of mirrors to fetch. [defaults: 16, --auto(3)]"
+msgstr "Líon na scátháin le fáil. [réamhshocruithe: 16, --auto (3)]"
+
+#: nala/fetch.py:844
+msgid "Add the source repos for the mirrors if it exists."
+msgstr "Cuir na repos foinse leis na scátháin má tá sé ann."
+
+#: nala/fetch.py:847
+msgid "Add contrib and non-free repos."
+msgstr "Cuir contrib agus repos neamh-saor leis."
+
+#: nala/fetch.py:852
+msgid "Run fetch uninteractively. Will still prompt for overwrite."
+msgstr "Rith fetch neamh-idirghníomhach. Beidh fós ag iarraidh forscríobh."
+
+#: nala/fetch.py:861
+msgid "Choose only mirrors of a specific ISO country code."
+msgstr "Roghnaigh ach scátháin de chód tíre ISO ar leith."
+
+#: nala/fetch.py:890
+#, python-brace-format
+msgid "{error} Nala was unable to find any mirrors."
+msgstr "{error} Ní raibh Nala in ann aon scátháin a aimsiú."
+
+#: nala/cache.py:47
+#, python-brace-format
+msgid "The following {total} packages can be upgraded:"
+msgstr "Is féidir na pacáistí {total} seo a leanas a uasghrádú:"
+
+#: nala/cache.py:48
+msgid "Not candidate version"
+msgstr "Ní leagan iarrthóra é"
+
+#: nala/cache.py:131
+#, python-brace-format
+msgid "{error} unable to find any packages by globbing {pkg}"
+msgstr "Ní féidir {error} aon phacáistí a aimsiú trí {pkg} a ghlúbadh"
+
+#: nala/cache.py:194
+#, python-brace-format
+msgid "{warn} Virtual Packages like {package} can't be removed."
+msgstr "{warn} Ní féidir pacáistí fíorúla cosúil le {package} a bhaint."
+
+#: nala/cache.py:225
+#, python-brace-format
+msgid "Protecting {package} from upgrade"
+msgstr "{package} á chosaint ó uasghrádú"
+
+#: nala/cache.py:233
+#, python-brace-format
+msgid "Protecting {package} from auto-removal"
+msgstr "{package} á chosaint ó bhaint go huathoibríoch"
+
+#: nala/cache.py:264
+#, python-brace-format
+msgid "{total} packages can be upgraded. Run '{command}' to see them."
+msgstr "Is féidir pacáistí {total} a uasghrádú. Rith '{command}' chun iad a fheiceáil."
+
+#: nala/cache.py:299
+#, python-brace-format
+msgid "{package} is a virtual package provided by:"
+msgstr "Is pacáiste fíorúil é {package} a sholáthraíonn an méid seo a leanas:"
+
+#: nala/cache.py:313
+msgid "You should select just one."
+msgstr "Ba chóir duit ach ceann amháin a roghnú."
+
+#: nala/cache.py:320
+#, python-brace-format
+msgid ""
+"{notice} Selecting {provider}\n"
+"  Instead of virtual package {package}"
+msgstr ""
+"{notice} {provider} á roghnú\n"
+"  In ionad pacáiste fíorúil {package}"
+
+#. This is for `nala show`
+#. header info looks like "Package: steam:i386"
+#: nala/show.py:44
+#, python-brace-format
+msgid "{header} {info}"
+msgstr "{header} {info}"
+
+#: nala/show.py:57
+#, python-brace-format
+msgid "{pkg_name} has no candidate"
+msgstr "Níl aon iarrthóir ag {pkg_name}"
+
+#: nala/show.py:74
+msgid "Homepage:"
+msgstr "Leathanach baile:"
+
+#: nala/show.py:77
+msgid "Download-Size:"
+msgstr "Méid na hÍoslódála:"
+
+#: nala/show.py:80
+msgid "APT-Sources:"
+msgstr "Foinsí APT:"
+
+#: nala/show.py:84
+msgid "Description:"
+msgstr "Cur síos:"
+
+#: nala/show.py:95
+msgid "Provides:"
+msgstr "Soláthraíonn:"
+
+#: nala/show.py:101
+msgid "Enhances:"
+msgstr "Feabhsúcháin:"
+
+#: nala/show.py:109
+msgid "Pre-Depends:"
+msgstr "Réamh-Braitheann:"
+
+#: nala/error.py:45 nala/show.py:112
+msgid "Depends:"
+msgstr "Braitheann:"
+
+#: nala/show.py:116
+msgid "Recommends:"
+msgstr "Molann:"
+
+#: nala/show.py:121
+msgid "Suggests:"
+msgstr "Molann:"
+
+#: nala/show.py:132
+msgid "Replaces:"
+msgstr "Ionad:"
+
+#: nala/error.py:51 nala/show.py:136
+msgid "Conflicts:"
+msgstr "Coimhlintí:"
+
+#: nala/error.py:49 nala/show.py:138
+msgid "Breaks:"
+msgstr "Sosanna:"
+
+#: nala/show.py:144 nala/show.py:145
+msgid "yes"
+msgstr "tá"
+
+#: nala/show.py:144 nala/show.py:145
+msgid "no"
+msgstr "níl"
+
+#: nala/show.py:149
+msgid "Package:"
+msgstr "Pacáiste:"
+
+#: nala/show.py:151
+msgid "Version:"
+msgstr "Leagan:"
+
+#: nala/show.py:154
+msgid "Architecture:"
+msgstr "Ailtireacht:"
+
+#: nala/show.py:156
+msgid "Installed:"
+msgstr "Suiteáilte:"
+
+#: nala/show.py:157
+msgid "Priority:"
+msgstr "Tosaíocht:"
+
+#: nala/show.py:158
+msgid "Essential:"
+msgstr "Riachtanach:"
+
+#: nala/show.py:159
+msgid "Section:"
+msgstr "Rannóg:"
+
+#: nala/show.py:160
+msgid "Source:"
+msgstr "Foinse:"
+
+#: nala/show.py:163
+msgid "Origin:"
+msgstr "Bunús:"
+
+#: nala/show.py:164
+msgid "Maintainer:"
+msgstr "Cothaitheoir:"
+
+#: nala/show.py:168
+msgid "Original-Maintainer:"
+msgstr "Cothaitheoir Bunaidh:"
+
+#: nala/show.py:172
+msgid "Bugs:"
+msgstr "Fabhtanna:"
+
+#: nala/show.py:175
+msgid "Installed-Size:"
+msgstr "Méid Suiteáilte:"
+
+#: nala/show.py:267
+msgid "local install"
+msgstr "suiteáil áitiúil"
+
+#: nala/show.py:310
+#, python-brace-format
+msgid ""
+"{notice} There are {num} additional records. Please use the {switch} switch to see "
+"them."
+msgstr ""
+"{notice} Tá {num} taifead breise ann. Bain úsáid as an lasc {switch} chun iad a "
+"fheiceáil."
+
+#: nala/show.py:325
+#, python-brace-format
+msgid "{error} {package} has no version to show"
+msgstr "{error} Níl aon leagan le taispeáint ag {package}"
+
+#: nala/error.py:197 nala/show.py:331
+#, python-brace-format
+msgid "{error} {package} not found"
+msgstr "{error} {package} gan aimsiú"
+
+#: nala/rich.py:231
+msgid "Time Remaining:"
+msgstr "Am atá fágtha:"
+
+#: nala/rich.py:242
+msgid "Running dpkg"
+msgstr "Ag rith dpkg"
+
+#: nala/rich.py:253
+msgid "Testing Mirrors"
+msgstr "Scátháin a Thástáil"
+
+#: nala/error.py:47
+msgid "Either:"
+msgstr "Ceachtar acu:"
+
+#: nala/error.py:53
+#, python-brace-format
+msgid "{package} is only referenced by name, no packages provides it"
+msgstr "Ní thagraítear do {package} ach de réir ainm, ní sholáthraíonn aon phacáiste é"
+
+#: nala/error.py:55
+#, python-brace-format
+msgid "{dependency} will break {package} {version}"
+msgstr "brisfidh {dependency} {package} {version}"
+
+#: nala/error.py:57
+#, python-brace-format
+msgid "{dependency} conflicts with {package} {version}"
+msgstr "{dependency} conflicts with {package} {version}"
+
+#: nala/error.py:61
+#, python-brace-format
+msgid "{error} python-apt gave us {apt_err} This isn't a proper error as it's empty"
+msgstr "{error} python-apt gave us {apt_err} Ní earráid cheart é seo mar tá sé folamh"
+
+#: nala/error.py:123
+#, python-brace-format
+msgid ""
+"{notice} Some index files failed to download. They have been ignored, or old ones "
+"used instead."
+msgstr ""
+"{notice} Theip ar roinnt comhaid innéacs a íoslódáil. Rinneadh neamhaird orthu, nó "
+"baineadh úsáid as seanchinn ina ionad."
+
+#: nala/error.py:137
+#, python-brace-format
+msgid "{error} Installation has failed."
+msgstr "{error} Theip ar shuiteáil."
+
+#: nala/error.py:140
+#, python-brace-format
+msgid "If you'd like to file a bug report please include '{debug_file}'"
+msgstr ""
+"Más mian leat tuairisc ar fhabht a chomhdú, cuir '{debug_file}' san áireamh le do "
+"thoil"
+
+#: nala/error.py:160
+msgid "Are you root?"
+msgstr "An bhfuil tú fréamhaithe?"
+
+#: nala/error.py:169
+#, python-brace-format
+msgid "{error} The following packages are essential!"
+msgstr "{error} Tá na pacáistí seo a leanas riachtanach!"
+
+#: nala/error.py:174
+#, python-brace-format
+msgid "{error} You have attempted to remove essential packages"
+msgstr "{error} Rinne tú iarracht pacáistí riachtanacha a bhaint"
+
+#: nala/error.py:179
+#, python-brace-format
+msgid "{error} Please use {switch} if you are sure you want to."
+msgstr "{error} Bain úsáid as {switch} má tá tú cinnte gur mian leat."
+
+#: nala/error.py:191
+#, python-brace-format
+msgid "{error} {package} has no installation candidate."
+msgstr "{error} Níl aon iarrthóir suiteála ag {package}."
+
+#: nala/error.py:231
+#, python-brace-format
+msgid ""
+"{error} {apt_error}\n"
+"  Unsupported File: {filename}"
+msgstr ""
+"{error} {apt_error}\n"
+"  Comhad gan tacaíocht: {filename}"
+
+#: nala/error.py:239
+#, python-brace-format
+msgid ""
+"{error} {apt_error}\n"
+"  Could not read meta data from {filename}"
+msgstr ""
+"{error} {apt_error}\n"
+"  Níorbh fhéidir meiteashonraí ó {filename} a léamh"
+
+#: nala/error.py:299
+msgid "The following packages were kept back:"
+msgstr "Coinníodh na pacáistí seo a leanas ar ais:"
+
+#: nala/error.py:305
+msgid "The following were held due to exclusions:"
+msgstr "Tionóladh na nithe seo a leanas mar gheall ar eisiamh:"
+
+#: nala/error.py:307
+msgid "Nala was unable to determine why these were held:"
+msgstr "Ní raibh Nala in ann a chinneadh cén fáth ar tionóladh iad seo:"
+
+#: nala/error.py:387
+#, python-brace-format
+msgid "{package} but it isn't in the cache"
+msgstr "{package} ach níl sé sa taisce"
+
+#: nala/error.py:400
+#, python-brace-format
+msgid "{package} but the cache version is {version}"
+msgstr "{package} ach is é {version} an leagan taisce"
+
+#: nala/error.py:405
+#, python-brace-format
+msgid "{package} but it cannot be installed"
+msgstr "{package} ach ní féidir é a shuiteáil"
+
+#: nala/error.py:518
+#, python-brace-format
+msgid "{package} has been unmarked."
+msgstr "Tá {package} dímharcáilte."
+
+#: nala/error.py:523
+#, python-brace-format
+msgid "Try {switch} if you're sure they can be installed."
+msgstr "Bain triail as {switch} má tá tú cinnte gur féidir iad a shuiteáil."
+
+#: nala/error.py:528
+#, python-brace-format
+msgid "{error} Some packages were unable to be installed."
+msgstr "{error} Níorbh fhéidir roinnt pacáistí a shuiteáil."
+
+#: nala/error.py:552
+#, python-brace-format
+msgid "Installed packages that depend on {package}"
+msgstr "Pacáistí suiteáilte atá ag brath ar {package}"
+
+#: nala/error.py:565
+#, python-brace-format
+msgid "{package} is an Essential package!"
+msgstr "Is pacáiste Riachtanach é {package}!"
+
+#: nala/error.py:577
+#, python-brace-format
+msgid "{notice} The information above may be able to help"
+msgstr "{notice} B'fhéidir go mbeidh an t-eolas thuas in ann cabhrú leat"
+
+#: nala/dpkg.py:92
+msgid "Updated:"
+msgstr "Nuashonraithe:"
+
+#: nala/dpkg.py:93
+msgid "Downloaded:"
+msgstr "Íoslódáilte:"
+
+#: nala/dpkg.py:94
+msgid "Ignored:"
+msgstr "Rinneadh neamhaird air:"
+
+#: nala/dpkg.py:95
+msgid "No Change:"
+msgstr "Gan Athraithe:"
+
+#. Spacing of following status messages
+#. is to allow the urls to be properly aligned
+#. Especially if your status would come after the package
+#. You do not have to follow this scheme
+#. but do note that the headers will be colored regardless
+#. No Change: http://deb.volian.org/volian scar InRelease
+#. Ignored:   http://deb.volian.org/volian scar InRelease
+#. Updated:   http://deb.volian.org/volian scar InRelease
+#: nala/dpkg.py:105
+#, python-brace-format
+msgid "{no_change} {info}"
+msgstr "{no_change} {info}"
+
+#: nala/dpkg.py:106
+#, python-brace-format
+msgid "{no_change} {info} [{size}]"
+msgstr "{no_change} {info} [{size}]"
+
+#: nala/dpkg.py:107
+#, python-brace-format
+msgid "{ignored}   {info}"
+msgstr "{ignored}   {info}"
+
+#: nala/dpkg.py:108
+#, python-brace-format
+msgid "{updated}   {info}"
+msgstr "{updated}   {info}"
+
+#: nala/dpkg.py:109
+#, python-brace-format
+msgid "{updated}   {info} [{size}]"
+msgstr "{updated}   {info} [{size}]"
+
+#: nala/dpkg.py:111
+msgid "Removing:"
+msgstr "Ag baint:"
+
+#: nala/dpkg.py:112
+msgid "Unpacking:"
+msgstr "Díphacáil:"
+
+#: nala/dpkg.py:113
+msgid "Setting up:"
+msgstr "Ag socrú:"
+
+#: nala/dpkg.py:114
+msgid "Processing:"
+msgstr "Próiseáil:"
+
+#. Spacing of following status messages
+#. is to allow dpkg messages to be properly aligned
+#. Especially if your status would come after the package
+#. You do not have to follow this scheme
+#. but do note that the headers will be colored regardless
+#. Unpacking:   neofetch (7.1.0-3)
+#. Setting up:  neofetch (7.1.0-3)
+#. Removing:    neofetch (7.1.0-3)
+#. Processing:  triggers for man-db (2.10.2-1)
+#. You can change the headers and positions as you would like,
+#: nala/dpkg.py:127
+#, python-brace-format
+msgid "{setting_up} {dpkg_msg}"
+msgstr "{setting_up} {dpkg_msg}"
+
+#: nala/dpkg.py:128
+#, python-brace-format
+msgid "{processing} {dpkg_msg}"
+msgstr "{processing} {dpkg_msg}"
+
+#: nala/dpkg.py:129
+#, python-brace-format
+msgid "{unpacking}  {dpkg_msg}"
+msgstr "{unpacking}  {dpkg_msg}"
+
+#. That's the end of alignment spacing
+#: nala/dpkg.py:131
+#, python-brace-format
+msgid "{removing}   {dpkg_msg}"
+msgstr "{removing}   {dpkg_msg}"
+
+#. This translation is separate from the one below
+#. Because we do a check specifically on this string
+#: nala/dpkg.py:135
+msgid "Fetched"
+msgstr "Fuarthas"
+
+#. Fetched 81.0 MB in 6s (1448 kB/s)
+#: nala/dpkg.py:137
+#, python-brace-format
+msgid "{fetched} {size} in {elapsed} ({speed}/s)"
+msgstr "{fetched} {size} in {elapsed} ({speed}/s)"
+
+#: nala/dpkg.py:163
+#, python-format
+msgid "%c%s... Done"
+msgstr "%c%s... Críochnaithe"
+
+#: nala/dpkg.py:386
+msgid " [Working]"
+msgstr " [Ag obair]"
+
+#: nala/dpkg.py:873
+msgid "Purging Packages"
+msgstr "Pacáistí a Ghlanadh"
+
+#: nala/dpkg.py:875
+msgid "Removing Packages"
+msgstr "Pacáistí á bhaint"
+
+#: nala/dpkg.py:877
+msgid "Updating Packages"
+msgstr "Pacáistí á nuashonrú"
+
+#: nala/dpkg.py:879
+msgid "Installing Packages"
+msgstr "Pacáistí á shuiteáil"
+
+#: nala/dpkg.py:882
+msgid "History Undo"
+msgstr "Stair Cealaigh"
+
+#: nala/dpkg.py:884
+msgid "History Redo"
+msgstr "Athdhéanamh ar an stair"
+
+#: nala/dpkg.py:889
+msgid "Fetching Missed Packages"
+msgstr "Pacáistí Caillte á n-fháil"
+
+#: nala/dpkg.py:891
+msgid "Fixing Broken Packages"
+msgstr "Pacáistí briste á shocrú"
+
+#: nala/dpkg.py:892
+msgid "Updating Package List"
+msgstr "Liosta Pacáistí á nuashonrú"
+
+#: nala/dpkg.py:988
+#, python-brace-format
+msgid "{warning} Quitting now could break your system!"
+msgstr "{warning} D'fhéadfadh éirí as anois do chóras a bhriseadh!"
+
+#: nala/dpkg.py:992
+msgid "Ctrl+C twice quickly will exit"
+msgstr "Scoirfidh Ctrl+C faoi dhó go tapa"
