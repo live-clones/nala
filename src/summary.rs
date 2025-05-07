@@ -137,7 +137,7 @@ pub async fn commit(cache: Cache, config: &Config) -> Result<()> {
 	let archive = config.get_path(&Paths::Archive);
 
 	for ver in &versions {
-		if ver.uris().next().is_some() {
+		if ver.uris().next().is_some_and(|uri|!uri.starts_with("file:")) {
 			downloader.add_version(ver, &archive).await?;
 		}
 	}
