@@ -1,18 +1,18 @@
-
 msgid ""
 msgstr ""
-"Project-Id-Version:  Nala\n"
+"Project-Id-Version: Nala\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
 "POT-Creation-Date: 2025-04-04 01:39-0500\n"
-"PO-Revision-Date: 2023-12-17 16:17+0100\n"
+"PO-Revision-Date: 2025-05-12 18:18+0200\n"
 "Last-Translator: Luna Jernberg <droidbittin@gmail.com>\n"
-"Language: sv\n"
 "Language-Team: sv <LL@li.org>\n"
-"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"Language: sv\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
 "Generated-By: Babel 2.17.0\n"
+"X-Generator: Poedit 3.6\n"
 
 #: nala/downloader.py:86
 msgid "Starting Downloads"
@@ -359,7 +359,7 @@ msgstr "Växla full-upgrade"
 
 #: nala/options.py:502
 msgid "Force color or no color."
-msgstr "Tvinga färg eller ingen färg"
+msgstr "Tvinga färg eller ingen färg."
 
 #: nala/options.py:508
 msgid "Toggle updating the package list."
@@ -825,7 +825,7 @@ msgstr "Uppdatera paketlista."
 
 #: nala/nala.py:253
 msgid "Upgrade the system by removing/installing/upgrading packages."
-msgstr "Uppgradera systemet genom att ta bort/installera/uppgradera paket"
+msgstr "Uppgradera systemet genom att ta bort/installera/uppgradera paket."
 
 #: nala/nala.py:255
 msgid "Upgrade the system by upgrading packages only."
@@ -1618,4 +1618,3 @@ msgstr "Ctrl+C två gånger kommer avsluta"
 #~ msgstr ""
 #~ "{file} finns redan.\n"
 #~ "Vill du fortsätta och skriva över den?"
-
