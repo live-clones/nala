@@ -53,6 +53,7 @@ typer = "^0.15.2"
 tomli = "^2.2.1"
 typing-extensions = "^4.12.2"
 socksio = {version = "1.0.0", optional = true}
+python-gnupg = "^0.5.4"
 
 [tool.poetry.group.dev.dependencies]
 black = { git = "https://github.com/volitank/black.git", branch = "black-tabs" }

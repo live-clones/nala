@@ -28,11 +28,13 @@ import contextlib
 import itertools
 import re
 import sys
+import tempfile
 from asyncio import Semaphore, gather, get_event_loop, run as aiorun
 from pathlib import Path
 from ssl import SSLCertVerificationError, SSLError
 from typing import Iterable, List, Optional, Union
 
+import gnupg
 import typer
 from apt import Cache
 from apt_pkg import get_architectures
@@ -66,6 +68,7 @@ from nala.utils import ask, dprint, eprint, sudo_check, term
 
 from debian.deb822 import Deb822  # isort:skip
 
+
 DEBIAN = "Debian"
 UBUNTU = "Ubuntu"
 DEVUAN = "Devuan"
@@ -92,6 +95,7 @@ class MirrorTest:
 	def __init__(
 		self,
 		netselect: tuple[str, ...],
+		distro: str,
 		release: str,
 		check_sources: bool,
 		https_only: bool,
@@ -99,6 +103,7 @@ class MirrorTest:
 		"""Class to test mirrors."""
 		self.netselect = netselect
 		self.netselect_scored: list[str] = []
+		self.distro = distro
 		self.release = release
 		self.sources = check_sources
 		self.https_only = https_only
@@ -108,18 +113,32 @@ class MirrorTest:
 
 	async def run_test(self) -> None:
 		"""Test mirrors."""
-		with fetch_progress as self.progress:
-			self.task = self.progress.add_task("", total=len(self.netselect))
-			async with AsyncClient(
-				follow_redirects=True, limits=LIMITS, timeout=TIMEOUT
-			) as self.client:
-				loop = get_event_loop()
-				semp = Semaphore(25)
-				tasks = [
-					loop.create_task(self.net_select(mirror, semp))
-					for mirror in self.netselect
-				]
-				await gather(*tasks)
+		with tempfile.TemporaryDirectory() as tmp_dir:
+			self.gpg = gnupg.GPG(gnupghome=tmp_dir)
+			keyring_path = (
+				f"/usr/share/keyrings/{self.distro.lower()}-archive-keyring.gpg"
+			)
+			try:
+				with open(keyring_path, "rb") as keyring_file:
+					self.gpg.import_keys(keyring_file.read())
+			except FileNotFoundError:
+				# This shouldn't happen since the Signed By in build_sources() is hardcoded too
+				# But if it does we just skip the GPG verification
+				eprint(f"{ERROR_PREFIX} Keyring file not found: {keyring_path}")
+				self.gpg = None
+			with fetch_progress as self.progress:
+				self.task = self.progress.add_task("", total=len(self.netselect))
+				async with AsyncClient(
+					follow_redirects=True, limits=LIMITS, timeout=TIMEOUT
+				) as self.client:
+					loop = get_event_loop()
+					semp = Semaphore(25)
+					tasks = [
+						loop.create_task(self.net_select(mirror, semp))
+						for mirror in self.netselect
+					]
+					await gather(*tasks)
+			self.gpg = None
 
 	async def net_select(self, mirror: str, semp: Semaphore) -> None:
 		"""Take a URL, ping the domain and score the latency."""
@@ -139,6 +158,21 @@ class MirrorTest:
 				await self.netping(mirror, debugger)
 			self.progress.advance(self.task)
 
+	def check_release_file(self, contents: str, debugger: list[str]) -> bool:
+		"""Check validity of the release file."""
+		if self.gpg is None:
+			debugger.append("GPG is not initialized, not checking signatures")
+			return True
+
+		verification = self.gpg.verify(contents)
+		if not verification.valid:
+			debugger.append(
+				f"Dropping source, signature verification failed: {verification.status} {verification.stderr}"
+			)
+			return False
+
+		return True
+
 	async def netping(self, mirror: str, debugger: list[str]) -> bool:
 		"""Fetch release file and score mirror."""
 		secure = False
@@ -146,8 +180,13 @@ class MirrorTest:
 			# Try to do https first
 			https = mirror.replace("http://", "https://")
 			try:
-				response = await self.client.get(f"{https}dists/{self.release}/Release")
+				response = await self.client.get(
+					f"{https}dists/{self.release}/InRelease"
+				)
 				response.raise_for_status()
+				if not self.check_release_file(response.text, debugger):
+					dprint(debugger)
+					return False
 				secure = True
 				mirror = https
 			# We catch all Exceptions because we will fall back to http
@@ -161,8 +200,11 @@ class MirrorTest:
 			# We can fall back to http if it's necessary
 			if not secure:
 				response = await self.client.get(
-					f"{mirror}dists/{self.release}/Release"
+					f"{mirror}dists/{self.release}/InRelease"
 				)
+				if not self.check_release_file(response.text, debugger):
+					dprint(debugger)
+					return False
 				response.raise_for_status()
 
 			# Get rid of the decimal so we can prefix zeros for sorting.
@@ -882,7 +924,7 @@ def fetch(
 	dprint(netselect)
 	dprint(f"Distro: {distro}, Release: {release}, Component: {component}")
 
-	mirror_test = MirrorTest(netselect, release, sources, https_only)
+	mirror_test = MirrorTest(netselect, distro, release, sources, https_only)
 	aiorun(mirror_test.run_test())
 
 	if not (netselect_scored := mirror_test.get_scored()):
